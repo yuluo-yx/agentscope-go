@@ -1,0 +1,44 @@
+# .gitignore is restricted to the artifacts produced by go build and test.
+# for personal setup you can use personal .gitignore: `git config --global core.excludesfile ~/.gitignore`
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+
+# Editor/IDE
+.idea/
+.vscode/
+
+# bin
+bin/
+
+# local caches
+.cache/
+
+# Local tool environments
+.venv/
+tools/node/node_modules/

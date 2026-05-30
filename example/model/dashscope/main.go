@@ -1,0 +1,203 @@
+// Copyright 20\d\d AgentScope Go
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/yuluo-yx/agentscope-go/message"
+	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model/dashscope"
+	asstate "github.com/yuluo-yx/agentscope-go/state"
+	"github.com/yuluo-yx/agentscope-go/tool"
+)
+
+func main() {
+	apiKey := strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY"))
+	live := apiKey != ""
+	if apiKey == "" {
+		apiKey = "demo-dashscope-key"
+	}
+	modelID := getenv("AI_DASHSCOPE_MODEL", "qwen3.7-max")
+	temperature := 0.2
+	maxTokens := int64(256)
+
+	chat := mustModel(dashscope.NewChatModel(
+		dashscope.NewCredential(apiKey),
+		modelID,
+		dashscope.WithStream(false),
+		dashscope.WithChatParameters(dashscope.ChatParameters{
+			MaxTokens:   &maxTokens,
+			Temperature: &temperature,
+		}),
+	))
+	streamChat := mustModel(dashscope.NewChatModel(
+		dashscope.NewCredential(apiKey),
+		modelID,
+		dashscope.WithStream(true),
+	))
+
+	weatherTool := mustTool(tool.NewFunctionTool(
+		"GetWeather",
+		"Return weather for one city.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"city": map[string]any{"type": "string", "description": "City name."},
+			},
+			"required": []any{"city"},
+		},
+		func(context.Context, map[string]any, *asstate.AgentState) (message.ContentBlockList, error) {
+			return message.ContentBlockList{message.NewTextBlock("sunny")}, nil
+		},
+		tool.WithFunctionReadOnly(true),
+	))
+	kit := mustToolkit(tool.NewToolkit(weatherTool))
+	schemas, err := kit.ToolSchemas()
+	if err != nil {
+		panic(err)
+	}
+
+	visionMessage := mustMessage(message.NewUserMessage("user", message.ContentBlockList{
+		message.NewTextBlock("Describe this image in one sentence."),
+		message.NewDataBlock(message.NewURLSource("https://example.com/sample.png", "image/png"), message.WithDataBlockName("sample.png")),
+	}))
+	tokens, err := chat.CountTokens(asmodel.CallRequest{
+		Messages: []*message.Message{visionMessage},
+		Tools:    schemas,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf(
+		"chat_model=%s dashscope_model=%s stream_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
+		chat.Name(),
+		chat.Name(),
+		streamChat.Name(),
+		len(schemas),
+		len(visionMessage.Content),
+		tokens,
+	)
+	if !live {
+		fmt.Println("dashscope_live=skipped")
+		return
+	}
+
+	ctx := context.Background()
+	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
+	response, err := chat.Call(ctx, asmodel.CallRequest{
+		Messages: []*message.Message{liveMessage},
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("dashscope_live=ok response=%q\n", shorten(textContent(response.Content), 120))
+
+	weatherMessage := mustMessage(message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？"))
+	toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
+		Messages: []*message.Message{weatherMessage},
+		Tools:    schemas,
+	})
+	if err != nil {
+		panic(err)
+	}
+	weatherCall := firstToolCall(toolCallResponse.Content)
+	if weatherCall == nil {
+		panic(fmt.Sprintf("DashScope weather request returned no tool call: %q", textContent(toolCallResponse.Content)))
+	}
+	toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
+	if err != nil {
+		panic(err)
+	}
+	assistantMessage := mustMessage(message.NewAssistantMessage("assistant", toolCallResponse.Content))
+	toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
+		message.NewToolResultBlock(weatherCall.ID, weatherCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
+	}))
+	weatherResponse, err := chat.Call(ctx, asmodel.CallRequest{
+		Messages: []*message.Message{weatherMessage, assistantMessage, toolMessage},
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(textContent(weatherResponse.Content), 120))
+}
+
+func getenv(name, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func textContent(blocks message.ContentBlockList) string {
+	var builder strings.Builder
+	for _, block := range blocks {
+		if text, ok := block.(*message.TextBlock); ok {
+			builder.WriteString(text.Text)
+		}
+	}
+	return builder.String()
+}
+
+func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {
+	for _, block := range blocks {
+		if toolCall, ok := block.(*message.ToolCallBlock); ok {
+			return toolCall
+		}
+	}
+	return nil
+}
+
+func shorten(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return string(runes[:limit]) + "..."
+}
+
+func mustModel(model asmodel.ChatModel, err error) asmodel.ChatModel {
+	if err != nil {
+		panic(err)
+	}
+	return model
+}
+
+func mustTool(tool *tool.FunctionTool, err error) *tool.FunctionTool {
+	if err != nil {
+		panic(err)
+	}
+	return tool
+}
+
+func mustToolkit(kit *tool.Toolkit, err error) *tool.Toolkit {
+	if err != nil {
+		panic(err)
+	}
+	return kit
+}
+
+func mustMessage(msg *message.Message, err error) *message.Message {
+	if err != nil {
+		panic(err)
+	}
+	return msg
+}

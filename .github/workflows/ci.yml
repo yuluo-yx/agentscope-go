@@ -1,0 +1,37 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - 'Makefile'
+      - 'tools/github-setup-deps/**'
+      - 'tools/make/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - 'Makefile'
+      - 'tools/github-setup-deps/**'
+      - 'tools/make/**'
+      - '.github/workflows/**'
+
+jobs:
+  ci:
+    name: CI Checks
+    runs-on: ubuntu-latest
+    if: github.repository == 'yuluo-yx/agentscope-go'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./tools/github-setup-deps
+      - run: make download
+      - run: make ci
