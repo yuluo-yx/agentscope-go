@@ -845,7 +845,7 @@ example/      （可导入根包 facade，也可直接导入领域包）
 
 **阶段三差异记录（2026-05-30）**：Python Bash 工具使用 tree-sitter 做 Bash AST 级解析；Go 版不引入 tree-sitter 绑定，改用纯 Go 的 `mvdan.cc/sh/v3` `v3.13.1` 解析 Bash AST。当前实现已覆盖引号内 shell 操作符、env assignment、复合命令、输出重定向、动态 shell 结构、危险命令模式、sed 安全约束、敏感路径复核和 `accept_edits` 文件系统命令路径；普通非只读命令返回 `PASSTHROUGH`，由权限规则和默认模式继续裁决，避免阻断用户显式 allow rule。
 
-**阶段三沙箱核查记录（2026-05-30）**：Python 版没有给 `LocalWorkspace` 内置工具额外套一层通用工具沙箱。`LocalWorkspace.list_tools()` 直接返回 `Bash`、`Edit`、`Glob`、`Grep`、`Read`、`Write`；`Bash.__call__` 通过 `asyncio.create_subprocess_shell` 在本机执行，主要保护来自权限系统、静态 Bash 检查、超时和输出截断。Python 的隔离能力存在于 workspace 后端：`DockerWorkspace` 与 `E2BWorkspace` 的系统提示明确要求工具调用在容器或 E2B sandbox 内执行，且 `list_tools()` 返回空列表，工具通过 in-container / in-sandbox MCP gateway 暴露。Go 阶段三因此不实现本地工具沙箱；后续若翻译 `workspace` 包，再按 Docker/E2B workspace 级隔离设计补齐。
+**阶段三沙箱核查记录（2026-05-30）**：Python 版没有给 `LocalWorkspace` 内置工具额外套一层通用工具沙箱。`LocalWorkspace.list_tools()` 直接返回 `Bash`、`Edit`、`Glob`、`Grep`、`Read`、`Write`；`Bash.__call__` 通过 `asyncio.create_subprocess_shell` 在本机执行，主要保护来自权限系统、静态 Bash 检查、超时和输出截断。Python 的隔离能力存在于 workspace 后端：`DockerWorkspace` 与 `E2BWorkspace` 的系统提示明确要求工具调用在容器或 E2B sandbox 内执行，且 `list_tools()` 返回空列表，工具通过 in-container / in-sandbox MCP gateway 暴露。Go 阶段三因此不实现本地工具沙箱；阶段五已落地 `LocalWorkspace` 基础能力，Docker/E2B workspace 级隔离和 MCP gateway 统一列入“未实现功能”。
 
 ### 阶段四：Agent 核心（第 4-5 周）
 
@@ -865,21 +865,21 @@ example/      （可导入根包 facade，也可直接导入领域包）
 
 **阶段四边界记录（2026-05-30）**：Python 版 tracing middleware 依赖 OpenTelemetry SDK，且本计划第 5 节已标注追踪为可选能力、不进入核心路径。Go 阶段四只实现中间件 hook 链，暂不引入 `go.opentelemetry.io/otel`；后续若实现 `middleware/` 包，再把 tracing 作为独立可选实现包接入。
 
-**阶段四上下文差异记录（2026-05-30）**：Go 版尚未翻译 `workspace/` 与 Offloader，因此 `CompressContext` 当前只做本地可完成的工具结果长度截断。跨窗口摘要压缩、外部存储和 workspace 级上下文卸载放入阶段五 `workspace/` 与 Offloader。
+**阶段四上下文差异记录（2026-05-30）**：Go 版 `workspace/` 基础包已在阶段五落地，但 `CompressContext` 当前仍只做本地可完成的工具结果长度截断。跨窗口摘要压缩、外部存储、Agent 自动接入 workspace offload 和独立 Offloader 协议仍未实现，统一记录到“未实现功能”。
 
 ### 阶段五：扩展（第 5-6 周）
 
-| 步骤 | 内容 | 说明 |
+| 步骤 | 内容 | 当前状态 |
 |---|---|---|
-| 5.1 | `tool/task/` | 任务管理工具，对齐 Python `TaskCreate`、`TaskList`、`TaskGet`、`TaskUpdate` 的状态注入、默认允许和任务依赖语义 |
-| 5.2 | `test/e2e/global/` | 全局 E2E 冒烟测试，默认使用本地 fake model + 本地工具 + Agent 状态闭环，不依赖外部 Provider 或 API Key |
-| 5.3 | `tool/mcp/` | MCP 客户端 + 工具适配 |
-| 5.4 | `tool/skill/` | 技能加载 |
-| 5.5 | `model/deepseek/`、`model/ollama/` 等 | 剩余 Provider |
-| 5.6 | `workspace/` | 工作空间 + Offloader |
-| 5.7 | `example/` | 独立 Go module 示例；每个子目录包含 `go.mod`、`main.go`、英文 `README.md` 和中文 `README-zh.md`，默认本地可验证，真实 Provider 调用使用环境变量显式开启 |
+| 5.1 | `tool/task/` | 已实现：`TaskCreate`、`TaskGet`、`TaskList`、`TaskUpdate`、状态注入、默认允许、任务依赖和 32 位 hex UUID |
+| 5.2 | `test/e2e/global/` | 已实现：本地 fake model + 本地工具 + Agent 状态闭环，默认纳入 `go test ./...` |
+| 5.3 | `tool/mcp/` | 未实现：MCP 客户端、工具适配、多模态工具结果映射统一放入“未实现功能” |
+| 5.4 | `tool/skill/` | 已实现：本地 `SKILL.md` loader、front matter 解析、正文保留、子目录扫描和无效 skill 跳过 |
+| 5.5 | `model/deepseek/`、`model/dashscope/`、`model/moonshot/`、`model/xai/`、`model/ollama/` | 已部分实现：DeepSeek/DashScope/Moonshot/XAI OpenAI-compatible Provider 与 Ollama 官方 SDK Provider 已落地；Gemini、Provider 特化多模态能力和音频输出仍未实现 |
+| 5.6 | `workspace/` | 已部分实现：`Workspace` 接口与 `LocalWorkspace` 基础能力已落地；独立 Offloader、Docker/E2B workspace、workspace MCP gateway、持久化 MCP 配置和 Agent 自动接入仍未实现 |
+| 5.7 | `example/` | 已实现：独立 Go module 示例矩阵；每个子目录包含 `go.mod`、`main.go`、英文 `README.md` 和中文 `README-zh.md` |
 
-**阶段五计划调整记录（2026-05-30）**：用户最初明确要求阶段五暂不处理 `example/`，并补充全局 E2E 测试。Go 版阶段五因此先落地不依赖外部服务的 `tool/task/` 与 `test/e2e/global/`，再推进 MCP、skill、剩余 Provider 和 workspace。后续用户要求恢复 `example/`，并要求每个示例子目录都是独立小项目，包含各自 `go.mod`、英文 `README.md` 与中文 `README-zh.md`。Provider 真实 E2E 仍保留环境变量控制，避免把外部模型稳定性纳入默认本地验证门槛。
+**阶段五计划调整记录（2026-05-30）**：用户最初明确要求阶段五暂不处理 `example/`，并补充全局 E2E 测试。Go 版阶段五因此先落地不依赖外部服务的 `tool/task/` 与 `test/e2e/global/`，再推进 skill、剩余 Provider 和 workspace。后续用户要求恢复 `example/`，并要求每个示例子目录都是独立小项目，包含各自 `go.mod`、英文 `README.md` 与中文 `README-zh.md`。`tool/mcp/` 未在本轮落地，统一记录到“未实现功能”。Provider 真实 E2E 仍保留环境变量控制，避免把外部模型稳定性纳入默认本地验证门槛。
 
 **阶段五执行记录（2026-05-30）**：已落地 `tool/task/`，提供 `TaskCreate`、`TaskList`、`TaskGet`、`TaskUpdate` 和 `NewTools()`。实现对齐 Python 版状态注入、默认允许、任务创建、列表摘要、详情读取、状态更新、删除、owner、metadata merge、`add_blocks` 与 `add_blocked_by` 双向依赖关系。Go 版存在一个有意差异：Python task 基类将所有 task 工具标记为 concurrency safe；Go 版为了避免多个工具同时写同一 `AgentState.TaskContext` 造成数据竞争，仅将只读的 `TaskList`、`TaskGet` 标记为并发安全，`TaskCreate`、`TaskUpdate` 顺序执行。
 
@@ -897,21 +897,67 @@ example/      （可导入根包 facade，也可直接导入领域包）
 
 **阶段五 example 执行记录（2026-05-30）**：已落地 `example/` 独立示例矩阵，覆盖 `message`、`model/providers`、`model/dashscope`、`agent/basic`、`tool/function`、`tool/builtin`、`tool/task`、`tool/skill`、`workspace/local`。每个示例子目录都包含独立 `go.mod`、`main.go`、`go.sum`、英文 `README.md` 与中文 `README-zh.md`，代码可重复，不抽公共示例包。用户已删除 `test/examples`，示例验证改为逐目录执行 `go run .`。示例编写原则是按模块用途展示用户第一体感，而不是给每个模块强行套同一种模型调用：`message` 展示 system/user/assistant 对话历史；`model/providers` 展示已实现 Provider 构造与本地 token 估算；`model/dashscope` 覆盖文本调用、`GetWeather` tool call、工具执行、`ToolResultBlock` 回填和最终模型回复；`agent/basic` 用 scripted ChatModel 展示 Agent + task tool 的完整 ReAct 流程；`tool/function`、`tool/builtin`、`tool/task` 分别演示 DashScope 请求 `Greet`、`Read`、`TaskGet` 后由 Go 本地执行工具并回填结果，live 路径使用最多 4 轮的 tool-call 循环，直到模型返回最终文本；`tool/skill` 展示本地 `SKILL.md` 资源加载；`workspace/local` 展示 LocalWorkspace 作为 AI 工具运行环境，工具从 workspace 暴露并在 workspace `data/` 目录读写，同时覆盖 skill、context offload 和 tool result offload。
 
-**阶段五后续 TODO：workspace 与多模态能力缺口（2026-05-30）**：当前 Go 版已有 `workspace/` 基础包和 LocalWorkspace，但 workspace 后端隔离、MCP gateway、Gemini、多模态输出/视频输入、embedding 和独立 TTS/Image/Video 生成模型仍未落地。Python 版已存在完整 workspace 抽象与 Local/Docker/E2B 实现。多模态方面，Go 版已经具备 `message.DataBlock` 协议和部分 Provider 输入适配，但没有完整的 Python Provider 覆盖，也没有独立 TTS、图像生成、视频生成模型抽象。后续按下表推进。
+## 未实现功能
 
-| 能力 | Python 版本状态 | Go 当前状态 | 后续 TODO |
-|---|---|---|---|
-| Workspace 基础契约 | `WorkspaceBase` 定义 `initialize`、`close`、`reset`、`get_instructions`、`list_tools`、`list_mcps`、`list_skills`、`offload_context`、`offload_tool_result`、动态 MCP/skill 增删；`Offloader` 协议独立存在 | 已实现 Go `workspace.Workspace` 基础接口、workspace ID、生命周期、工具/skill/MCP 列表和 offload 方法；尚未拆出独立 `Offloader` 协议类型 | 后续补独立 `Offloader` 接口、Agent 接入边界和 workspace contract tests |
-| LocalWorkspace | Python 版直接暴露本地 Bash/Edit/Glob/Grep/Read/Write，并负责 MCP、skill、offload 数据管理 | 已实现 LocalWorkspace 基础能力：初始化目录、内置工具列表、skill 种子复制/列表、内存态 MCP 增删、context/tool result offload、base64 DataBlock 文件卸载 | 后续补 `.mcp` / `.skills` 持久化索引、手动目录 reconcile、更多 DataBlock 媒体类型和 Agent 集成 |
-| DockerWorkspace / E2BWorkspace | Python 版存在容器与 E2B sandbox 后端，通过 workspace 级隔离和 MCP gateway 暴露工具 | 未实现 | 在 LocalWorkspace 稳定后补 `docker.go`、`e2b.go`、gateway client 和 bootstrap；是否引入 Docker/E2B 依赖需单独做 SDK/依赖核查 |
-| App workspace 管理层 | Python `app` 下存在 Local/Docker/E2B workspace manager、router 和 service | Go 版尚未实现 `app/` | 作为阶段六以后可选能力；如果 Go 版不提供 HTTP app 层，需要在计划中明确删除或降级原因 |
-| Embedding 包 | Python 有 `embedding/`：OpenAI/Gemini/Ollama/DashScope 文本 embedding、DashScope 多模态 embedding、缓存接口和文件缓存 | Go 版只有 `types.Embedding []float64`，没有 `embedding/` 包、模型接口、响应、usage 或缓存 | 新增 `embedding/` 阶段，翻译 `EmbeddingModel`、`EmbeddingResponse`、`EmbeddingUsage`、缓存接口；优先文本 embedding，再补 DashScope 多模态 embedding |
-| Chat 多模态输入 | Python formatter 覆盖 Provider 差异：OpenAI 支持图像/音频输入，Gemini 支持图像/音频/视频输入，DashScope 支持图像/音频/视频输入，Anthropic/Ollama/XAI/Moonshot 具备各自图像或音频边界 | Go 版有 `message.DataBlock`；OpenAI formatter 支持 base64 图像、URL 图像和 base64 音频输入；Anthropic formatter 只支持图像并拒绝音频；Ollama 支持 base64 image 输入；DashScope/XAI/Moonshot 当前走 OpenAI-compatible 文本/工具路径；Gemini 未实现，未覆盖视频输入 | Provider 补齐时同步做能力矩阵和契约测试；Gemini/DashScope 需要显式覆盖 video 输入；Anthropic 保持 image-only 并测试拒绝路径 |
-| Chat 音频输出 / TTS 类场景 | Python OpenAI Chat 与 DashScope Omni 解析 `audio.data`，输出 `DataBlock(audio/*)`，并可保留 transcript；这不是独立 TTS 抽象，而是 ChatModel 音频输出 | Go OpenAI Provider 目前只解析文本和工具调用，不解析音频输出；DashScope 当前复用 OpenAI-compatible 基础 ChatModel，尚未补 Omni 音频输出；没有 TTS 独立接口 | 先在 OpenAI/DashScope Chat Provider 补音频输出解析和流式 DataBlock 事件；是否新增独立 TTS 接口需另行决策，不能假定 Python 已有同名抽象 |
-| 独立 TTS 模型 | Python `model/__init__.py` 未导出独立 TTS/Speech 模型类；当前音频输出挂在 ChatModel Provider 能力上 | 未实现 | 不作为 Python 翻译缺口立即实现；若产品需要独立 TTS，需新增 Go 原生设计和独立阶段 |
-| 独立图像生成模型 | Python `model/` 未发现独立 ImageGeneration 模型抽象 | 未实现 | 不作为 Python 翻译缺口立即实现；如需接入图像生成，应先补能力需求、SDK 选择和响应数据结构设计 |
-| 独立视频生成模型 | Python `model/` 未发现独立 VideoGeneration 模型抽象；但 DashScope 多模态 embedding 支持 video 输入，Gemini/DashScope chat formatter 支持 video 输入 | 未实现 | 优先补“视频作为输入”的 chat/embedding 能力；独立视频生成模型另行立项 |
-| MCP/Tool 多模态内容 | Python tool adapter 可处理 MCP `ImageContent`、`AudioContent` 并转为数据块 | Go `tool/mcp/` 尚未实现 | 实现 `tool/mcp/` 时必须覆盖文本、图像、音频内容映射，以及工具结果中的 DataBlock 合并语义 |
+本节是全局未实现功能清单，不归属于单一阶段。完成任一条目时，需要同步更新阶段执行记录、测试策略、example 和证据来源表。
+
+### Workspace 与执行沙箱
+
+- [ ] 拆出独立 `Offloader` 协议，覆盖 context、tool result 和 DataBlock offload，并补 workspace contract tests。
+- [ ] 将 Agent 自动接入 workspace instructions、workspace tools、workspace skills 和 offload 生命周期。
+- [ ] 为 `LocalWorkspace` 补 `.mcp` / `.skills` 持久化索引、目录 reconcile、MCP 配置恢复和更多 DataBlock 媒体类型卸载。
+- [ ] 实现 `DockerWorkspace`，通过 workspace 级容器隔离运行工具，并接入容器内 MCP gateway。
+- [ ] 实现 `E2BWorkspace`，通过 E2B sandbox 提供隔离环境，并接入 sandbox 内 MCP gateway。
+- [ ] 实现 workspace MCP gateway 的 bootstrap、健康检查、客户端连接、工具暴露和生命周期回收。
+- [ ] 明确 Go 版是否实现 Python `app` 下的 workspace manager、router 和 service；若不实现，需要在计划中记录删除或降级原因。
+
+### MCP 与工具适配
+
+- [ ] 新增 `tool/mcp/` 包，优先基于 `github.com/mark3labs/mcp-go` 实现 MCP 客户端和工具适配。
+- [ ] 将 MCP tool schema 映射为 `model.ToolSchema`，并接入 `tool.Toolkit` 的注册、查找、执行和错误归一化。
+- [ ] 覆盖 MCP 文本、图像、音频内容到 `message.TextBlock` / `message.DataBlock` 的转换。
+- [ ] 覆盖 MCP 工具结果中的多块内容合并、工具错误、权限决策和 Agent 回填语义。
+- [ ] 为 MCP 工具补包内单元测试、Agent 集成测试和必要的 example。
+
+### Model Provider 与多模态 Chat
+
+- [ ] 实现 Gemini Provider，优先使用 `google.golang.org/genai`，覆盖文本、多模态输入、流式输出和工具调用。
+- [ ] 为 DashScope 补齐非 OpenAI-compatible 的特化能力边界，尤其是 Omni 音频输出、视频输入和官方模型能力差异。
+- [ ] 为 OpenAI Chat Provider 解析音频输出，把 `audio.data` 转为 `message.DataBlock(audio/*)`，并保留 transcript。
+- [ ] 为 DashScope Chat Provider 解析音频输出，把音频数据和 transcript 归一化到框架内容块。
+- [ ] 补齐视频输入能力矩阵：Gemini、DashScope 支持视频输入；其他 Provider 明确拒绝或降级。
+- [ ] 为 DeepSeek、Moonshot、XAI、Ollama 补 Provider 能力矩阵测试，明确文本、工具、图像、音频、视频、结构化输出的支持边界。
+- [ ] 补结构化输出接口或可选方法；在 Provider 能力稳定前，不把结构化输出塞进 `model.ChatModel` 最小接口。
+- [ ] 补 `test/e2e/provider/`，通过环境变量显式启用真实 Provider 冒烟测试，默认不依赖外部服务。
+
+### Embedding
+
+- [ ] 新增 `embedding/` 包，定义 `EmbeddingModel`、`EmbeddingRequest`、`EmbeddingResponse`、`EmbeddingUsage` 和错误边界。
+- [ ] 实现文本 embedding Provider：OpenAI、Gemini、Ollama、DashScope。
+- [ ] 实现 DashScope 多模态 embedding，覆盖 text、image、video 输入。
+- [ ] 实现 embedding 缓存接口和文件缓存，对齐 Python 版缓存能力。
+- [ ] 补 embedding 单元测试、mock Provider 测试、缓存测试和独立 example。
+
+### TTS、图像生成与视频生成
+
+- [ ] 明确独立 TTS/Image/Video 生成模型是否作为 Go 原生扩展实现；Python 当前没有同名独立模型抽象，不能当作直接翻译缺口处理。
+- [ ] 如确认实现独立 TTS，设计 `tts/` 或 `model/tts/` 包的请求、响应、音频格式、流式输出和 Provider 边界。
+- [ ] 如确认实现图像生成，设计图像生成请求、响应、文件/URL/base64 输出、错误和 usage 结构。
+- [ ] 如确认实现视频生成，设计异步任务、轮询、回调、文件输出和超时取消语义。
+- [ ] 为 TTS/Image/Video 生成补最小 example、README 和环境变量控制的真实 Provider 冒烟测试。
+
+### Context、Middleware 与可观测能力
+
+- [ ] 将 `CompressContext` 从当前工具结果截断扩展为可插拔策略，支持摘要压缩、外部存储和 workspace offload。
+- [ ] 实现 `middleware/` 可选包，先补 tracing middleware；OpenTelemetry 作为独立可选依赖，不进入核心 Agent 路径。
+- [ ] 补 Agent middleware 与 workspace、model、tool 的跨包集成测试，避免 hook 修改 request/response 时破坏 ReAct 语义。
+
+### 文档、示例与能力矩阵
+
+- [ ] 为 workspace Docker/E2B、MCP、Embedding、Gemini、多模态 Chat、TTS/Image/Video 生成分别补独立 example。
+- [ ] 为每个新增 example 保持独立 Go module、英文 `README.md`、中文 `README-zh.md` 和可本地跳过外部服务的运行路径。
+- [ ] 维护 Provider 能力矩阵，区分文本、工具、图像输入、音频输入、视频输入、音频输出、结构化输出、embedding、生成模型。
+- [ ] 每完成一个未实现功能，同步更新本节 Todo、阶段执行记录、测试策略和引用证据。
 
 ---
 
