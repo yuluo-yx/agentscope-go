@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,6 +117,41 @@ func TestChatModelStreamEmitsDeltasAndFinalResponse(t *testing.T) {
 	final := chunks[len(chunks)-1]
 	if !final.IsLast || final.Content[0].(*message.TextBlock).Text != "hello" {
 		t.Fatalf("final response mismatch: %#v", final)
+	}
+}
+
+func TestChatModelStreamEmitsTerminalError(t *testing.T) {
+	t.Parallel()
+
+	server := newOllamaChatServer(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		http.Error(w, "stream exploded", http.StatusInternalServerError)
+	})
+	defer server.Close()
+
+	model, err := ollama.NewChatModel(ollama.NewCredential(ollama.WithHost(server.URL)), "qwen3:8b")
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("user", "hello")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	stream, err := model.Stream(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}})
+	if err != nil {
+		t.Fatalf("Stream returned error: %v", err)
+	}
+	var chunks []asmodel.ChatResponse
+	for chunk := range stream {
+		chunks = append(chunks, chunk)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected one terminal error chunk, got %d %#v", len(chunks), chunks)
+	}
+	if chunks[0].Error == nil || !strings.Contains(chunks[0].Error.Error(), "stream exploded") {
+		t.Fatalf("expected stream error on terminal chunk, got %#v", chunks[0].Error)
+	}
+	if !chunks[0].IsLast {
+		t.Fatalf("terminal error chunk should be marked last: %#v", chunks[0])
 	}
 }
 

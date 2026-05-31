@@ -25,7 +25,10 @@ type HookInput map[string]any
 
 // AgentAccessor is the minimal Agent surface visible to middleware.
 type AgentAccessor interface {
+	// AgentName returns the agent name associated with the current hook invocation.
 	AgentName() string
+	// AgentState returns the mutable state for advanced middleware that needs session, context, or task data.
+	// Middleware should mutate state deliberately because hooks run inside the Agent reply lifecycle.
 	AgentState() *AgentState
 }
 
@@ -35,8 +38,8 @@ type EventHandler func(context.Context) (<-chan message.Event, error)
 // ToolHandler represents the next tool execution handler.
 type ToolHandler func(context.Context) (<-chan ToolChunk, error)
 
-// ModelCallHandler represents the next model call handler.
-type ModelCallHandler func(context.Context) (*ChatResponse, error)
+// ModelCallHandler represents the next streaming model call handler.
+type ModelCallHandler func(context.Context) (<-chan ChatResponse, error)
 
 // ReplyHook intercepts the full reply flow.
 type ReplyHook func(context.Context, AgentAccessor, HookInput, EventHandler) (<-chan message.Event, error)
@@ -47,39 +50,49 @@ type ReasoningHook func(context.Context, AgentAccessor, HookInput, EventHandler)
 // ActingHook intercepts one tool execution.
 type ActingHook func(context.Context, AgentAccessor, HookInput, ToolHandler) (<-chan ToolChunk, error)
 
-// ModelCallHook intercepts the raw model call.
-type ModelCallHook func(context.Context, AgentAccessor, HookInput, ModelCallHandler) (*ChatResponse, error)
+// ModelCallHook intercepts the raw streaming model call.
+type ModelCallHook func(context.Context, AgentAccessor, HookInput, ModelCallHandler) (<-chan ChatResponse, error)
 
 // SystemPromptHook transforms the system prompt in registration order.
 type SystemPromptHook func(context.Context, AgentAccessor, string) (string, error)
 
 // Middleware is the marker interface for all middleware implementations.
 type Middleware interface {
+	// MiddlewareName returns a stable middleware name for logs and diagnostics.
 	MiddlewareName() string
 }
 
 // ReplyMiddleware is implemented by middleware that intercepts full replies.
 type ReplyMiddleware interface {
+	// OnReply wraps a full Agent reply, including input handling, reasoning, acting, and reply-end events.
+	// Implementations may inspect input["input"], wrap the returned event stream, or call next with a derived context.
 	OnReply(context.Context, AgentAccessor, HookInput, EventHandler) (<-chan message.Event, error)
 }
 
 // ReasoningMiddleware is implemented by middleware that intercepts reasoning.
 type ReasoningMiddleware interface {
+	// OnReasoning wraps one reasoning pass that prepares model input and emits model-derived events.
+	// Implementations may observe or transform the event stream but should preserve event order.
 	OnReasoning(context.Context, AgentAccessor, HookInput, EventHandler) (<-chan message.Event, error)
 }
 
 // ActingMiddleware is implemented by middleware that intercepts tool execution.
 type ActingMiddleware interface {
+	// OnActing wraps one local tool execution. input["tool_call"] contains the ToolCallBlock being executed.
+	// Implementations can time, audit, or replace tool chunks before they become ToolResult events.
 	OnActing(context.Context, AgentAccessor, HookInput, ToolHandler) (<-chan ToolChunk, error)
 }
 
 // ModelCallMiddleware is implemented by middleware that intercepts model calls.
 type ModelCallMiddleware interface {
-	OnModelCall(context.Context, AgentAccessor, HookInput, ModelCallHandler) (*ChatResponse, error)
+	// OnModelCall wraps the raw ChatModel.Stream call. input["model"] contains the selected ChatModel and
+	// input["request"] contains a CallRequest clone; middleware may replace either before calling next.
+	OnModelCall(context.Context, AgentAccessor, HookInput, ModelCallHandler) (<-chan ChatResponse, error)
 }
 
 // SystemPromptMiddleware is implemented by middleware that transforms system prompts.
 type SystemPromptMiddleware interface {
+	// OnSystemPrompt receives the current system prompt and returns the prompt passed to the next hook or model request.
 	OnSystemPrompt(context.Context, AgentAccessor, string) (string, error)
 }
 

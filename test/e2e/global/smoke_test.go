@@ -46,8 +46,31 @@ func (m *scriptedChatModel) Call(_ context.Context, request modelpkg.CallRequest
 	return response.Clone(), nil
 }
 
-func (m *scriptedChatModel) Stream(context.Context, modelpkg.CallRequest) (<-chan modelpkg.ChatResponse, error) {
-	return nil, fmt.Errorf("scripted stream is not used")
+func (m *scriptedChatModel) Stream(ctx context.Context, request modelpkg.CallRequest) (<-chan modelpkg.ChatResponse, error) {
+	m.requests = append(m.requests, request.Clone())
+	if len(m.responses) == 0 {
+		return nil, fmt.Errorf("scripted model has no response")
+	}
+	response := m.responses[0]
+	m.responses = m.responses[1:]
+	ch := make(chan modelpkg.ChatResponse)
+	go func() {
+		defer close(ch)
+		delta := response.Clone()
+		delta.IsLast = false
+		delta.Usage = nil
+		select {
+		case ch <- *delta:
+		case <-ctx.Done():
+			return
+		}
+		select {
+		case ch <- *response.Clone():
+		case <-ctx.Done():
+			return
+		}
+	}()
+	return ch, nil
 }
 
 func (m *scriptedChatModel) CountTokens(request modelpkg.CallRequest) (int, error) {

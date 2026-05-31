@@ -9,6 +9,7 @@
 - 配置非流式与流式模型实例。
 - 生成 Function Calling 工具 schema。
 - 真实运行 `GetWeather` Function Calling 回合，并把工具结果回填给模型。
+- 真实运行 `ChatModel.Stream` 并输出流式增量。
 - 构造文本 + 图片 URL 的数据块输入并做本地 token 估算。
 - 可选使用 `AI_DASHSCOPE_API_KEY` 发起真实文本调用。
 
@@ -57,6 +58,7 @@ dashscope_live=skipped
 chat_model=dashscope:
 dashscope_live=ok
 dashscope_weather=ok
+dashscope_stream=ok
 ```
 
 ## 官方参考

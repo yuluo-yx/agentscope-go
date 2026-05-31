@@ -28,6 +28,20 @@ import (
 )
 
 func main() {
+
+	// call chat
+	fmt.Println("start chat call: ------------------")
+	chat()
+
+	// call stream chat
+	fmt.Println("\nstart stream chat call: ------------------")
+	streamChat()
+}
+
+// chat. chat method use case.
+func chat() {
+
+	// get apiKey and set some params.
 	apiKey := strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY"))
 	live := apiKey != ""
 	if apiKey == "" {
@@ -37,6 +51,7 @@ func main() {
 	temperature := 0.2
 	maxTokens := int64(256)
 
+	// create chatModel instance
 	chat := mustModel(dashscope.NewChatModel(
 		dashscope.NewCredential(apiKey),
 		modelID,
@@ -46,33 +61,15 @@ func main() {
 			Temperature: &temperature,
 		}),
 	))
-	streamChat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(apiKey),
-		modelID,
-		dashscope.WithStream(true),
-	))
 
-	weatherTool := mustTool(tool.NewFunctionTool(
-		"GetWeather",
-		"Return weather for one city.",
-		map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"city": map[string]any{"type": "string", "description": "City name."},
-			},
-			"required": []any{"city"},
-		},
-		func(context.Context, map[string]any, *asstate.AgentState) (message.ContentBlockList, error) {
-			return message.ContentBlockList{message.NewTextBlock("sunny")}, nil
-		},
-		tool.WithFunctionReadOnly(true),
-	))
-	kit := mustToolkit(tool.NewToolkit(weatherTool))
+	// tools
+	kit := mustToolkit(tool.NewToolkit(weatherTool()))
 	schemas, err := kit.ToolSchemas()
 	if err != nil {
 		panic(err)
 	}
 
+	// user prompt
 	visionMessage := mustMessage(message.NewUserMessage("user", message.ContentBlockList{
 		message.NewTextBlock("Describe this image in one sentence."),
 		message.NewDataBlock(message.NewURLSource("https://example.com/sample.png", "image/png"), message.WithDataBlockName("sample.png")),
@@ -86,10 +83,9 @@ func main() {
 	}
 
 	fmt.Printf(
-		"chat_model=%s dashscope_model=%s stream_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
+		"chat_model=%s dashscope_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
 		chat.Name(),
 		chat.Name(),
-		streamChat.Name(),
 		len(schemas),
 		len(visionMessage.Content),
 		tokens,
@@ -125,6 +121,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	assistantMessage := mustMessage(message.NewAssistantMessage("assistant", toolCallResponse.Content))
 	toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
 		message.NewToolResultBlock(weatherCall.ID, weatherCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
@@ -135,7 +132,109 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(textContent(weatherResponse.Content), 120))
+}
+
+func streamChat() {
+
+	apiKey := strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY"))
+	live := apiKey != ""
+	if apiKey == "" {
+		apiKey = "demo-dashscope-key"
+	}
+	modelID := getenv("AI_DASHSCOPE_MODEL", "qwen3.7-max")
+	temperature := 0.2
+	maxTokens := int64(256)
+
+	streamChat := mustModel(dashscope.NewChatModel(
+		dashscope.NewCredential(apiKey),
+		modelID,
+		dashscope.WithStream(true),
+		dashscope.WithChatParameters(dashscope.ChatParameters{
+			MaxTokens:   &maxTokens,
+			Temperature: &temperature,
+		}),
+	))
+
+	// tools
+	kit := mustToolkit(tool.NewToolkit(weatherTool()))
+	schemas, err := kit.ToolSchemas()
+	if err != nil {
+		panic(err)
+	}
+
+	// user prompt
+	visionMessage := mustMessage(message.NewUserMessage("user", message.ContentBlockList{
+		message.NewTextBlock("Describe this image in one sentence."),
+		message.NewDataBlock(message.NewURLSource("https://example.com/sample.png", "image/png"), message.WithDataBlockName("sample.png")),
+	}))
+	tokens, err := streamChat.CountTokens(asmodel.CallRequest{
+		Messages: []*message.Message{visionMessage},
+		Tools:    schemas,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf(
+		"chat_model=%s dashscope_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
+		streamChat.Name(),
+		streamChat.Name(),
+		len(schemas),
+		len(visionMessage.Content),
+		tokens,
+	)
+	if !live {
+		fmt.Println("dashscope_live=skipped")
+		return
+	}
+
+	ctx := context.Background()
+	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
+	responses, err := streamChat.Stream(ctx, asmodel.CallRequest{
+		Messages: []*message.Message{liveMessage},
+		Stream:   true,
+	})
+	if err != nil {
+		panic(err)
+	}
+	var streamed strings.Builder
+	var finalText string
+	for response := range responses {
+		text := textContent(response.Content)
+		if response.IsLast {
+			finalText = text
+			continue
+		}
+		if text != "" {
+			streamed.WriteString(text)
+			fmt.Printf("dashscope_stream_delta=%q\n", shorten(text, 60))
+		}
+	}
+	if finalText == "" {
+		finalText = streamed.String()
+	}
+	fmt.Printf("dashscope_stream=ok response=%q\n", shorten(finalText, 120))
+}
+
+func weatherTool() *tool.FunctionTool {
+
+	return mustTool(tool.NewFunctionTool(
+		"GetWeather",
+		"Return weather for one city.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"city": map[string]any{"type": "string", "description": "City name."},
+			},
+			"required": []any{"city"},
+		},
+		func(context.Context, map[string]any, *asstate.AgentState) (message.ContentBlockList, error) {
+			return message.ContentBlockList{message.NewTextBlock("sunny")}, nil
+		},
+		tool.WithFunctionReadOnly(true),
+	))
 }
 
 func getenv(name, fallback string) string {

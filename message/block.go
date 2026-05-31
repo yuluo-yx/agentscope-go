@@ -21,9 +21,13 @@ import (
 
 // ContentBlock is the sealed interface for all message content blocks.
 type ContentBlock interface {
+	// BlockType returns the discriminator used for JSON encoding, decoding, and event replay.
 	BlockType() string
+	// BlockID returns the stable block identifier used by streaming events to update this block.
 	BlockID() string
+	// Clone returns a deep copy so messages can be reused across state, model, and tool layers safely.
 	Clone() ContentBlock
+	// contentBlock seals the interface to the message package's known block implementations.
 	contentBlock()
 }
 
@@ -116,8 +120,11 @@ type DataBlock struct {
 }
 
 type DataSource interface {
+	// SourceType returns the discriminator for the concrete data source representation.
 	SourceType() string
+	// Clone returns a deep copy of the source payload or reference metadata.
 	Clone() DataSource
+	// dataSource seals the interface to the message package's known data source implementations.
 	dataSource()
 }
 

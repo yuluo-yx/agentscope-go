@@ -122,7 +122,8 @@ func WithChatParameters(parameters ChatParameters) ChatModelOption {
 	}
 }
 
-// WithStream sets whether streaming is used by default.
+// WithStream records a compatibility stream preference.
+// Call and Stream still choose the request transport explicitly.
 func WithStream(stream bool) ChatModelOption {
 	return func(options *chatModelOptions) {
 		options.stream = stream
@@ -209,7 +210,7 @@ func (m *ChatModel) Stream(ctx context.Context, request asmodel.CallRequest) (<-
 	go func() {
 		defer close(out)
 		acc := &streamAccumulator{}
-		_ = m.client.Chat(ctx, &params, func(response ollamaapi.ChatResponse) error {
+		if err := m.client.Chat(ctx, &params, func(response ollamaapi.ChatResponse) error {
 			acc.add(response)
 			if len(responseContent(response.Message)) > 0 {
 				if !sendResponse(ctx, out, ollamaResponse(response, false)) {
@@ -217,7 +218,10 @@ func (m *ChatModel) Stream(ctx context.Context, request asmodel.CallRequest) (<-
 				}
 			}
 			return nil
-		})
+		}); err != nil {
+			sendResponse(ctx, out, streamErrorResponse(normalizeError(err)))
+			return
+		}
 		sendResponse(ctx, out, acc.final())
 	}()
 	return out, nil
@@ -465,6 +469,10 @@ func sendResponse(ctx context.Context, out chan<- asmodel.ChatResponse, response
 	case out <- *response:
 		return true
 	}
+}
+
+func streamErrorResponse(err error) *asmodel.ChatResponse {
+	return asmodel.NewChatResponse(nil, true, asmodel.WithChatResponseError(err))
 }
 
 func toolResultText(output message.ToolResultOutput) string {

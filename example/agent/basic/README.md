@@ -8,6 +8,7 @@ This example shows a minimal end-to-end Agent flow:
 - The first model response asks the Agent to call `TaskCreate`.
 - The Agent executes the task tool and appends the tool result to context.
 - The second model response produces the final assistant reply.
+- The example consumes `Agent.ReplyStream` so you can see the Agent event stream.
 
 ## Prerequisites
 
@@ -26,5 +27,5 @@ go run .
 Output includes:
 
 ```text
-agent_reply=task tracked
+agent_stream=task tracked
 ```

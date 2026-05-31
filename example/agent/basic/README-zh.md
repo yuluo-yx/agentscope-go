@@ -8,6 +8,7 @@
 - Agent 首轮模型输出 `TaskCreate` 工具调用。
 - Agent 执行 task 工具并把工具结果放回上下文。
 - Agent 第二轮模型输出最终 assistant 回复。
+- 示例通过 `Agent.ReplyStream` 消费事件流，展示 Agent 事件流式用法。
 
 ## 前置条件
 
@@ -26,5 +27,5 @@ go run .
 输出包含：
 
 ```text
-agent_reply=task tracked
+agent_stream=task tracked
 ```

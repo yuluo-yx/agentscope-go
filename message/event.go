@@ -47,10 +47,16 @@ const (
 )
 
 type Event interface {
+	// GetType returns the event discriminator used for JSON encoding, decoding, and dispatch.
 	GetType() EventType
+	// GetID returns the globally unique event identifier.
 	GetID() string
+	// GetTime returns the event creation time in the serialized wire format.
 	GetTime() string
+	// ReplyID returns the assistant reply message ID this event belongs to.
+	// Message.ApplyEvent ignores events whose reply ID does not match the target message.
 	ReplyID() string
+	// event seals the interface to the message package's known event implementations.
 	event()
 }
 

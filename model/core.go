@@ -73,6 +73,7 @@ func (u *ChatUsage) Clone() *ChatUsage {
 type ChatResponse struct {
 	Content   message.ContentBlockList `json:"content"`
 	IsLast    bool                     `json:"is_last"`
+	Error     error                    `json:"-"`
 	ID        string                   `json:"id"`
 	CreatedAt string                   `json:"created_at"`
 	Type      ChatResponseKind         `json:"type"`
@@ -108,6 +109,13 @@ func WithChatResponseUsage(usage *ChatUsage) ChatResponseOption {
 func WithChatResponseMetadata(metadata map[string]any) ChatResponseOption {
 	return func(resp *ChatResponse) {
 		resp.Metadata = utils.CloneAnyMap(metadata)
+	}
+}
+
+// WithChatResponseError sets an asynchronous stream error carried by a terminal chunk.
+func WithChatResponseError(err error) ChatResponseOption {
+	return func(resp *ChatResponse) {
+		resp.Error = err
 	}
 }
 
@@ -196,9 +204,19 @@ func (r CallRequest) Clone() CallRequest {
 
 // ChatModel is the core interface implemented by all chat model providers.
 type ChatModel interface {
+	// Name returns a provider-qualified model name for logs, events, and diagnostics.
 	Name() string
+	// Call performs a non-streaming model request and returns a complete response.
+	// Implementations should respect context cancellation and normalize provider errors.
 	Call(context.Context, CallRequest) (*ChatResponse, error)
+	// Stream performs a streaming model request and returns response chunks.
+	// Implementations should emit zero or more IsLast=false delta chunks, then one IsLast=true
+	// complete response containing the accumulated content and usage when available. If the
+	// provider stream fails after the channel has been returned, implementations should emit
+	// one IsLast=true response with Error set and avoid sending a successful final response.
 	Stream(context.Context, CallRequest) (<-chan ChatResponse, error)
+	// CountTokens estimates or calculates the token count for messages and tool schemas.
+	// Providers may use an SDK tokenizer when available, or a documented approximation otherwise.
 	CountTokens(CallRequest) (int, error)
 }
 

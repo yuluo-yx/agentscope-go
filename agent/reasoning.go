@@ -84,15 +84,16 @@ func (a *Agent) reason(ctx context.Context, _ *message.Message, emit func(messag
 	if err != nil {
 		return err
 	}
-	response, err := a.callModel(ctx, request)
+	responses, err := a.callModel(ctx, request)
+	if err != nil {
+		return err
+	}
+	response, err := a.emitChatResponseStream(responses, emit)
 	if err != nil {
 		return err
 	}
 	if response == nil {
 		return fmt.Errorf("agentscope: model returned nil response")
-	}
-	if err := a.emitChatResponse(response, emit); err != nil {
-		return err
 	}
 	inputTokens, outputTokens := 0, 0
 	if response.Usage != nil {
@@ -153,7 +154,7 @@ func (a *Agent) summaryMessage() *message.Message {
 	}
 }
 
-func (a *Agent) callModel(ctx context.Context, request CallRequest) (*ChatResponse, error) {
+func (a *Agent) callModel(ctx context.Context, request CallRequest) (<-chan ChatResponse, error) {
 	models := []ChatModel{a.model}
 	if a.modelConfig.FallbackModel != nil {
 		models = append(models, a.modelConfig.FallbackModel)
@@ -164,7 +165,7 @@ func (a *Agent) callModel(ctx context.Context, request CallRequest) (*ChatRespon
 			currentModel := model
 			currentRequest := request.Clone()
 			input := HookInput{"model": currentModel, "request": currentRequest.Clone()}
-			response, err := a.applyModelCallHooks(ctx, input, func(ctx context.Context) (*ChatResponse, error) {
+			responses, err := a.applyModelCallHooks(ctx, input, func(ctx context.Context) (<-chan ChatResponse, error) {
 				if updatedModel, ok := input["model"].(ChatModel); ok && updatedModel != nil {
 					currentModel = updatedModel
 				}
@@ -176,15 +177,231 @@ func (a *Agent) callModel(ctx context.Context, request CallRequest) (*ChatRespon
 						currentRequest = updatedRequest.Clone()
 					}
 				}
-				return currentModel.Call(ctx, currentRequest)
+				currentRequest.Stream = true
+				return currentModel.Stream(ctx, currentRequest)
 			})
 			if err == nil {
-				return response, nil
+				if responses == nil {
+					return nil, fmt.Errorf("agentscope: model returned nil response stream")
+				}
+				return responses, nil
 			}
 			lastErr = err
 		}
 	}
 	return nil, lastErr
+}
+
+type modelStreamState struct {
+	textID       string
+	thinkingID   string
+	toolActive   map[string]bool
+	toolOrder    []string
+	seenText     bool
+	seenThinking bool
+	seenTools    map[string]bool
+	seenData     map[string]bool
+	emitted      bool
+}
+
+type modelStreamChunkState struct {
+	currentTools map[string]bool
+	hasText      bool
+	hasThinking  bool
+}
+
+func newModelStreamState() *modelStreamState {
+	return &modelStreamState{
+		toolActive: map[string]bool{},
+		seenTools:  map[string]bool{},
+		seenData:   map[string]bool{},
+	}
+}
+
+func (a *Agent) emitChatResponseStream(responses <-chan ChatResponse, emit func(message.Event) error) (*ChatResponse, error) {
+	state := newModelStreamState()
+	var completed *ChatResponse
+	for response := range responses {
+		chunk := response.Clone()
+		if chunk == nil {
+			continue
+		}
+		if chunk.Error != nil {
+			return nil, chunk.Error
+		}
+		if chunk.IsLast {
+			completed = chunk
+			continue
+		}
+		if err := a.emitChatResponseChunk(chunk, state, emit); err != nil {
+			return nil, err
+		}
+	}
+	if completed == nil {
+		return nil, fmt.Errorf("agentscope: model stream did not return a final response")
+	}
+	if !state.emitted {
+		if err := a.emitChatResponse(completed, emit); err != nil {
+			return nil, err
+		}
+		return completed, nil
+	}
+	if err := a.emitFinalUnseenBlocks(completed, state, emit); err != nil {
+		return nil, err
+	}
+	if err := a.endOpenStreamBlocks(state, emit); err != nil {
+		return nil, err
+	}
+	return completed, nil
+}
+
+func (a *Agent) emitChatResponseChunk(response *ChatResponse, state *modelStreamState, emit func(message.Event) error) error {
+	chunkState := modelStreamChunkState{currentTools: map[string]bool{}}
+	for _, block := range response.Content {
+		if err := a.emitStreamChunkBlock(block, state, &chunkState, emit); err != nil {
+			return err
+		}
+	}
+	return a.endInactiveChunkBlocks(state, chunkState, emit)
+}
+
+func (a *Agent) emitStreamChunkBlock(block message.ContentBlock, state *modelStreamState, chunkState *modelStreamChunkState, emit func(message.Event) error) error {
+	switch typed := block.(type) {
+	case *message.TextBlock:
+		chunkState.hasText = true
+		return a.emitStreamDeltaBlock(textDeltaBlock, typed.ID, typed.Text, state, emit)
+	case *message.ThinkingBlock:
+		chunkState.hasThinking = true
+		return a.emitStreamDeltaBlock(thinkingDeltaBlock, typed.ID, typed.Thinking, state, emit)
+	case *message.ToolCallBlock:
+		chunkState.currentTools[typed.ID] = true
+		return a.emitStreamToolCallBlock(typed, state, emit)
+	case *message.DataBlock:
+		state.seenData[typed.ID] = true
+		state.emitted = true
+		return a.emitDataBlock(typed, emit)
+	default:
+		return nil
+	}
+}
+
+func (a *Agent) emitStreamDeltaBlock(kind modelDeltaBlockKind, blockID, delta string, state *modelStreamState, emit func(message.Event) error) error {
+	currentID, seen := state.deltaBlockPointers(kind)
+	if *currentID == "" {
+		*currentID = blockID
+		start, _, _ := a.deltaBlockEvents(kind, *currentID, delta)
+		if err := emit(start); err != nil {
+			return err
+		}
+	}
+	*seen = true
+	state.emitted = true
+	if delta == "" {
+		return nil
+	}
+	_, partial, _ := a.deltaBlockEvents(kind, *currentID, delta)
+	return emit(partial)
+}
+
+func (s *modelStreamState) deltaBlockPointers(kind modelDeltaBlockKind) (*string, *bool) {
+	if kind == thinkingDeltaBlock {
+		return &s.thinkingID, &s.seenThinking
+	}
+	return &s.textID, &s.seenText
+}
+
+func (a *Agent) emitStreamToolCallBlock(block *message.ToolCallBlock, state *modelStreamState, emit func(message.Event) error) error {
+	if !state.seenTools[block.ID] {
+		state.toolActive[block.ID] = true
+		state.toolOrder = append(state.toolOrder, block.ID)
+		state.seenTools[block.ID] = true
+		if err := emit(message.NewToolCallStartEvent(a.state.ReplyID, block.ID, block.Name)); err != nil {
+			return err
+		}
+	}
+	state.emitted = true
+	if block.Input == "" {
+		return nil
+	}
+	return emit(message.NewToolCallDeltaEvent(a.state.ReplyID, block.ID, block.Input))
+}
+
+func (a *Agent) endInactiveChunkBlocks(state *modelStreamState, chunkState modelStreamChunkState, emit func(message.Event) error) error {
+	if !chunkState.hasText && state.textID != "" {
+		if err := emit(message.NewTextBlockEndEvent(a.state.ReplyID, state.textID)); err != nil {
+			return err
+		}
+		state.textID = ""
+	}
+	if !chunkState.hasThinking && state.thinkingID != "" {
+		if err := emit(message.NewThinkingBlockEndEvent(a.state.ReplyID, state.thinkingID)); err != nil {
+			return err
+		}
+		state.thinkingID = ""
+	}
+	for _, toolID := range state.toolOrder {
+		if state.toolActive[toolID] && !chunkState.currentTools[toolID] {
+			if err := emit(message.NewToolCallEndEvent(a.state.ReplyID, toolID)); err != nil {
+				return err
+			}
+			state.toolActive[toolID] = false
+		}
+	}
+	return nil
+}
+
+func (a *Agent) emitFinalUnseenBlocks(response *ChatResponse, state *modelStreamState, emit func(message.Event) error) error {
+	for _, block := range response.Content {
+		switch typed := block.(type) {
+		case *message.TextBlock:
+			if !state.seenText {
+				if err := a.emitDeltaBlock(textDeltaBlock, typed.ID, typed.Text, emit); err != nil {
+					return err
+				}
+			}
+		case *message.ThinkingBlock:
+			if !state.seenThinking {
+				if err := a.emitDeltaBlock(thinkingDeltaBlock, typed.ID, typed.Thinking, emit); err != nil {
+					return err
+				}
+			}
+		case *message.ToolCallBlock:
+			if !state.seenTools[typed.ID] {
+				if err := a.emitToolCallBlock(typed, emit); err != nil {
+					return err
+				}
+			}
+		case *message.DataBlock:
+			if !state.seenData[typed.ID] {
+				if err := a.emitDataBlock(typed, emit); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (a *Agent) endOpenStreamBlocks(state *modelStreamState, emit func(message.Event) error) error {
+	if state.textID != "" {
+		if err := emit(message.NewTextBlockEndEvent(a.state.ReplyID, state.textID)); err != nil {
+			return err
+		}
+	}
+	if state.thinkingID != "" {
+		if err := emit(message.NewThinkingBlockEndEvent(a.state.ReplyID, state.thinkingID)); err != nil {
+			return err
+		}
+	}
+	for _, toolID := range state.toolOrder {
+		if state.toolActive[toolID] {
+			if err := emit(message.NewToolCallEndEvent(a.state.ReplyID, toolID)); err != nil {
+				return err
+			}
+			state.toolActive[toolID] = false
+		}
+	}
+	return nil
 }
 
 func (a *Agent) emitChatResponse(response *ChatResponse, emit func(message.Event) error) error {

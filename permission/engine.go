@@ -21,10 +21,21 @@ import (
 
 // Tool is the minimal tool surface required by the permission engine.
 type Tool interface {
+	// Name returns the stable tool name used to match permission rules and diagnostic messages.
 	Name() string
+	// IsReadOnly reports whether this tool only reads state or external resources.
+	// Explore mode allows read-only tools before consulting tool-specific checks.
 	IsReadOnly() bool
+	// CheckPermissions lets the tool make a tool-specific decision after global deny/ask rules
+	// and before global allow/bypass defaults are applied. Implementations may return
+	// BehaviorPassthrough to let the engine continue evaluating the remaining rule layers.
 	CheckPermissions(context.Context, map[string]any, *Context) (*Decision, error)
+	// MatchRule reports whether a stored rule value matches the current input map.
+	// The rule value is supplied by permission.Rule.Input and should be interpreted by
+	// the tool because each tool owns its input schema.
 	MatchRule(string, map[string]any) bool
+	// GenerateSuggestions returns candidate rules that would allow, deny, or ask for the
+	// current input. The engine attaches these suggestions to ask decisions.
 	GenerateSuggestions(map[string]any) []Rule
 }
 

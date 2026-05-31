@@ -29,8 +29,12 @@ import (
 
 // ToolProvider is the minimal tool registry interface required by Agent.
 type ToolProvider interface {
+	// ToolSchemas returns model-facing tool schemas filtered by the active group names in agent state.
 	ToolSchemas(activeGroups ...string) ([]ToolSchema, error)
+	// FindTool looks up a tool by ToolCallBlock.Name and the currently active groups.
 	FindTool(name string, activeGroups ...string) (Tool, bool)
+	// CallTool executes a parsed tool call against the provided AgentState and returns streamed chunks.
+	// The Agent owns permission checks and event emission; the provider owns dispatching to the concrete tool.
 	CallTool(context.Context, *message.ToolCallBlock, *AgentState) (<-chan ToolChunk, error)
 }
 

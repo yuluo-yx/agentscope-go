@@ -103,9 +103,15 @@ func main() {
 | 示例 | 说明 |
 | --- | --- |
 | `example/agent/basic` | 构建由 ChatModel 驱动的基础智能体。 |
+| `example/agent/configuration` | 配置 model fallback、ReAct 限制和上下文清理。 |
+| `example/agent/external` | 围绕外部执行工具暂停并恢复 Agent。 |
+| `example/agent/hooks` | 实现围绕 reply、reasoning、model call、acting 和 system prompt 的 Agent middleware hook。 |
+| `example/agent/permission` | 处理权限确认，并恢复等待中的工具调用。 |
 | `example/message` | 组织 user、assistant、system 和 tool 消息。 |
 | `example/model/dashscope` | 调用 DashScope 模型并演示模型工具调用。 |
 | `example/model/providers` | 对比当前可用的模型 Provider 适配。 |
+| `example/integration/gin` | 通过 Gin 暴露底层 ChatModel 流式和 Agent 事件流式。 |
+| `example/integration/kratos` | 通过 Kratos 暴露底层 ChatModel 流式和 Agent 事件流式。 |
 | `example/tool/function` | 注册 function tool，并由模型 tool call 驱动执行。 |
 | `example/tool/builtin` | 结合权限使用 builtin shell 和 filesystem tool。 |
 | `example/tool/mcp` | 连接 MCP server，并将 MCP tool 暴露给智能体。 |

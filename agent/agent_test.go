@@ -16,6 +16,7 @@ package agent_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -49,11 +50,71 @@ func (m *scriptedChatModel) Call(_ context.Context, request modelpkg.CallRequest
 	return response.Clone(), nil
 }
 
-func (m *scriptedChatModel) Stream(context.Context, modelpkg.CallRequest) (<-chan modelpkg.ChatResponse, error) {
-	return nil, fmt.Errorf("scripted stream is not used")
+func (m *scriptedChatModel) Stream(ctx context.Context, request modelpkg.CallRequest) (<-chan modelpkg.ChatResponse, error) {
+	m.requests = append(m.requests, request.Clone())
+	if len(m.responses) == 0 {
+		return nil, fmt.Errorf("scripted model has no response")
+	}
+	response := m.responses[0]
+	m.responses = m.responses[1:]
+	ch := make(chan modelpkg.ChatResponse)
+	go func() {
+		defer close(ch)
+		delta := response.Clone()
+		delta.IsLast = false
+		delta.Usage = nil
+		select {
+		case ch <- *delta:
+		case <-ctx.Done():
+			return
+		}
+		select {
+		case ch <- *response.Clone():
+		case <-ctx.Done():
+			return
+		}
+	}()
+	return ch, nil
 }
 
 func (m *scriptedChatModel) CountTokens(request modelpkg.CallRequest) (int, error) {
+	return modelpkg.ApproximateTokenCount(request.Messages, request.Tools), nil
+}
+
+type streamOnlyChatModel struct {
+	chunks      []*modelpkg.ChatResponse
+	callCount   int
+	streamCount int
+	requests    []modelpkg.CallRequest
+}
+
+func (m *streamOnlyChatModel) Name() string {
+	return "stream-only"
+}
+
+func (m *streamOnlyChatModel) Call(context.Context, modelpkg.CallRequest) (*modelpkg.ChatResponse, error) {
+	m.callCount++
+	return nil, fmt.Errorf("Call should not be used for streaming agent replies")
+}
+
+func (m *streamOnlyChatModel) Stream(ctx context.Context, request modelpkg.CallRequest) (<-chan modelpkg.ChatResponse, error) {
+	m.streamCount++
+	m.requests = append(m.requests, request.Clone())
+	ch := make(chan modelpkg.ChatResponse)
+	go func() {
+		defer close(ch)
+		for _, chunk := range m.chunks {
+			select {
+			case ch <- *chunk.Clone():
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch, nil
+}
+
+func (m *streamOnlyChatModel) CountTokens(request modelpkg.CallRequest) (int, error) {
 	return modelpkg.ApproximateTokenCount(request.Messages, request.Tools), nil
 }
 
@@ -89,6 +150,88 @@ func TestAgentReplyStreamsModelEventsAndPersistsContext(t *testing.T) {
 	assertPersistedAssistantReply(t, agent.AgentState(), "hello Tony", 3, 2)
 }
 
+func TestAgentReplyStreamConsumesModelStreamDeltas(t *testing.T) {
+	t.Parallel()
+
+	textID := "text-stream"
+	model := &streamOnlyChatModel{chunks: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock("hel", message.WithBlockID(textID))},
+			false,
+			modelpkg.WithChatResponseID("stream-response"),
+		),
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock("lo", message.WithBlockID(textID))},
+			false,
+			modelpkg.WithChatResponseID("stream-response"),
+		),
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock("hello", message.WithBlockID(textID))},
+			true,
+			modelpkg.WithChatResponseID("stream-response"),
+			modelpkg.WithChatResponseUsage(&modelpkg.ChatUsage{InputTokens: 4, OutputTokens: 2}),
+		),
+	}}
+	agent, err := agentpkg.NewAgent("Friday", "You are helpful.", model)
+	if err != nil {
+		t.Fatalf("NewAgent returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "Hi")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+
+	var textDeltas []string
+	var eventTypes []message.EventType
+	if err := agent.ReplyStream(context.Background(), userMsg, func(evt message.Event) error {
+		eventTypes = append(eventTypes, evt.GetType())
+		if delta, ok := evt.(*message.TextBlockDeltaEvent); ok {
+			textDeltas = append(textDeltas, delta.Delta)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ReplyStream returned error: %v", err)
+	}
+
+	if model.callCount != 0 {
+		t.Fatalf("agent should not call non-streaming Call, got %d calls", model.callCount)
+	}
+	if model.streamCount != 1 {
+		t.Fatalf("agent should call Stream once, got %d", model.streamCount)
+	}
+	assertStringSlice(t, textDeltas, []string{"hel", "lo"})
+	assertInitialModelRequest(t, model.requests, "You are helpful.", "Hi")
+	assertCoreReplyEvents(t, eventTypes)
+	assertPersistedAssistantReply(t, agent.AgentState(), "hello", 4, 2)
+}
+
+func TestAgentReplyStreamReturnsModelStreamError(t *testing.T) {
+	t.Parallel()
+
+	model := &streamOnlyChatModel{chunks: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(
+			nil,
+			true,
+			modelpkg.WithChatResponseError(errors.New("provider stream failed")),
+		),
+	}}
+	agent, err := agentpkg.NewAgent("Friday", "You are helpful.", model)
+	if err != nil {
+		t.Fatalf("NewAgent returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "Hi")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+
+	err = agent.ReplyStream(context.Background(), userMsg, func(message.Event) error {
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "provider stream failed") {
+		t.Fatalf("ReplyStream should return terminal model stream error, got %v", err)
+	}
+}
+
 func assertInitialModelRequest(t *testing.T, requests []modelpkg.CallRequest, systemText, userText string) {
 	t.Helper()
 	if len(requests) != 1 {
@@ -99,6 +242,18 @@ func assertInitialModelRequest(t *testing.T, requests []modelpkg.CallRequest, sy
 	}
 	if got := requests[0].Messages[1]; got.Role != message.RoleUser || *got.GetTextContent("") != userText {
 		t.Fatalf("second model message should be user input, got %#v", got)
+	}
+}
+
+func assertStringSlice(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("string slice length mismatch: got %#v want %#v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("string slice mismatch: got %#v want %#v", got, want)
+		}
 	}
 }
 
@@ -678,7 +833,7 @@ func (requestEditingMiddleware) OnModelCall(
 	_ agentpkg.AgentAccessor,
 	input agentpkg.HookInput,
 	next agentpkg.ModelCallHandler,
-) (*modelpkg.ChatResponse, error) {
+) (<-chan modelpkg.ChatResponse, error) {
 	request := input["request"].(modelpkg.CallRequest)
 	request.Metadata = map[string]any{"from_middleware": true}
 	input["request"] = request

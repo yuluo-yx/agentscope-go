@@ -37,6 +37,8 @@ type Skill struct {
 
 // Loader lists skills from a backing source.
 type Loader interface {
+	// ListSkills returns all skills available from the backing source.
+	// Implementations should honor context cancellation while scanning files or remote stores.
 	ListSkills(context.Context) ([]Skill, error)
 }
 

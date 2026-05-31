@@ -57,7 +57,8 @@ func WithChatParameters(parameters ChatParameters) ChatModelOption {
 	}
 }
 
-// WithStream sets whether streaming is used by default.
+// WithStream records a compatibility stream preference.
+// Call and Stream still choose the request transport explicitly.
 func WithStream(stream bool) ChatModelOption {
 	return func(options *chatModelOptions) {
 		options.stream = stream
@@ -274,6 +275,10 @@ func parseStream(ctx context.Context, stream interface {
 			return
 		}
 	}
+	if err := stream.Err(); err != nil {
+		sendStreamResponse(ctx, out, streamErrorResponse(normalizeError(err)))
+		return
+	}
 	sendStreamResponse(ctx, out, acc.finalResponse())
 }
 
@@ -398,6 +403,10 @@ func sendStreamResponse(ctx context.Context, out chan<- asmodel.ChatResponse, re
 	case out <- *response:
 		return true
 	}
+}
+
+func streamErrorResponse(err error) *asmodel.ChatResponse {
+	return asmodel.NewChatResponse(nil, true, asmodel.WithChatResponseError(err))
 }
 
 func usageFromMessage(usage sdk.Usage, elapsed time.Duration) *asmodel.ChatUsage {

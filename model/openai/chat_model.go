@@ -66,7 +66,8 @@ func WithChatParameters(parameters ChatParameters) ChatModelOption {
 	}
 }
 
-// WithStream sets whether streaming is used by default.
+// WithStream records a compatibility stream preference.
+// Call and Stream still choose the request transport explicitly.
 func WithStream(stream bool) ChatModelOption {
 	return func(options *chatModelOptions) {
 		options.stream = stream
@@ -172,7 +173,7 @@ func (m *ChatModel) Stream(ctx context.Context, request asmodel.CallRequest) (<-
 	go func() {
 		defer close(out)
 		start := time.Now()
-		parseStream(ctx, stream, start, out)
+		parseStream(ctx, stream, m.providerName, start, out)
 	}()
 	return out, nil
 }
@@ -197,7 +198,9 @@ func (m *ChatModel) buildParams(request asmodel.CallRequest) (sdk.ChatCompletion
 	params := sdk.ChatCompletionNewParams{
 		Messages: messages,
 		Model:    m.model,
-		Tools:    tools,
+	}
+	if len(tools) > 0 {
+		params.Tools = tools
 	}
 	if toolChoice != nil {
 		params.ToolChoice = *toolChoice
@@ -313,7 +316,7 @@ func parseStream(ctx context.Context, stream interface {
 	Current() sdk.ChatCompletionChunk
 	Err() error
 	Close() error
-}, start time.Time, out chan<- asmodel.ChatResponse,
+}, providerName string, start time.Time, out chan<- asmodel.ChatResponse,
 ) {
 	defer stream.Close()
 	acc := newStreamAccumulator(start)
@@ -321,6 +324,10 @@ func parseStream(ctx context.Context, stream interface {
 		if !sendStreamResponse(ctx, out, acc.consume(stream.Current())) {
 			return
 		}
+	}
+	if err := stream.Err(); err != nil {
+		sendStreamResponse(ctx, out, streamErrorResponse(normalizeError(providerName, err)))
+		return
 	}
 	sendStreamResponse(ctx, out, acc.finalResponse())
 }
@@ -404,6 +411,10 @@ func sendStreamResponse(ctx context.Context, out chan<- asmodel.ChatResponse, re
 	case out <- *response:
 		return true
 	}
+}
+
+func streamErrorResponse(err error) *asmodel.ChatResponse {
+	return asmodel.NewChatResponse(nil, true, asmodel.WithChatResponseError(err))
 }
 
 func chatUsage(usage sdk.CompletionUsage, elapsed time.Duration) *asmodel.ChatUsage {

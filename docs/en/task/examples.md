@@ -17,6 +17,12 @@ go run .
 | `model/providers` | Provider construction and token estimation |
 | `model/dashscope` | DashScope chat, tool schemas, data-block input, and optional live call |
 | `agent/basic` | Agent with scripted model and task tool |
+| `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
+| `agent/external` | Agent pause/resume flow for external tool execution |
+| `agent/hooks` | Agent middleware hooks for reply, reasoning, model call, acting, and system prompt |
+| `agent/permission` | Agent permission confirmation and resume flow |
+| `integration/gin` | Gin HTTP integration for direct ChatModel streams and Agent event streams |
+| `integration/kratos` | Kratos HTTP integration for direct ChatModel streams and Agent event streams |
 | `tool/function` | Custom function tool |
 | `tool/builtin` | Built-in local tools |
 | `tool/mcp` | MCP client and MCP tool execution through Toolkit |

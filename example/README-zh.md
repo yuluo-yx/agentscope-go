@@ -22,6 +22,12 @@ go run .
 | `model/providers` | 已实现 provider 的构造与 token 估算 |
 | `model/dashscope` | DashScope OpenAI-compatible ChatModel、工具 schema、数据块输入和可选真调用 |
 | `agent/basic` | Agent + scripted model + task tool 的端到端 ReAct 流程 |
+| `agent/configuration` | Agent model fallback、ReAct 配置和本地上下文清理 |
+| `agent/external` | Agent 外部工具执行的暂停与恢复流程 |
+| `agent/hooks` | Agent middleware hook 示例，覆盖 reply、reasoning、model call、acting 和 system prompt |
+| `agent/permission` | Agent 权限确认与恢复流程 |
+| `integration/gin` | Gin HTTP 集成，覆盖底层 ChatModel 流式与 Agent 事件流式 |
+| `integration/kratos` | Kratos HTTP 集成，覆盖底层 ChatModel 流式与 Agent 事件流式 |
 | `tool/function` | 自定义函数工具 |
 | `tool/builtin` | Bash/Edit/Glob/Grep/Read/Write 内置工具 |
 | `tool/mcp` | MCP client 集成、MCP tool 包装、Toolkit 执行和可选真实 ChatModel 工具调用 |

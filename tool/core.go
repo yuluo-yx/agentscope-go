@@ -28,18 +28,43 @@ import (
 
 // Tool is the common interface exposed to Agents, permission checks, and schemas.
 type Tool interface {
+	// Name returns the stable tool name used in model tool schemas, ToolCallBlock.Name, and permission rules.
 	Name() string
+	// Description returns model-facing instructions that explain when and how the tool should be used.
 	Description() string
+	// InputSchema returns a JSON Schema object for validating model-generated tool input.
+	// Callers must treat the returned map as owned by the tool unless the implementation documents otherwise.
 	InputSchema() map[string]any
+	// IsConcurrencySafe reports whether the Agent may execute this tool concurrently with other safe tools.
+	// Tools that mutate AgentState, files, remote resources, or shared process state should return false.
 	IsConcurrencySafe() bool
+	// IsReadOnly reports whether the tool only reads data and has no side effects.
+	// The permission engine uses this to allow read-only tools in explore mode.
 	IsReadOnly() bool
+	// IsExternalTool reports whether execution must happen outside the current Go process.
+	// Agents emit RequireExternalExecutionEvent instead of calling Execute for external tools.
 	IsExternalTool() bool
+	// IsStateInjected reports whether Execute expects a non-nil AgentState to read or mutate agent state.
+	// Stateful tools should validate the provided state and return a clear error when it is missing.
 	IsStateInjected() bool
+	// IsMCP reports whether this tool wraps a Model Context Protocol tool.
 	IsMCP() bool
+	// MCPName returns the source MCP server name for MCP tools, or an empty string for local tools.
 	MCPName() string
+	// CheckPermissions lets the tool enforce tool-specific safety rules after global deny/ask rules.
+	// The input map has already been parsed from the ToolCallBlock JSON. A decision may include
+	// UpdatedInput to normalize or repair arguments before Execute receives them.
 	CheckPermissions(context.Context, map[string]any, *permission.Context) (*permission.Decision, error)
+	// MatchRule reports whether one permission rule value matches the current input.
+	// Implementations should align this with InputSchema so user-approved rules remain predictable.
 	MatchRule(string, map[string]any) bool
+	// GenerateSuggestions returns candidate permission rules for the current input.
+	// Agents attach these suggestions to confirmation events when a tool call needs user approval.
 	GenerateSuggestions(map[string]any) []permission.Rule
+	// Execute runs the tool with validated input and optional AgentState.
+	// It returns a stream of ToolChunk values so long-running tools can emit incremental content.
+	// The channel must eventually close; the final chunk state, or success by default, becomes the ToolResultBlock state.
+	// If execution fails after the channel has been returned, emit a ToolChunk with ToolResultError or ToolResultInterrupted.
 	Execute(context.Context, map[string]any, *asstate.AgentState) (<-chan ToolChunk, error)
 }
 

@@ -56,12 +56,12 @@ func (a *Agent) applyActingHooks(ctx context.Context, input HookInput, final Too
 	return handler(ctx)
 }
 
-func (a *Agent) applyModelCallHooks(ctx context.Context, input HookInput, final ModelCallHandler) (*ChatResponse, error) {
+func (a *Agent) applyModelCallHooks(ctx context.Context, input HookInput, final ModelCallHandler) (<-chan ChatResponse, error) {
 	handler := final
 	for i := len(a.modelCallHooks) - 1; i >= 0; i-- {
 		hook := a.modelCallHooks[i]
 		next := handler
-		handler = func(ctx context.Context) (*ChatResponse, error) {
+		handler = func(ctx context.Context) (<-chan ChatResponse, error) {
 			return hook(ctx, a, input, next)
 		}
 	}

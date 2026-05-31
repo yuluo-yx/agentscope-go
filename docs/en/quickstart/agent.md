@@ -75,5 +75,9 @@ if err != nil {
 ## Runnable Examples
 
 - `example/agent/basic`: an end-to-end ReAct flow with a scripted model.
+- `example/agent/configuration`: model fallback, ReAct limits, and context cleanup.
+- `example/agent/external`: pause and resume around external tool execution.
+- `example/agent/hooks`: middleware hooks around reply, reasoning, model call, acting, and system prompt.
+- `example/agent/permission`: permission confirmation and resume for a pending tool call.
 - `example/tool/function`: a function tool with optional DashScope tool-call loop.
 - `example/tool/mcp`: an MCP tool registered through `tool.Toolkit`.

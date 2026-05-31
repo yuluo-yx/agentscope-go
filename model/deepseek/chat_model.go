@@ -59,7 +59,8 @@ func WithChatParameters(parameters ChatParameters) ChatModelOption {
 	return openai.WithChatParameters(parameters)
 }
 
-// WithStream configures whether DeepSeek calls use streaming by default.
+// WithStream forwards the compatibility stream preference.
+// Call and Stream still choose the request transport explicitly.
 func WithStream(stream bool) ChatModelOption { return openai.WithStream(stream) }
 
 // WithContextSize overrides the model context size used for validation.

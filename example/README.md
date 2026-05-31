@@ -22,6 +22,12 @@ Model and tool examples demonstrate ChatModel tool-call loops where that matches
 | `model/providers` | Provider construction and token estimation |
 | `model/dashscope` | DashScope OpenAI-compatible ChatModel, tool schemas, data-block input, and optional live call |
 | `agent/basic` | Agent + scripted model + task tool end-to-end ReAct flow |
+| `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
+| `agent/external` | Agent pause/resume flow for tools executed outside the Go process |
+| `agent/hooks` | Agent middleware hooks for reply, reasoning, model call, acting, and system prompt |
+| `agent/permission` | Agent permission confirmation and resume flow |
+| `integration/gin` | Gin HTTP integration with direct ChatModel streaming and Agent event streaming |
+| `integration/kratos` | Kratos HTTP integration with direct ChatModel streaming and Agent event streaming |
 | `tool/function` | Custom function tool |
 | `tool/builtin` | Built-in Bash/Edit/Glob/Grep/Read/Write tools |
 | `tool/mcp` | MCP client integration, MCP tool wrapping, Toolkit execution, and optional live ChatModel tool call |

@@ -9,6 +9,7 @@ This example covers the current DashScope capability boundary in the Go implemen
 - Configure both non-streaming and streaming model instances.
 - Generate a Function Calling tool schema.
 - Run a live Function Calling round for `GetWeather` and send the tool result back to the model.
+- Run a live `ChatModel.Stream` call and print streamed deltas.
 - Build a text + image URL data-block input and run local token estimation.
 - Optionally make a real text call with `AI_DASHSCOPE_API_KEY`.
 
@@ -57,6 +58,7 @@ Live success output includes:
 chat_model=dashscope:
 dashscope_live=ok
 dashscope_weather=ok
+dashscope_stream=ok
 ```
 
 ## Official References

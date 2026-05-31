@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	"github.com/yuluo-yx/agentscope-go/message"
@@ -34,16 +35,40 @@ func (m *scriptedChatModel) Name() string {
 }
 
 func (m *scriptedChatModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
+	return m.nextResponse()
+}
+
+func (m *scriptedChatModel) Stream(ctx context.Context, _ asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
+	response, err := m.nextResponse()
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan asmodel.ChatResponse)
+	go func() {
+		defer close(out)
+		delta := response.Clone()
+		delta.IsLast = false
+		delta.Usage = nil
+		select {
+		case <-ctx.Done():
+			return
+		case out <- *delta:
+		}
+		select {
+		case <-ctx.Done():
+		case out <- *response:
+		}
+	}()
+	return out, nil
+}
+
+func (m *scriptedChatModel) nextResponse() (*asmodel.ChatResponse, error) {
 	if len(m.responses) == 0 {
 		return nil, fmt.Errorf("scripted model has no response")
 	}
 	response := m.responses[0]
 	m.responses = m.responses[1:]
 	return response.Clone(), nil
-}
-
-func (m *scriptedChatModel) Stream(context.Context, asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
-	return nil, fmt.Errorf("stream is not used in this example")
 }
 
 func (m *scriptedChatModel) CountTokens(request asmodel.CallRequest) (int, error) {
@@ -63,16 +88,25 @@ func main() {
 	}}
 	agent := mustAgent(agentpkg.NewAgent("Friday", "Track work with task tools.", model, agentpkg.WithToolkit(kit)))
 	user := mustMessage(message.NewUserMessage("user", "Track the example task."))
-	reply, err := agent.Reply(context.Background(), user)
+
+	var replyText strings.Builder
+	var seenEvents []string
+	err := agent.ReplyStream(context.Background(), user, func(event message.Event) error {
+		switch e := event.(type) {
+		case *message.ToolCallStartEvent:
+			seenEvents = append(seenEvents, "tool_call:"+e.ToolCallName)
+		case *message.ToolResultEndEvent:
+			seenEvents = append(seenEvents, "tool_result:"+string(e.State))
+		case *message.TextBlockDeltaEvent:
+			replyText.WriteString(e.Delta)
+		}
+		return nil
+	})
 	if err != nil {
 		panic(err)
 	}
 
-	replyText := ""
-	if text := reply.GetTextContent(""); text != nil {
-		replyText = *text
-	}
-	fmt.Printf("agent_reply=%s tasks=%d\n", replyText, len(agent.AgentState().TaskContext.Tasks))
+	fmt.Printf("agent_stream=%s tasks=%d events=%s\n", replyText.String(), len(agent.AgentState().TaskContext.Tasks), strings.Join(seenEvents, ","))
 }
 
 func mustToolkit(kit *tool.Toolkit, err error) *tool.Toolkit {

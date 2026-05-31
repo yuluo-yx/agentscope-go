@@ -17,6 +17,12 @@ go run .
 | `model/providers` | 构造模型供应商和估算 Token |
 | `model/dashscope` | DashScope 聊天、工具 Schema、数据块输入和可选真实调用 |
 | `agent/basic` | 使用脚本模型和任务工具的智能体示例 |
+| `agent/configuration` | Agent model fallback、ReAct 配置和本地上下文清理 |
+| `agent/external` | Agent 外部工具执行暂停与恢复流程 |
+| `agent/hooks` | Agent middleware hook 示例，覆盖 reply、reasoning、model call、acting 和 system prompt |
+| `agent/permission` | Agent 权限确认与恢复流程 |
+| `integration/gin` | Gin HTTP 集成，演示底层 ChatModel 流式和 Agent 事件流式 |
+| `integration/kratos` | Kratos HTTP 集成，演示底层 ChatModel 流式和 Agent 事件流式 |
 | `tool/function` | 自定义函数工具 |
 | `tool/builtin` | 内置本地工具 |
 | `tool/mcp` | MCP 客户端和通过 Toolkit 执行 MCP 工具 |

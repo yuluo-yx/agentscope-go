@@ -106,9 +106,15 @@ Each example is an independent Go module with its own `go.mod`, English
 | Example | Purpose |
 | --- | --- |
 | `example/agent/basic` | Build a basic agent backed by a ChatModel. |
+| `example/agent/configuration` | Configure model fallback, ReAct limits, and context cleanup. |
+| `example/agent/external` | Pause and resume an Agent around externally executed tools. |
+| `example/agent/hooks` | Implement Agent middleware hooks around reply, reasoning, model calls, acting, and system prompts. |
+| `example/agent/permission` | Handle permission confirmation and resume a pending tool call. |
 | `example/message` | Compose user, assistant, system, and tool messages. |
 | `example/model/dashscope` | Call DashScope models and demonstrate model tool calling. |
 | `example/model/providers` | Compare the available model provider adapters. |
+| `example/integration/gin` | Expose direct ChatModel streaming and Agent event streaming through Gin. |
+| `example/integration/kratos` | Expose direct ChatModel streaming and Agent event streaming through Kratos. |
 | `example/tool/function` | Register and execute function tools from model tool calls. |
 | `example/tool/builtin` | Use builtin shell and filesystem tools with permissions. |
 | `example/tool/mcp` | Connect to MCP servers and expose MCP tools to an agent. |
