@@ -23,6 +23,34 @@ func MarshalEvent(event Event) ([]byte, error) {
 	return json.Marshal(event)
 }
 
+var eventFactories = map[EventType]func() Event{
+	ReplyStartType:               func() Event { return &ReplyStartEvent{} },
+	ReplyEndType:                 func() Event { return &ReplyEndEvent{} },
+	ModelCallStartType:           func() Event { return &ModelCallStartEvent{} },
+	ModelCallEndType:             func() Event { return &ModelCallEndEvent{} },
+	TextBlockStartType:           func() Event { return &TextBlockStartEvent{} },
+	TextBlockDeltaType:           func() Event { return &TextBlockDeltaEvent{} },
+	TextBlockEndType:             func() Event { return &TextBlockEndEvent{} },
+	DataBlockStartType:           func() Event { return &DataBlockStartEvent{} },
+	DataBlockDeltaType:           func() Event { return &DataBlockDeltaEvent{} },
+	DataBlockEndType:             func() Event { return &DataBlockEndEvent{} },
+	ThinkingBlockStartType:       func() Event { return &ThinkingBlockStartEvent{} },
+	ThinkingBlockDeltaType:       func() Event { return &ThinkingBlockDeltaEvent{} },
+	ThinkingBlockEndType:         func() Event { return &ThinkingBlockEndEvent{} },
+	ToolCallStartType:            func() Event { return &ToolCallStartEvent{} },
+	ToolCallDeltaType:            func() Event { return &ToolCallDeltaEvent{} },
+	ToolCallEndType:              func() Event { return &ToolCallEndEvent{} },
+	ToolResultStartType:          func() Event { return &ToolResultStartEvent{} },
+	ToolResultTextDeltaType:      func() Event { return &ToolResultTextDeltaEvent{} },
+	ToolResultDataDeltaType:      func() Event { return &ToolResultDataDeltaEvent{} },
+	ToolResultEndType:            func() Event { return &ToolResultEndEvent{} },
+	ExceedMaxItersType:           func() Event { return &ExceedMaxItersEvent{} },
+	RequireUserConfirmType:       func() Event { return &RequireUserConfirmEvent{} },
+	RequireExternalExecutionType: func() Event { return &RequireExternalExecutionEvent{} },
+	UserConfirmResultType:        func() Event { return &UserConfirmResultEvent{} },
+	ExternalExecutionResultType:  func() Event { return &ExternalExecutionResultEvent{} },
+}
+
 func UnmarshalEvent(data []byte) (Event, error) {
 	var probe struct {
 		Type EventType `json:"type"`
@@ -31,83 +59,10 @@ func UnmarshalEvent(data []byte) (Event, error) {
 		return nil, err
 	}
 
-	switch probe.Type {
-	case ReplyStartType:
-		var event ReplyStartEvent
-		return &event, json.Unmarshal(data, &event)
-	case ReplyEndType:
-		var event ReplyEndEvent
-		return &event, json.Unmarshal(data, &event)
-	case ModelCallStartType:
-		var event ModelCallStartEvent
-		return &event, json.Unmarshal(data, &event)
-	case ModelCallEndType:
-		var event ModelCallEndEvent
-		return &event, json.Unmarshal(data, &event)
-	case TextBlockStartType:
-		var event TextBlockStartEvent
-		return &event, json.Unmarshal(data, &event)
-	case TextBlockDeltaType:
-		var event TextBlockDeltaEvent
-		return &event, json.Unmarshal(data, &event)
-	case TextBlockEndType:
-		var event TextBlockEndEvent
-		return &event, json.Unmarshal(data, &event)
-	case DataBlockStartType:
-		var event DataBlockStartEvent
-		return &event, json.Unmarshal(data, &event)
-	case DataBlockDeltaType:
-		var event DataBlockDeltaEvent
-		return &event, json.Unmarshal(data, &event)
-	case DataBlockEndType:
-		var event DataBlockEndEvent
-		return &event, json.Unmarshal(data, &event)
-	case ThinkingBlockStartType:
-		var event ThinkingBlockStartEvent
-		return &event, json.Unmarshal(data, &event)
-	case ThinkingBlockDeltaType:
-		var event ThinkingBlockDeltaEvent
-		return &event, json.Unmarshal(data, &event)
-	case ThinkingBlockEndType:
-		var event ThinkingBlockEndEvent
-		return &event, json.Unmarshal(data, &event)
-	case ToolCallStartType:
-		var event ToolCallStartEvent
-		return &event, json.Unmarshal(data, &event)
-	case ToolCallDeltaType:
-		var event ToolCallDeltaEvent
-		return &event, json.Unmarshal(data, &event)
-	case ToolCallEndType:
-		var event ToolCallEndEvent
-		return &event, json.Unmarshal(data, &event)
-	case ToolResultStartType:
-		var event ToolResultStartEvent
-		return &event, json.Unmarshal(data, &event)
-	case ToolResultTextDeltaType:
-		var event ToolResultTextDeltaEvent
-		return &event, json.Unmarshal(data, &event)
-	case ToolResultDataDeltaType:
-		var event ToolResultDataDeltaEvent
-		return &event, json.Unmarshal(data, &event)
-	case ToolResultEndType:
-		var event ToolResultEndEvent
-		return &event, json.Unmarshal(data, &event)
-	case ExceedMaxItersType:
-		var event ExceedMaxItersEvent
-		return &event, json.Unmarshal(data, &event)
-	case RequireUserConfirmType:
-		var event RequireUserConfirmEvent
-		return &event, json.Unmarshal(data, &event)
-	case RequireExternalExecutionType:
-		var event RequireExternalExecutionEvent
-		return &event, json.Unmarshal(data, &event)
-	case UserConfirmResultType:
-		var event UserConfirmResultEvent
-		return &event, json.Unmarshal(data, &event)
-	case ExternalExecutionResultType:
-		var event ExternalExecutionResultEvent
-		return &event, json.Unmarshal(data, &event)
-	default:
+	factory, ok := eventFactories[probe.Type]
+	if !ok {
 		return nil, fmt.Errorf("message: unsupported event type %q", probe.Type)
 	}
+	event := factory()
+	return event, json.Unmarshal(data, event)
 }

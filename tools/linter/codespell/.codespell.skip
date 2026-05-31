@@ -1,4 +1,5 @@
 .git
 .idea
 .github/CONTRIBUTORS.svg
+example/integration/kratos/third_party/*
 tools/node/node_modules

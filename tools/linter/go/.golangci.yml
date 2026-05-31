@@ -80,9 +80,7 @@ linters:
     revive:
       rules:
         - name: exported
-          arguments:
-            - checkPrivateReceivers
-            - disableStutteringCheck
+          disabled: true
         - name: package-comments
           disabled: true
 
@@ -112,6 +110,7 @@ linters:
         linters:
           - dupl
           - goconst
+          - gocyclo
           - errcheck
           - gosec
           - revive

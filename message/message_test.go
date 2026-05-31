@@ -85,19 +85,19 @@ func TestAssistantAndSystemFactories(t *testing.T) {
 		t.Fatalf("unexpected system message: %#v", system)
 	}
 
-	if _, err := message.NewAssistantMessage("assistant", 123); err == nil {
+	if _, assistantErr := message.NewAssistantMessage("assistant", 123); assistantErr == nil {
 		t.Fatal("NewAssistantMessage should return an error for unsupported content")
 	}
-	if _, err := message.NewSystemMessage("system", []message.ContentBlock{
+	if _, systemErr := message.NewSystemMessage("system", []message.ContentBlock{
 		message.NewDataBlock(message.NewURLSource("https://example.com/image.png", "image/png")),
-	}); err == nil {
+	}); systemErr == nil {
 		t.Fatal("NewSystemMessage should return an error for invalid system content")
 	}
 
-	if _, err := message.NewUserMessage("user", 123); err == nil {
+	if _, userErr := message.NewUserMessage("user", 123); userErr == nil {
 		t.Fatal("unsupported content type should return an error")
 	}
-	if _, err := message.NewMessage("nobody", message.Role("unknown"), nil); err == nil {
+	if _, roleErr := message.NewMessage("nobody", message.Role("unknown"), nil); roleErr == nil {
 		t.Fatal("unknown role should return an error")
 	}
 
