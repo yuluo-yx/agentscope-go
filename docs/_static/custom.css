@@ -90,9 +90,8 @@
   display: block;
 }
 
-body[data-current-lang="en"] .caption:has(span.caption-text),
-body[data-current-lang="zh"] .caption:has(span.caption-text) {
-  display: block;
+.sidebar-language-hidden {
+  display: none !important;
 }
 
 /* Combined logo in sidebar brand */

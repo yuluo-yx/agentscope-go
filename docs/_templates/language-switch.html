@@ -20,13 +20,61 @@
       <span id="current-lang">English</span>
     </button>
     <div class="language-menu" id="language-menu">
-      <a href="#" class="language-option" onclick="switchLanguage('en')">English</a>
-      <a href="#" class="language-option" onclick="switchLanguage('zh')">中文</a>
+      <a href="#" class="language-option" data-lang="en" onclick="switchLanguage('en')">English</a>
+      <a href="#" class="language-option" data-lang="zh" onclick="switchLanguage('zh')">中文</a>
     </div>
   </div>
 </div>
 
 <script>
+  const sidebarCaptionLanguage = {
+    'Quick Start': 'en',
+    'Advanced Topics': 'en',
+    '快速开始': 'zh',
+    '高级主题': 'zh',
+  };
+
+  function getRelativeDocsPath(targetPath) {
+    const languageMatch = window.location.pathname.match(/\/(en|zh)\//);
+    if (!languageMatch || languageMatch.index === undefined) {
+      return targetPath;
+    }
+    const docsRoot = window.location.pathname.slice(0, languageMatch.index + 1);
+    return `${docsRoot}${targetPath}`;
+  }
+
+  function updateBrandLink(lang) {
+    const brand = document.querySelector('.sidebar-brand');
+    if (brand) {
+      brand.setAttribute('href', getRelativeDocsPath(`${lang}/intro.html`));
+    }
+  }
+
+  function updateActiveLanguage(lang) {
+    document.querySelectorAll('.language-option').forEach((option) => {
+      option.classList.toggle('active', option.dataset.lang === lang);
+    });
+  }
+
+  function filterSidebarLanguage(lang) {
+    document.querySelectorAll('.sidebar-tree').forEach((tree) => {
+      let currentGroupLanguage = null;
+
+      Array.from(tree.children).forEach((child) => {
+        if (child.classList.contains('caption')) {
+          const caption = child.textContent.trim();
+          currentGroupLanguage = sidebarCaptionLanguage[caption] || null;
+        }
+
+        if (currentGroupLanguage) {
+          const shouldHide = currentGroupLanguage !== lang;
+          child.hidden = shouldHide;
+          child.classList.toggle('sidebar-language-hidden', shouldHide);
+        }
+      });
+    });
+  }
+
   function toggleLanguageMenu() {
     const selector = document.querySelector('.language-selector');
     selector.classList.toggle('open');
@@ -38,6 +86,9 @@
     const currentLang = document.getElementById('current-lang');
     currentLang.textContent = lang === 'zh' ? '中文' : 'English';
     document.body.setAttribute('data-current-lang', lang);
+    updateActiveLanguage(lang);
+    updateBrandLink(lang);
+    filterSidebarLanguage(lang);
 
     if (!skipRedirect) {
       const currentPath = window.location.pathname;
