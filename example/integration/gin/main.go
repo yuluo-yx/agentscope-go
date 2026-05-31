@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yuluo-yx/agentscope-go/agent"
@@ -29,6 +30,7 @@ func main() {
 	r.GET("/stream-chat-tool", streamChatTool)
 	r.GET("/agent/chat", agentChat)
 	r.GET("/agent/stream-chat", agentStreamChat)
+	r.GET("/structured", structuredOutput)
 
 	if err := r.Run(); err != nil {
 		log.Fatalf("failed to run server: %v", err)
@@ -313,6 +315,48 @@ func agentStreamChat(c *gin.Context) {
 		c.Writer.Flush()
 		return
 	}
+}
+
+// curl -v '127.0.0.1:8080/structured?prompt=杭州一日游'
+func structuredOutput(c *gin.Context) {
+	chatModel := newChatModel(false)
+	prompt := strings.TrimSpace(c.Query("prompt"))
+	if prompt == "" {
+		prompt = "杭州一日游"
+	}
+	user, err := message.NewUserMessage("user", fmt.Sprintf(`Return only valid compact JSON with this schema:
+{"city":"string","weather":"string","plan":["string"],"tips":["string"]}
+User request: %s`, prompt))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	chatResponse, err := chatModel.Call(c.Request.Context(), asmodel.CallRequest{
+		Messages: []*message.Message{user},
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var builder strings.Builder
+	for _, block := range chatResponse.Content {
+		if text, ok := block.(*message.TextBlock); ok {
+			builder.WriteString(text.Text)
+		}
+	}
+	raw := strings.TrimSpace(builder.String())
+	if start := strings.Index(raw, "{"); start >= 0 {
+		if end := strings.LastIndex(raw, "}"); end >= start {
+			raw = raw[start : end+1]
+		}
+	}
+	var structured map[string]any
+	if err := json.Unmarshal([]byte(raw), &structured); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "raw": raw})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"resp:": structured})
 }
 
 // ========= util ===========

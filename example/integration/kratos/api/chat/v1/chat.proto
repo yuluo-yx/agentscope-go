@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package chat.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "kratos/api/chat/v1;v1";
+
+service Chat {
+  rpc Ping(PingRequest) returns (PingReply) {
+    option (google.api.http) = {get: "/ping"};
+  }
+
+  rpc Chat(ChatRequest) returns (ChatReply) {
+    option (google.api.http) = {get: "/chat"};
+  }
+
+  rpc StreamChat(ChatRequest) returns (stream ChatStreamReply) {
+    option (google.api.http) = {get: "/stream-chat"};
+  }
+
+  rpc StreamChatTool(ChatRequest) returns (stream ChatStreamReply) {
+    option (google.api.http) = {get: "/stream-chat-tool"};
+  }
+
+  rpc AgentChat(ChatRequest) returns (ChatReply) {
+    option (google.api.http) = {get: "/agent/chat"};
+  }
+
+  rpc AgentStreamChat(ChatRequest) returns (stream AgentStreamReply) {
+    option (google.api.http) = {get: "/agent/stream-chat"};
+  }
+
+  rpc StructuredOutput(ChatRequest) returns (StructuredReply) {
+    option (google.api.http) = {get: "/structured"};
+  }
+}
+
+message PingRequest {}
+
+message PingReply {
+  string message = 1;
+}
+
+message ChatRequest {
+  string prompt = 1;
+}
+
+message ChatReply {
+  repeated ContentBlock content = 1;
+  string text = 2;
+}
+
+message ChatStreamReply {
+  repeated ContentBlock content = 1;
+  string text = 2;
+  bool final = 3;
+}
+
+message AgentStreamReply {
+  string event = 1;
+  string delta = 2;
+  string tool = 3;
+  string state = 4;
+  string error = 5;
+}
+
+message StructuredReply {
+  google.protobuf.Struct output = 1;
+  string raw = 2;
+}
+
+message ContentBlock {
+  string type = 1;
+  string text = 2;
+  string id = 3;
+  string name = 4;
+  string state = 5;
+}

@@ -7,13 +7,12 @@
 package main
 
 import (
-	"kratos/internal/biz"
-	"kratos/internal/conf"
-	"kratos/internal/data"
-	"kratos/internal/server"
-	"kratos/internal/service"
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	"kratos/internal/biz"
+	"kratos/internal/conf"
+	"kratos/internal/server"
+	"kratos/internal/service"
 )
 
 import (
@@ -24,10 +23,10 @@ import (
 
 // wireApp init kratos application.
 func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*kratos.App, func(), error) {
-	greeterUsecase := biz.NewGreeterUsecase()
-	greeterService := service.NewGreeterService(greeterUsecase)
-	grpcServer := server.NewGRPCServer(confServer, greeterService, logger)
-	httpServer := server.NewHTTPServer(confServer, greeterService, logger)
+	chatUsecase := biz.NewChatUsecase()
+	chatService := service.NewChatService(chatUsecase)
+	grpcServer := server.NewGRPCServer(confServer, chatService, logger)
+	httpServer := server.NewHTTPServer(confServer, chatService, logger)
 	app := newApp(logger, grpcServer, httpServer)
 	return app, func() {}, nil
 }
