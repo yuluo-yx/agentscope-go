@@ -9,10 +9,10 @@
 - 配置非流式与流式模型实例。
 - 生成 Function Calling 工具 schema。
 - 真实运行 `GetWeather` Function Calling 回合，并把工具结果回填给模型。
-- 构造文本 + 图片 URL 的多模态输入并做本地 token 估算。
+- 构造文本 + 图片 URL 的数据块输入并做本地 token 估算。
 - 可选使用 `AI_DASHSCOPE_API_KEY` 发起真实文本调用。
 
-根据阿里云官方文档，百炼文本生成提供 OpenAI 兼容 Chat Completions、OpenAI 兼容 Responses、Anthropic 兼容 Messages 和 DashScope 原生接口；当前 Go provider 示例只覆盖已实现的 OpenAI-compatible ChatModel 路径。模型列表页显示百炼还覆盖图像生成、视频生成、TTS/ASR、全模态、embedding、rerank 等能力，这些当前不在本 Go ChatModel 示例的实现范围内。
+根据阿里云官方文档，百炼文本生成提供 OpenAI 兼容 Chat Completions。本 Go provider 示例演示已实现的 OpenAI-compatible ChatModel 路径。
 
 ## 前置条件
 

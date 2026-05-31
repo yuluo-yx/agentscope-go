@@ -20,10 +20,11 @@ Model and tool examples demonstrate ChatModel tool-call loops where that matches
 | --- | --- |
 | `message` | Conversation history with system, user, and assistant messages |
 | `model/providers` | Provider construction and token estimation |
-| `model/dashscope` | DashScope OpenAI-compatible ChatModel, tool schemas, multimodal input, and optional live call |
+| `model/dashscope` | DashScope OpenAI-compatible ChatModel, tool schemas, data-block input, and optional live call |
 | `agent/basic` | Agent + scripted model + task tool end-to-end ReAct flow |
 | `tool/function` | Custom function tool |
 | `tool/builtin` | Built-in Bash/Edit/Glob/Grep/Read/Write tools |
+| `tool/mcp` | MCP client integration, MCP tool wrapping, Toolkit execution, and optional live ChatModel tool call |
 | `tool/task` | TaskCreate/TaskGet/TaskList/TaskUpdate |
 | `tool/skill` | Local `SKILL.md` loading |
 | `workspace/local` | Workspace-backed tool file operations, skills, context offload, and tool result offload |

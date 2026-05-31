@@ -36,9 +36,14 @@ go.work.sum
 # bin
 bin/
 
+# docs
+docs/_build/
+docs/*.egg-info/
+
 # local caches
 .cache/
 
 # Local tool environments
 .venv/
 tools/node/node_modules/
+/.playwright-mcp/

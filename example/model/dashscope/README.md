@@ -9,10 +9,10 @@ This example covers the current DashScope capability boundary in the Go implemen
 - Configure both non-streaming and streaming model instances.
 - Generate a Function Calling tool schema.
 - Run a live Function Calling round for `GetWeather` and send the tool result back to the model.
-- Build a text + image URL multimodal input and run local token estimation.
+- Build a text + image URL data-block input and run local token estimation.
 - Optionally make a real text call with `AI_DASHSCOPE_API_KEY`.
 
-According to the official Alibaba Cloud documentation, Model Studio text generation offers OpenAI-compatible Chat Completions, OpenAI-compatible Responses, Anthropic-compatible Messages, and the native DashScope API. This Go provider example only covers the implemented OpenAI-compatible ChatModel path. The model list also covers image generation, video generation, TTS/ASR, omni models, embeddings, and rerank models; those are outside the current Go ChatModel example implementation.
+According to the official Alibaba Cloud documentation, Model Studio text generation offers OpenAI-compatible Chat Completions. This Go provider example demonstrates the implemented OpenAI-compatible ChatModel path.
 
 ## Prerequisites
 

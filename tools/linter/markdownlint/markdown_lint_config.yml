@@ -1,4 +1,7 @@
 MD009: false
+# MD010 Hard tabs
+MD010:
+  code_blocks: false
 # MD013 Line length
 MD013: false
 # MD014 Dollar signs used before commands without showing output

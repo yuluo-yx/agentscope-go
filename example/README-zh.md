@@ -20,10 +20,11 @@ go run .
 | --- | --- |
 | `message` | system、user、assistant 消息组成的对话历史 |
 | `model/providers` | 已实现 provider 的构造与 token 估算 |
-| `model/dashscope` | DashScope OpenAI-compatible ChatModel、工具 schema、多模态输入和可选真调用 |
+| `model/dashscope` | DashScope OpenAI-compatible ChatModel、工具 schema、数据块输入和可选真调用 |
 | `agent/basic` | Agent + scripted model + task tool 的端到端 ReAct 流程 |
 | `tool/function` | 自定义函数工具 |
 | `tool/builtin` | Bash/Edit/Glob/Grep/Read/Write 内置工具 |
+| `tool/mcp` | MCP client 集成、MCP tool 包装、Toolkit 执行和可选真实 ChatModel 工具调用 |
 | `tool/task` | TaskCreate/TaskGet/TaskList/TaskUpdate |
 | `tool/skill` | 本地 `SKILL.md` 加载 |
 | `workspace/local` | workspace 支撑的工具文件操作、skills、上下文与工具结果 offload |
