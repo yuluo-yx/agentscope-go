@@ -210,6 +210,14 @@ func (r *ToolResponse) Clone() *ToolResponse {
 	return &cp
 }
 
+// GetTextContent 返回工具响应中的文本块内容；不存在文本块时返回 nil。
+func (r *ToolResponse) GetTextContent(separator string) *string {
+	if r == nil {
+		return nil
+	}
+	return r.Content.GetTextContent(separator)
+}
+
 func appendContentBlock(response *ToolResponse, index int, chunkBlock message.ContentBlock) error {
 	target := response.Content[index]
 	switch targetBlock := target.(type) {

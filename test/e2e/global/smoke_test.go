@@ -127,7 +127,8 @@ func TestGlobalAgentToolStateE2E(t *testing.T) {
 		t.Fatalf("second model request should include tool result context, got %#v", lastModelMessage.Content)
 	}
 	result := results[0].(*message.ToolResultBlock)
-	if result.State != message.ToolResultSuccess || !strings.Contains(result.Output.Blocks[0].(*message.TextBlock).Text, "created successfully") {
+	text := result.Output.Blocks.GetTextContent("")
+	if result.State != message.ToolResultSuccess || text == nil || !strings.Contains(*text, "created successfully") {
 		t.Fatalf("tool result should be successful, got %#v", result)
 	}
 }

@@ -103,7 +103,11 @@ func chat() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("dashscope_live=ok response=%q\n", shorten(textContent(response.Content), 120))
+	responseText := ""
+	if text := response.GetTextContent(""); text != nil {
+		responseText = *text
+	}
+	fmt.Printf("dashscope_live=ok response=%q\n", shorten(responseText, 120))
 
 	weatherMessage := mustMessage(message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？"))
 	toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
@@ -115,7 +119,11 @@ func chat() {
 	}
 	weatherCall := firstToolCall(toolCallResponse.Content)
 	if weatherCall == nil {
-		panic(fmt.Sprintf("DashScope weather request returned no tool call: %q", textContent(toolCallResponse.Content)))
+		text := ""
+		if responseText := toolCallResponse.GetTextContent(""); responseText != nil {
+			text = *responseText
+		}
+		panic(fmt.Sprintf("DashScope weather request returned no tool call: %q", text))
 	}
 	toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
 	if err != nil {
@@ -133,7 +141,11 @@ func chat() {
 		panic(err)
 	}
 
-	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(textContent(weatherResponse.Content), 120))
+	weatherText := ""
+	if text := weatherResponse.GetTextContent(""); text != nil {
+		weatherText = *text
+	}
+	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(weatherText, 120))
 }
 
 func streamChat() {
@@ -202,7 +214,10 @@ func streamChat() {
 	var streamed strings.Builder
 	var finalText string
 	for response := range responses {
-		text := textContent(response.Content)
+		text := ""
+		if responseText := response.GetTextContent(""); responseText != nil {
+			text = *responseText
+		}
 		if response.IsLast {
 			finalText = text
 			continue
@@ -243,16 +258,6 @@ func getenv(name, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func textContent(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {

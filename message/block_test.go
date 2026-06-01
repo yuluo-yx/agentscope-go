@@ -16,7 +16,6 @@ package message_test
 
 import (
 	"encoding/json"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -69,6 +68,48 @@ func TestContentBlockJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestContentBlockListQueries(t *testing.T) {
+	t.Parallel()
+
+	textID := "text-1"
+	callID := "call-1"
+	blocks := message.ContentBlockList{
+		message.NewTextBlock("hello", message.WithBlockID(textID)),
+		message.NewDataBlock(message.NewURLSource("https://example.com/image.png", "image/png")),
+		message.NewToolCallBlock(callID, "Read", "{}"),
+		message.NewTextBlock("world"),
+	}
+
+	text := blocks.GetTextContent(" ")
+	if text == nil || *text != "hello world" {
+		t.Fatalf("unexpected text content: %#v", text)
+	}
+	if !blocks.HasContentBlocks("text") || !blocks.HasContentBlocks("tool_call", "data") || !blocks.HasContentBlocks() {
+		t.Fatalf("content block list should report existing blocks: %#v", blocks)
+	}
+	if blocks.HasContentBlocks("thinking") {
+		t.Fatalf("content block list should not report missing thinking blocks: %#v", blocks)
+	}
+	if got := blocks.GetContentBlocks("text"); len(got) != 2 {
+		t.Fatalf("unexpected text blocks: %#v", got)
+	}
+	if got := blocks.GetContentBlocks("tool_call")[0].(*message.ToolCallBlock); got.ID != callID {
+		t.Fatalf("unexpected tool call block: %#v", got)
+	}
+	if got := blocks.FindBlock("text", textID); got == nil || got.BlockID() != textID {
+		t.Fatalf("expected to find text block %q, got %#v", textID, got)
+	}
+	if got := blocks.FindBlock("tool_call", "missing"); got != nil {
+		t.Fatalf("missing block lookup should return nil: %#v", got)
+	}
+
+	if got := (message.ContentBlockList{
+		message.NewDataBlock(message.NewURLSource("https://example.com/image.png", "image/png")),
+	}).GetTextContent(""); got != nil {
+		t.Fatalf("data-only blocks should not return text content: %#v", got)
+	}
+}
+
 func TestUnknownDiscriminatorsReturnErrors(t *testing.T) {
 	t.Parallel()
 
@@ -98,7 +139,7 @@ func TestToolResultOutputSupportsBlockList(t *testing.T) {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 
-	if !reflect.DeepEqual(decoded.Blocks[0].(*message.TextBlock).Text, "hello") {
+	if text := decoded.Blocks.GetTextContent(""); text == nil || *text != "hello" {
 		t.Fatalf("decoded text block mismatch: %#v", decoded.Blocks[0])
 	}
 	if decoded.Blocks[1].(*message.DataBlock).Source.SourceType() != "base64" {

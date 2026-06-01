@@ -79,8 +79,53 @@ func TestChatModelInterfaceAndResponseDefaults(t *testing.T) {
 	cloned := got.Clone()
 	cloned.Content[0].(*message.TextBlock).Text = "changed"
 	cloned.Metadata["provider"] = "changed"
-	if got.Content[0].(*message.TextBlock).Text != "hello" || got.Metadata["provider"] != "fake" {
+	if text := got.GetTextContent(""); text == nil || *text != "hello" || got.Metadata["provider"] != "fake" {
 		t.Fatalf("chat response clone mutated original: %#v", got)
+	}
+}
+
+func TestChatResponseContentQueries(t *testing.T) {
+	t.Parallel()
+
+	textID := "text-1"
+	callID := "call-1"
+	resp := modelpkg.NewChatResponse(
+		message.ContentBlockList{
+			message.NewTextBlock("hello", message.WithBlockID(textID)),
+			message.NewToolCallBlock(callID, "Read", "{}"),
+			message.NewTextBlock("world"),
+		},
+		true,
+	)
+
+	text := resp.GetTextContent(" ")
+	if text == nil || *text != "hello world" {
+		t.Fatalf("unexpected response text content: %#v", text)
+	}
+	if !resp.HasContentBlocks("text") || !resp.HasContentBlocks("tool_call") || !resp.HasContentBlocks() {
+		t.Fatalf("chat response should report existing blocks: %#v", resp.Content)
+	}
+	if resp.HasContentBlocks("thinking") {
+		t.Fatalf("chat response should not report missing thinking blocks: %#v", resp.Content)
+	}
+	if got := resp.GetContentBlocks("tool_call")[0].(*message.ToolCallBlock); got.ID != callID {
+		t.Fatalf("unexpected tool call block: %#v", got)
+	}
+	if got := resp.FindBlock("text", textID); got == nil || got.BlockID() != textID {
+		t.Fatalf("expected to find text block %q, got %#v", textID, got)
+	}
+
+	if got := (*modelpkg.ChatResponse)(nil).GetTextContent(""); got != nil {
+		t.Fatalf("nil response should not return text content: %#v", got)
+	}
+	if (*modelpkg.ChatResponse)(nil).HasContentBlocks() {
+		t.Fatal("nil response should not report content blocks")
+	}
+	if got := (*modelpkg.ChatResponse)(nil).GetContentBlocks(); got != nil {
+		t.Fatalf("nil response should not return content blocks: %#v", got)
+	}
+	if got := (*modelpkg.ChatResponse)(nil).FindBlock("text", textID); got != nil {
+		t.Fatalf("nil response should not find blocks: %#v", got)
 	}
 }
 

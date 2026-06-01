@@ -56,8 +56,8 @@ func TestClientListsFilteredMCPToolsAndRunsThroughToolkit(t *testing.T) {
 	if response.State != message.ToolResultSuccess {
 		t.Fatalf("expected success response, got %s", response.State)
 	}
-	if !strings.Contains(textOutput(response.Content), "profile:Ada") {
-		t.Fatalf("unexpected MCP response content: %#v", response.Content)
+	if text := response.GetTextContent(""); text == nil || !strings.Contains(*text, "profile:Ada") {
+		t.Fatalf("unexpected MCP response content: %#v", text)
 	}
 }
 
@@ -75,8 +75,8 @@ func TestMCPToolConvertsDataBlocksAndToolErrors(t *testing.T) {
 	if badgeResponse.State != message.ToolResultSuccess {
 		t.Fatalf("expected badge success, got %s", badgeResponse.State)
 	}
-	if !strings.Contains(textOutput(badgeResponse.Content), "badge:Ada") {
-		t.Fatalf("expected text content in badge response: %#v", badgeResponse.Content)
+	if text := badgeResponse.GetTextContent(""); text == nil || !strings.Contains(*text, "badge:Ada") {
+		t.Fatalf("expected text content in badge response: %#v", text)
 	}
 	data := firstDataBlock(badgeResponse.Content)
 	if data == nil {
@@ -95,8 +95,8 @@ func TestMCPToolConvertsDataBlocksAndToolErrors(t *testing.T) {
 	if failResponse.State != message.ToolResultError {
 		t.Fatalf("expected error response, got %s", failResponse.State)
 	}
-	if !strings.Contains(textOutput(failResponse.Content), "upstream failed") {
-		t.Fatalf("unexpected error content: %#v", failResponse.Content)
+	if text := failResponse.GetTextContent(""); text == nil || !strings.Contains(*text, "upstream failed") {
+		t.Fatalf("unexpected error content: %#v", text)
 	}
 }
 
@@ -238,16 +238,6 @@ func runTool(t *testing.T, current astool.Tool, input map[string]any) *astool.To
 		}
 	}
 	return response
-}
-
-func textOutput(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func firstDataBlock(blocks message.ContentBlockList) *message.DataBlock {

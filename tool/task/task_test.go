@@ -38,8 +38,8 @@ func TestTaskCreateListAndPermissions(t *testing.T) {
 		"description": "Port Python task tools to Go.",
 		"metadata":    map[string]any{"phase": "five"},
 	}, state)
-	if firstCreate.State != message.ToolResultSuccess || !strings.Contains(textOutput(firstCreate), "created successfully") {
-		t.Fatalf("TaskCreate should succeed, got %#v output=%q", firstCreate, textOutput(firstCreate))
+	if text := firstCreate.GetTextContent(""); firstCreate.State != message.ToolResultSuccess || text == nil || !strings.Contains(*text, "created successfully") {
+		t.Fatalf("TaskCreate should succeed, got %#v output=%#v", firstCreate, text)
 	}
 	if len(state.TaskContext.Tasks) != 1 {
 		t.Fatalf("TaskCreate should append one task, got %#v", state.TaskContext.Tasks)
@@ -50,8 +50,8 @@ func TestTaskCreateListAndPermissions(t *testing.T) {
 	}
 
 	list := runTool(t, tasktool.NewTaskList(), nil, state)
-	if list.State != message.ToolResultSuccess || !strings.Contains(textOutput(list), "#"+firstID+" [pending] Translate task tools") {
-		t.Fatalf("TaskList should include task summaries, got %#v output=%q", list, textOutput(list))
+	if text := list.GetTextContent(""); list.State != message.ToolResultSuccess || text == nil || !strings.Contains(*text, "#"+firstID+" [pending] Translate task tools") {
+		t.Fatalf("TaskList should include task summaries, got %#v output=%#v", list, text)
 	}
 }
 
@@ -86,14 +86,14 @@ func TestTaskUpdateGetAndDelete(t *testing.T) {
 		"add_blocked_by": []any{firstID},
 		"metadata":       map[string]any{"phase": nil, "scope": "global"},
 	}, state)
-	if updated.State != message.ToolResultSuccess || !strings.Contains(textOutput(updated), "status") {
-		t.Fatalf("TaskUpdate should report updated fields, got %#v output=%q", updated, textOutput(updated))
+	if text := updated.GetTextContent(""); updated.State != message.ToolResultSuccess || text == nil || !strings.Contains(*text, "status") {
+		t.Fatalf("TaskUpdate should report updated fields, got %#v output=%#v", updated, text)
 	}
 	assertUpdatedTask(t, state, firstID, secondID)
 
 	got := runTool(t, tasktool.NewTaskGet(), map[string]any{"task_id": secondID}, state)
-	if got.State != message.ToolResultSuccess || !strings.Contains(textOutput(got), "Blocked by: #"+firstID) {
-		t.Fatalf("TaskGet should include full details, got %#v output=%q", got, textOutput(got))
+	if text := got.GetTextContent(""); got.State != message.ToolResultSuccess || text == nil || !strings.Contains(*text, "Blocked by: #"+firstID) {
+		t.Fatalf("TaskGet should include full details, got %#v output=%#v", got, text)
 	}
 
 	deleted := runTool(t, update, map[string]any{"task_id": firstID, "status": "deleted"}, state)
@@ -111,8 +111,8 @@ func TestTaskUpdateAddBlocksRelation(t *testing.T) {
 		"task_id":    firstID,
 		"add_blocks": []any{secondID},
 	}, state)
-	if updated.State != message.ToolResultSuccess || !strings.Contains(textOutput(updated), "add_blocks") {
-		t.Fatalf("TaskUpdate should report add_blocks, got %#v output=%q", updated, textOutput(updated))
+	if text := updated.GetTextContent(""); updated.State != message.ToolResultSuccess || text == nil || !strings.Contains(*text, "add_blocks") {
+		t.Fatalf("TaskUpdate should report add_blocks, got %#v output=%#v", updated, text)
 	}
 	if len(state.TaskContext.Tasks[0].Blocks) != 1 || state.TaskContext.Tasks[0].Blocks[0] != secondID {
 		t.Fatalf("TaskUpdate did not add blocks relation: %#v", state.TaskContext.Tasks[0].Blocks)
@@ -126,21 +126,21 @@ func TestTaskToolsReturnErrorsForInvalidStateAndInput(t *testing.T) {
 	t.Parallel()
 
 	create := runTool(t, tasktool.NewTaskCreate(), map[string]any{"subject": "Missing state", "description": "No AgentState."}, nil)
-	if create.State != message.ToolResultError || !strings.Contains(textOutput(create), "requires AgentState") {
-		t.Fatalf("TaskCreate should require AgentState, got %#v output=%q", create, textOutput(create))
+	if text := create.GetTextContent(""); create.State != message.ToolResultError || text == nil || !strings.Contains(*text, "requires AgentState") {
+		t.Fatalf("TaskCreate should require AgentState, got %#v output=%#v", create, text)
 	}
 
 	state := astate.NewAgentState()
 	missing := runTool(t, tasktool.NewTaskGet(), map[string]any{"task_id": "missing"}, state)
-	if missing.State != message.ToolResultError || !strings.Contains(textOutput(missing), "Task not found") {
-		t.Fatalf("TaskGet should report missing tasks, got %#v output=%q", missing, textOutput(missing))
+	if text := missing.GetTextContent(""); missing.State != message.ToolResultError || text == nil || !strings.Contains(*text, "Task not found") {
+		t.Fatalf("TaskGet should report missing tasks, got %#v output=%#v", missing, text)
 	}
 
 	task := astate.NewTask("Keep status valid", "Status validation.", nil)
 	state.TaskContext.AddTask(task)
 	invalid := runTool(t, tasktool.NewTaskUpdate(), map[string]any{"task_id": task.ID, "status": "blocked"}, state)
-	if invalid.State != message.ToolResultError || !strings.Contains(textOutput(invalid), "invalid task status") {
-		t.Fatalf("TaskUpdate should reject invalid status, got %#v output=%q", invalid, textOutput(invalid))
+	if text := invalid.GetTextContent(""); invalid.State != message.ToolResultError || text == nil || !strings.Contains(*text, "invalid task status") {
+		t.Fatalf("TaskUpdate should reject invalid status, got %#v output=%#v", invalid, text)
 	}
 }
 
@@ -215,17 +215,4 @@ func runTool(t *testing.T, tool astool.Tool, input map[string]any, state *astate
 		}
 	}
 	return response
-}
-
-func textOutput(response *astool.ToolResponse) string {
-	if response == nil {
-		return ""
-	}
-	var builder strings.Builder
-	for _, block := range response.Content {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }

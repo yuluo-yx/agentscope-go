@@ -49,7 +49,11 @@ func main() {
 	))
 
 	response := runTool(greet, map[string]any{"name": "Go"}, nil)
-	fmt.Printf("function_tool=%s state=%s output=%q\n", greet.Name(), response.State, textOutput(response))
+	output := ""
+	if text := response.GetTextContent(""); text != nil {
+		output = *text
+	}
+	fmt.Printf("function_tool=%s state=%s output=%q\n", greet.Name(), response.State, output)
 	kit := mustToolkit(tool.NewToolkit(greet))
 	fmt.Println(runDashScopeToolCall(context.Background(), kit, asstate.NewAgentState(), "Use the Greet tool to greet Go, then answer with the greeting."))
 }
@@ -66,16 +70,6 @@ func runTool(t tool.Tool, input map[string]any, state *asstate.AgentState) *tool
 		}
 	}
 	return response
-}
-
-func textOutput(response *tool.ToolResponse) string {
-	var builder strings.Builder
-	for _, block := range response.Content {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate.AgentState, prompt string) string {
@@ -115,10 +109,13 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 		}
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
-			if lastToolCall == nil {
-				panic(fmt.Sprintf("DashScope returned no tool call: %q", textOutputBlocks(response.Content)))
+			text := ""
+			if responseText := response.GetTextContent(""); responseText != nil {
+				text = *responseText
 			}
-			text := textOutputBlocks(response.Content)
+			if lastToolCall == nil {
+				panic(fmt.Sprintf("DashScope returned no tool call: %q", text))
+			}
 			if strings.TrimSpace(text) == "" {
 				panic(fmt.Sprintf("DashScope returned empty final text after %s", lastToolCall.Name))
 			}
@@ -145,16 +142,6 @@ func getenv(name, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func textOutputBlocks(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {

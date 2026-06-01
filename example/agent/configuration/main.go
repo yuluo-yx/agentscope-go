@@ -137,8 +137,12 @@ func main() {
 		agentpkg.WithReActConfig(reactConfig),
 	))
 	reply := mustReply(agent.Reply(context.Background(), mustMessage(message.NewUserMessage("user", "Use configured fallback."))))
+	replyText := ""
+	if text := reply.GetTextContent(""); text != nil {
+		replyText = *text
+	}
 	fmt.Printf("reply=%s primary_stream_calls=%d fallback_stream_calls=%d compressed=%t\n",
-		textContent(reply),
+		replyText,
 		primary.streamCalls,
 		fallback.streamCalls,
 		contextCompressed(state),
@@ -154,20 +158,14 @@ func contextCompressed(state *asstate.AgentState) bool {
 		return false
 	}
 	result, ok := results[0].(*message.ToolResultBlock)
-	return ok && strings.Contains(result.Output.Raw, "truncated") &&
+	if !ok {
+		return false
+	}
+	text := result.Output.Blocks.GetTextContent("")
+	return strings.Contains(result.Output.Raw, "truncated") &&
 		len(result.Output.Blocks) > 0 &&
-		strings.Contains(result.Output.Blocks[0].(*message.TextBlock).Text, "truncated")
-}
-
-func textContent(msg *message.Message) string {
-	if msg == nil {
-		return ""
-	}
-	text := msg.GetTextContent("")
-	if text == nil {
-		return ""
-	}
-	return *text
+		text != nil &&
+		strings.Contains(*text, "truncated")
 }
 
 func mustAgent(agent *agentpkg.Agent, err error) *agentpkg.Agent {

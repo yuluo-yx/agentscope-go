@@ -46,8 +46,8 @@ func TestReadWriteEditUseAbsolutePathsAndReadCache(t *testing.T) {
 	if readResp.State != message.ToolResultSuccess {
 		t.Fatalf("Read should succeed, got %#v", readResp)
 	}
-	if got := textOutput(readResp); !strings.Contains(got, "     2\ttwo") {
-		t.Fatalf("Read output should include padded line numbers, got %q", got)
+	if got := readResp.GetTextContent(""); got == nil || !strings.Contains(*got, "     2\ttwo") {
+		t.Fatalf("Read output should include padded line numbers, got %#v", got)
 	}
 	if _, ok := state.ToolContext.GetCache(filePath); !ok {
 		t.Fatal("Read should cache file content in AgentState")
@@ -57,7 +57,7 @@ func TestReadWriteEditUseAbsolutePathsAndReadCache(t *testing.T) {
 		"file_path": filePath,
 		"content":   "changed\n",
 	}, astate.NewAgentState())
-	if existingWithoutRead.State != message.ToolResultError || !strings.Contains(textOutput(existingWithoutRead), "has not been read yet") {
+	if text := existingWithoutRead.GetTextContent(""); existingWithoutRead.State != message.ToolResultError || text == nil || !strings.Contains(*text, "has not been read yet") {
 		t.Fatalf("Write should require prior Read for existing files, got %#v", existingWithoutRead)
 	}
 
@@ -149,7 +149,7 @@ func TestBashExecutesAndChecksDangerousCommands(t *testing.T) {
 	}
 
 	response := runTool(t, bash, map[string]any{"command": "printf hello"}, astate.NewAgentState())
-	if response.State != message.ToolResultSuccess || strings.TrimSpace(textOutput(response)) != "hello" {
+	if text := response.GetTextContent(""); response.State != message.ToolResultSuccess || text == nil || strings.TrimSpace(*text) != "hello" {
 		t.Fatalf("Bash execution output mismatch: %#v", response)
 	}
 }
@@ -242,7 +242,7 @@ func TestWriteAndEditRequireStateForExistingFiles(t *testing.T) {
 		"file_path": filePath,
 		"content":   "new\n",
 	}, nil)
-	if writeResp.State != message.ToolResultError || !strings.Contains(textOutput(writeResp), "agent state required") {
+	if text := writeResp.GetTextContent(""); writeResp.State != message.ToolResultError || text == nil || !strings.Contains(*text, "agent state required") {
 		t.Fatalf("Write should require state for existing files, got %#v", writeResp)
 	}
 
@@ -251,7 +251,7 @@ func TestWriteAndEditRequireStateForExistingFiles(t *testing.T) {
 		"old_string": "old",
 		"new_string": "new",
 	}, nil)
-	if editResp.State != message.ToolResultError || !strings.Contains(textOutput(editResp), "agent state required") {
+	if text := editResp.GetTextContent(""); editResp.State != message.ToolResultError || text == nil || !strings.Contains(*text, "agent state required") {
 		t.Fatalf("Edit should require state for existing files, got %#v", editResp)
 	}
 }
@@ -277,9 +277,12 @@ func TestGlobAndGrepSearchFiles(t *testing.T) {
 	if globResp.State != message.ToolResultSuccess {
 		t.Fatalf("Glob should succeed, got %#v", globResp)
 	}
-	globOutput := textOutput(globResp)
-	if !strings.Contains(globOutput, "a.go") || strings.Contains(globOutput, "b.txt") {
-		t.Fatalf("Glob output should include only Go file, got %q", globOutput)
+	globOutput := globResp.GetTextContent("")
+	if globOutput == nil {
+		t.Fatalf("Glob output should contain text, got %#v", globResp.Content)
+	}
+	if !strings.Contains(*globOutput, "a.go") || strings.Contains(*globOutput, "b.txt") {
+		t.Fatalf("Glob output should include only Go file, got %q", *globOutput)
 	}
 
 	grepResp := runTool(t, builtin.NewGrep(), map[string]any{
@@ -290,9 +293,12 @@ func TestGlobAndGrepSearchFiles(t *testing.T) {
 	if grepResp.State != message.ToolResultSuccess {
 		t.Fatalf("Grep should succeed, got %#v", grepResp)
 	}
-	grepOutput := textOutput(grepResp)
-	if !strings.Contains(grepOutput, "a.go") || strings.Contains(grepOutput, "b.txt") {
-		t.Fatalf("Grep output should respect glob filter, got %q", grepOutput)
+	grepOutput := grepResp.GetTextContent("")
+	if grepOutput == nil {
+		t.Fatalf("Grep output should contain text, got %#v", grepResp.Content)
+	}
+	if !strings.Contains(*grepOutput, "a.go") || strings.Contains(*grepOutput, "b.txt") {
+		t.Fatalf("Grep output should respect glob filter, got %q", *grepOutput)
 	}
 }
 
@@ -311,8 +317,8 @@ func TestResetToolsUpdatesActivatedGroups(t *testing.T) {
 	if len(state.ToolContext.ActivatedGroups) != 1 || state.ToolContext.ActivatedGroups[0] != "search" {
 		t.Fatalf("activated groups not updated: %#v", state.ToolContext.ActivatedGroups)
 	}
-	if !strings.Contains(textOutput(response), "Use Search.") {
-		t.Fatalf("reset_tools should include group instructions, got %q", textOutput(response))
+	if text := response.GetTextContent(""); text == nil || !strings.Contains(*text, "Use Search.") {
+		t.Fatalf("reset_tools should include group instructions, got %#v", text)
 	}
 }
 
@@ -330,15 +336,4 @@ func runTool(t *testing.T, tool astool.Tool, input map[string]any, state *astate
 		}
 	}
 	return response
-}
-
-func textOutput(response *astool.ToolResponse) string {
-	if response == nil || len(response.Content) == 0 {
-		return ""
-	}
-	text, ok := response.Content[0].(*message.TextBlock)
-	if !ok {
-		return ""
-	}
-	return text.Text
 }

@@ -339,13 +339,11 @@ User request: %s`, prompt))
 		return
 	}
 
-	var builder strings.Builder
-	for _, block := range chatResponse.Content {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
+	responseText := chatResponse.GetTextContent("")
+	if responseText == nil {
+		responseText = new(string)
 	}
-	raw := strings.TrimSpace(builder.String())
+	raw := strings.TrimSpace(*responseText)
 	if start := strings.Index(raw, "{"); start >= 0 {
 		if end := strings.LastIndex(raw, "}"); end >= start {
 			raw = raw[start : end+1]

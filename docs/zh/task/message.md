@@ -42,6 +42,26 @@ result := message.NewToolResultBlock(
 )
 ```
 
+需要从内容块列表中读取文本或筛选内容块时，可以使用统一的查询方法：
+
+```go
+blocks := message.ContentBlockList{
+	message.NewTextBlock("hello"),
+	message.NewToolCallBlock("call-1", "Read", `{"path":"README.md"}`),
+	message.NewTextBlock("world"),
+}
+
+text := blocks.GetTextContent(" ")
+if text != nil {
+	fmt.Println(*text) // hello world
+}
+
+toolCalls := blocks.GetContentBlocks("tool_call")
+if len(toolCalls) > 0 {
+	fmt.Println(toolCalls[0].BlockID())
+}
+```
+
 ## 对话历史
 
 模型可用的历史消息通常保存为切片：

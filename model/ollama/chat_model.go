@@ -479,13 +479,11 @@ func toolResultText(output message.ToolResultOutput) string {
 	if output.Raw != "" {
 		return output.Raw
 	}
-	var builder strings.Builder
-	for _, block := range output.Blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
+	text := output.Blocks.GetTextContent("")
+	if text == nil {
+		return ""
 	}
-	return builder.String()
+	return *text
 }
 
 func normalizeError(err error) error {

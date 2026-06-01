@@ -36,7 +36,11 @@ func main() {
 		"metadata":    map[string]any{"phase": "examples"},
 	}, state)
 	if create.State != message.ToolResultSuccess {
-		panic(textOutput(create))
+		text := create.GetTextContent("")
+		if text == nil {
+			panic("TaskCreate returned no text content")
+		}
+		panic(*text)
 	}
 
 	taskID := state.TaskContext.Tasks[0].ID
@@ -47,6 +51,8 @@ func main() {
 	}, state)
 	list := runTool(tasktool.NewTaskList(), nil, state)
 	get := runTool(tasktool.NewTaskGet(), map[string]any{"task_id": taskID}, state)
+	listText := list.GetTextContent("")
+	getText := get.GetTextContent("")
 
 	fmt.Printf(
 		"task_tools=%s tasks=%d status=%s update=%s list_has_task=%t get_has_owner=%t\n",
@@ -54,8 +60,8 @@ func main() {
 		len(state.TaskContext.Tasks),
 		state.TaskContext.Tasks[0].State,
 		update.State,
-		strings.Contains(textOutput(list), "Create examples"),
-		strings.Contains(textOutput(get), "example"),
+		listText != nil && strings.Contains(*listText, "Create examples"),
+		getText != nil && strings.Contains(*getText, "example"),
 	)
 	kit := mustToolkit(tool.NewToolkit(tasktool.NewTaskGet()))
 	fmt.Println(runDashScopeToolCall(context.Background(), kit, state, fmt.Sprintf("Use the TaskGet tool with task_id %s, then answer with one short sentence about the task.", taskID)))
@@ -73,16 +79,6 @@ func runTool(t tool.Tool, input map[string]any, state *asstate.AgentState) *tool
 		}
 	}
 	return response
-}
-
-func textOutput(response *tool.ToolResponse) string {
-	var builder strings.Builder
-	for _, block := range response.Content {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func toolNames(tools []tool.Tool) string {
@@ -130,10 +126,13 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 		}
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
-			if lastToolCall == nil {
-				panic(fmt.Sprintf("DashScope returned no tool call: %q", textOutputBlocks(response.Content)))
+			text := ""
+			if responseText := response.GetTextContent(""); responseText != nil {
+				text = *responseText
 			}
-			text := textOutputBlocks(response.Content)
+			if lastToolCall == nil {
+				panic(fmt.Sprintf("DashScope returned no tool call: %q", text))
+			}
 			if strings.TrimSpace(text) == "" {
 				panic(fmt.Sprintf("DashScope returned empty final text after %s", lastToolCall.Name))
 			}
@@ -160,16 +159,6 @@ func getenv(name, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func textOutputBlocks(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {

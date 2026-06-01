@@ -53,7 +53,8 @@ func TestFunctionToolExecutesAndClonesSchema(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	chunk := <-chunks
-	if chunk.State != message.ToolResultSuccess || chunk.Content[0].(*message.TextBlock).Text != "hello" {
+	text := chunk.Content.GetTextContent("")
+	if chunk.State != message.ToolResultSuccess || text == nil || *text != "hello" {
 		t.Fatalf("unexpected function chunk: %#v", chunk)
 	}
 }
@@ -107,8 +108,8 @@ func TestFunctionToolWrapsHandlerErrorsAsErrorChunks(t *testing.T) {
 	if chunk.State != message.ToolResultError {
 		t.Fatalf("expected error chunk, got %#v", chunk)
 	}
-	if got := chunk.Content[0].(*message.TextBlock).Text; !strings.Contains(got, "boom") {
-		t.Fatalf("error chunk should include handler error, got %q", got)
+	if got := chunk.Content.GetTextContent(""); got == nil || !strings.Contains(*got, "boom") {
+		t.Fatalf("error chunk should include handler error, got %#v", got)
 	}
 }
 

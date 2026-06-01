@@ -95,8 +95,8 @@ func TestOpenAICompatibleProviderPackagesUseProviderDefaults(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Call returned error: %v", err)
 			}
-			if got := resp.Content[0].(*message.TextBlock).Text; got != "compatible ok" {
-				t.Fatalf("response text mismatch: %q", got)
+			if got := resp.GetTextContent(""); got == nil || *got != "compatible ok" {
+				t.Fatalf("response text mismatch: %#v", got)
 			}
 		})
 	}

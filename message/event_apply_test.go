@@ -93,7 +93,7 @@ func TestApplyEventAccumulatesStreamingMessage(t *testing.T) {
 	if result.State != message.ToolResultSuccess {
 		t.Fatalf("unexpected tool result state: %q", result.State)
 	}
-	if result.Output.Blocks[0].(*message.TextBlock).Text != "result ok" {
+	if text := result.Output.Blocks.GetTextContent(""); text == nil || *text != "result ok" {
 		t.Fatalf("unexpected tool result output: %#v", result.Output)
 	}
 	if result.Output.Blocks[1].(*message.DataBlock).Source.SourceType() != "url" {
@@ -152,7 +152,7 @@ func TestApplyEventConvertsRawToolResultOutput(t *testing.T) {
 	}
 
 	result := msg.GetContentBlocks("tool_result")[0].(*message.ToolResultBlock)
-	if result.Output.Blocks[0].(*message.TextBlock).Text != "raw delta" || result.Output.Raw != "" {
+	if text := result.Output.Blocks.GetTextContent(""); text == nil || *text != "raw delta" || result.Output.Raw != "" {
 		t.Fatalf("raw output was not converted and appended: %#v", result.Output)
 	}
 }

@@ -15,6 +15,8 @@
 package message
 
 import (
+	"strings"
+
 	"github.com/yuluo-yx/agentscope-go/permission"
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
@@ -48,6 +50,79 @@ func (l ContentBlockList) Clone() ContentBlockList {
 		out = append(out, block.Clone())
 	}
 	return out
+}
+
+// HasContentBlocks 判断内容块列表是否包含指定类型的内容块；未传类型时判断列表是否非空。
+func (l ContentBlockList) HasContentBlocks(types ...string) bool {
+	if len(types) == 0 {
+		return len(l) > 0
+	}
+	for _, block := range l {
+		if block == nil {
+			continue
+		}
+		for _, typ := range types {
+			if block.BlockType() == typ {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// GetTextContent 返回内容块列表中的文本块内容；不存在文本块时返回 nil。
+func (l ContentBlockList) GetTextContent(separator string) *string {
+	var builder strings.Builder
+	found := false
+	for _, block := range l {
+		text, ok := block.(*TextBlock)
+		if !ok || text == nil {
+			continue
+		}
+		if found {
+			builder.WriteString(separator)
+		}
+		builder.WriteString(text.Text)
+		found = true
+	}
+	if !found {
+		return nil
+	}
+	out := builder.String()
+	return &out
+}
+
+// GetContentBlocks 返回匹配类型的内容块；未传类型时返回所有内容块的浅拷贝。
+func (l ContentBlockList) GetContentBlocks(types ...string) []ContentBlock {
+	if len(types) == 0 {
+		return append([]ContentBlock(nil), l...)
+	}
+	var out []ContentBlock
+	for _, block := range l {
+		if block == nil {
+			continue
+		}
+		for _, typ := range types {
+			if block.BlockType() == typ {
+				out = append(out, block)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// FindBlock 按内容块类型和 ID 查找内容块；未找到时返回 nil。
+func (l ContentBlockList) FindBlock(blockType, blockID string) ContentBlock {
+	for _, block := range l {
+		if block == nil {
+			continue
+		}
+		if block.BlockType() == blockType && block.BlockID() == blockID {
+			return block
+		}
+	}
+	return nil
 }
 
 type TextBlock struct {

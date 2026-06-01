@@ -180,60 +180,31 @@ func (m *Message) Validate() error {
 }
 
 func (m *Message) HasContentBlocks(types ...string) bool {
-	if len(types) == 0 {
-		return len(m.Content) > 0
+	if m == nil {
+		return false
 	}
-	for _, block := range m.Content {
-		for _, typ := range types {
-			if block.BlockType() == typ {
-				return true
-			}
-		}
-	}
-	return false
+	return m.Content.HasContentBlocks(types...)
 }
 
 func (m *Message) GetTextContent(separator string) *string {
-	var text string
-	found := false
-	for _, block := range m.Content {
-		if b, ok := block.(*TextBlock); ok {
-			if found {
-				text += separator
-			}
-			text += b.Text
-			found = true
-		}
-	}
-	if !found {
+	if m == nil {
 		return nil
 	}
-	return &text
+	return m.Content.GetTextContent(separator)
 }
 
 func (m *Message) GetContentBlocks(types ...string) []ContentBlock {
-	if len(types) == 0 {
-		return append([]ContentBlock(nil), m.Content...)
+	if m == nil {
+		return nil
 	}
-	var out []ContentBlock
-	for _, block := range m.Content {
-		for _, typ := range types {
-			if block.BlockType() == typ {
-				out = append(out, block)
-				break
-			}
-		}
-	}
-	return out
+	return m.Content.GetContentBlocks(types...)
 }
 
 func (m *Message) FindBlock(blockType, blockID string) ContentBlock {
-	for _, block := range m.Content {
-		if block.BlockType() == blockType && block.BlockID() == blockID {
-			return block
-		}
+	if m == nil {
+		return nil
 	}
-	return nil
+	return m.Content.FindBlock(blockType, blockID)
 }
 
 func (m *Message) Clone() *Message {

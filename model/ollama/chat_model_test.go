@@ -67,8 +67,8 @@ func TestChatModelCallFormatsRequestAndParsesResponse(t *testing.T) {
 	if got := model.Name(); got != "ollama:qwen3:8b" {
 		t.Fatalf("Name mismatch: %q", got)
 	}
-	if got := resp.Content[0].(*message.TextBlock).Text; got != "ollama ok" {
-		t.Fatalf("response text mismatch: %q", got)
+	if got := resp.GetTextContent(""); got == nil || *got != "ollama ok" {
+		t.Fatalf("response text mismatch: %#v", got)
 	}
 	if resp.Usage.InputTokens != 3 || resp.Usage.OutputTokens != 2 {
 		t.Fatalf("usage not parsed: %#v", resp.Usage)
@@ -111,11 +111,11 @@ func TestChatModelStreamEmitsDeltasAndFinalResponse(t *testing.T) {
 	if len(chunks) != 3 {
 		t.Fatalf("unexpected chunk count: %d %#v", len(chunks), chunks)
 	}
-	if chunks[0].IsLast || chunks[0].Content[0].(*message.TextBlock).Text != "hel" {
+	if text := chunks[0].Content.GetTextContent(""); chunks[0].IsLast || text == nil || *text != "hel" {
 		t.Fatalf("first delta mismatch: %#v", chunks[0])
 	}
 	final := chunks[len(chunks)-1]
-	if !final.IsLast || final.Content[0].(*message.TextBlock).Text != "hello" {
+	if text := final.GetTextContent(""); !final.IsLast || text == nil || *text != "hello" {
 		t.Fatalf("final response mismatch: %#v", final)
 	}
 }

@@ -54,6 +54,10 @@ func main() {
 	lookup := findTool(tools, "mcp__people__lookup_profile")
 	direct := runTool(ctx, lookup, map[string]any{"name": "Ada"}, asstate.NewAgentState())
 	kit := mustToolkit(tool.NewToolkit(tools...))
+	directText := ""
+	if text := direct.GetTextContent(""); text != nil {
+		directText = *text
+	}
 
 	fmt.Printf(
 		"mcp_client=%s connected=%t tools=%s direct_state=%s direct_output=%q\n",
@@ -61,7 +65,7 @@ func main() {
 		client.IsConnected(),
 		toolNames(tools),
 		direct.State,
-		textOutput(direct.Content),
+		directText,
 	)
 	fmt.Println(runDashScopeToolCall(ctx, kit, asstate.NewAgentState(), "Use the mcp__people__lookup_profile tool to look up Ada, then answer with one short sentence using the tool result."))
 }
@@ -146,10 +150,13 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 		}
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
-			if lastToolCall == nil {
-				panic(fmt.Sprintf("DashScope returned no tool call: %q", textOutput(response.Content)))
+			text := ""
+			if responseText := response.GetTextContent(""); responseText != nil {
+				text = *responseText
 			}
-			text := textOutput(response.Content)
+			if lastToolCall == nil {
+				panic(fmt.Sprintf("DashScope returned no tool call: %q", text))
+			}
 			if strings.TrimSpace(text) == "" {
 				panic(fmt.Sprintf("DashScope returned empty final text after %s", lastToolCall.Name))
 			}
@@ -193,16 +200,6 @@ func schemaNames(schemas []asmodel.ToolSchema) string {
 		names = append(names, schema.Function.Name)
 	}
 	return strings.Join(names, ",")
-}
-
-func textOutput(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {

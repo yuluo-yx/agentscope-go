@@ -406,8 +406,8 @@ func TestAgentExecutesToolCallsAndContinuesReasoning(t *testing.T) {
 	if result.State != message.ToolResultSuccess || len(result.Output.Blocks) != 1 {
 		t.Fatalf("tool result should be successful, got %#v", result)
 	}
-	if got := result.Output.Blocks[0].(*message.TextBlock).Text; got != "echo:hi" {
-		t.Fatalf("tool output mismatch: %q", got)
+	if got := result.Output.Blocks.GetTextContent(""); got == nil || *got != "echo:hi" {
+		t.Fatalf("tool output mismatch: %#v", got)
 	}
 }
 
@@ -588,9 +588,9 @@ func TestAgentCompressContextTruncatesToolResults(t *testing.T) {
 	if !strings.HasPrefix(result.Output.Raw, "raw-") || !strings.Contains(result.Output.Raw, "truncated") {
 		t.Fatalf("raw tool output was not truncated: %q", result.Output.Raw)
 	}
-	text := result.Output.Blocks[0].(*message.TextBlock).Text
-	if !strings.HasPrefix(text, "text") || !strings.Contains(text, "truncated") {
-		t.Fatalf("text tool output was not truncated: %q", text)
+	text := result.Output.Blocks.GetTextContent("")
+	if text == nil || !strings.HasPrefix(*text, "text") || !strings.Contains(*text, "truncated") {
+		t.Fatalf("text tool output was not truncated: %v", text)
 	}
 }
 
@@ -808,9 +808,9 @@ func TestAgentCompressContextKeepsUTF8Valid(t *testing.T) {
 	if !utf8.ValidString(result.Output.Raw) {
 		t.Fatalf("raw output should remain valid UTF-8, got %q", result.Output.Raw)
 	}
-	text := result.Output.Blocks[0].(*message.TextBlock).Text
-	if !utf8.ValidString(text) {
-		t.Fatalf("text output should remain valid UTF-8, got %q", text)
+	text := result.Output.Blocks.GetTextContent("")
+	if text == nil || !utf8.ValidString(*text) {
+		t.Fatalf("text output should remain valid UTF-8, got %v", text)
 	}
 }
 

@@ -184,11 +184,9 @@ func toolResultText(output message.ToolResultOutput) string {
 	if len(output.Blocks) == 0 {
 		return ""
 	}
-	var builder strings.Builder
-	for _, block := range output.Blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
+	text := output.Blocks.GetTextContent("")
+	if text == nil {
+		return ""
 	}
-	return builder.String()
+	return *text
 }

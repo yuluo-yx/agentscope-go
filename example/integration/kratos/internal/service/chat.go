@@ -16,7 +16,6 @@ package service
 
 import (
 	"context"
-	"strings"
 
 	v1 "kratos/api/chat/v1"
 	"kratos/internal/biz"
@@ -48,7 +47,11 @@ func (s *ChatService) Chat(ctx context.Context, req *v1.ChatRequest) (*v1.ChatRe
 	if err != nil {
 		return nil, err
 	}
-	return &v1.ChatReply{Content: contentToProto(content), Text: textContent(content)}, nil
+	text := content.GetTextContent("")
+	if text == nil {
+		text = new(string)
+	}
+	return &v1.ChatReply{Content: contentToProto(content), Text: *text}, nil
 }
 
 // StreamChat implements the gRPC streaming ChatModel endpoint.
@@ -61,7 +64,11 @@ func (s *ChatService) StreamChat(req *v1.ChatRequest, stream v1.Chat_StreamChatS
 // StreamChatEvents emits ChatModel stream replies for HTTP SSE and gRPC transports.
 func (s *ChatService) StreamChatEvents(ctx context.Context, prompt string, emit func(*v1.ChatStreamReply) error) error {
 	return s.uc.StreamChat(ctx, prompt, func(content message.ContentBlockList, final bool) error {
-		return emit(&v1.ChatStreamReply{Content: contentToProto(content), Text: textContent(content), Final: final})
+		text := content.GetTextContent("")
+		if text == nil {
+			text = new(string)
+		}
+		return emit(&v1.ChatStreamReply{Content: contentToProto(content), Text: *text, Final: final})
 	})
 }
 
@@ -75,7 +82,11 @@ func (s *ChatService) StreamChatTool(req *v1.ChatRequest, stream v1.Chat_StreamC
 // StreamChatToolEvents emits the two-step ChatModel tool-call stream for HTTP SSE and gRPC transports.
 func (s *ChatService) StreamChatToolEvents(ctx context.Context, prompt string, emit func(*v1.ChatStreamReply) error) error {
 	return s.uc.StreamChatTool(ctx, prompt, func(content message.ContentBlockList, final bool) error {
-		return emit(&v1.ChatStreamReply{Content: contentToProto(content), Text: textContent(content), Final: final})
+		text := content.GetTextContent("")
+		if text == nil {
+			text = new(string)
+		}
+		return emit(&v1.ChatStreamReply{Content: contentToProto(content), Text: *text, Final: final})
 	})
 }
 
@@ -85,7 +96,11 @@ func (s *ChatService) AgentChat(ctx context.Context, req *v1.ChatRequest) (*v1.C
 	if err != nil {
 		return nil, err
 	}
-	return &v1.ChatReply{Content: contentToProto(content), Text: textContent(content)}, nil
+	text := content.GetTextContent("")
+	if text == nil {
+		text = new(string)
+	}
+	return &v1.ChatReply{Content: contentToProto(content), Text: *text}, nil
 }
 
 // AgentStreamChat implements the gRPC streaming Agent endpoint.
@@ -133,20 +148,14 @@ func contentToProto(blocks message.ContentBlockList) []*v1.ContentBlock {
 		case *message.ToolCallBlock:
 			out = append(out, &v1.ContentBlock{Type: b.Type, Id: b.ID, Name: b.Name, State: string(b.State)})
 		case *message.ToolResultBlock:
-			out = append(out, &v1.ContentBlock{Type: b.Type, Id: b.ID, Name: b.Name, State: string(b.State), Text: textContent(b.Output.Blocks)})
+			content := &v1.ContentBlock{Type: b.Type, Id: b.ID, Name: b.Name, State: string(b.State)}
+			if text := b.Output.Blocks.GetTextContent(""); text != nil {
+				content.Text = *text
+			}
+			out = append(out, content)
 		default:
 			out = append(out, &v1.ContentBlock{Type: block.BlockType(), Id: block.BlockID()})
 		}
 	}
 	return out
-}
-
-func textContent(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if b, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(b.Text)
-		}
-	}
-	return builder.String()
 }

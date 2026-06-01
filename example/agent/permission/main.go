@@ -116,18 +116,11 @@ func main() {
 		Rules:     confirm.ToolCalls[0].SuggestedRules,
 	}})
 	reply := mustReply(agent.Reply(context.Background(), confirmEvent))
-	fmt.Printf("confirmed_reply=%s executed=%t\n", textContent(reply), executed)
-}
-
-func textContent(msg *message.Message) string {
-	if msg == nil {
-		return ""
+	replyText := ""
+	if text := reply.GetTextContent(""); text != nil {
+		replyText = *text
 	}
-	text := msg.GetTextContent("")
-	if text == nil {
-		return ""
-	}
-	return *text
+	fmt.Printf("confirmed_reply=%s executed=%t\n", replyText, executed)
 }
 
 func mustTool(t *tool.FunctionTool, err error) *tool.FunctionTool {

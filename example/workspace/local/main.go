@@ -76,6 +76,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	readText := readResponse.GetTextContent("")
 
 	fmt.Printf(
 		"workspace_alive=%t tools=%d skills=%d write=%s read_has_brief=%t context_file=%t result_file=%t tool_names=%s\n",
@@ -83,7 +84,7 @@ func main() {
 		len(tools),
 		len(skills),
 		writeResponse.State,
-		strings.Contains(textOutput(readResponse), "Workspace brief"),
+		readText != nil && strings.Contains(*readText, "Workspace brief"),
 		fileExists(contextPath),
 		fileExists(resultPath),
 		toolNames(tools),
@@ -111,16 +112,6 @@ func runTool(ctx context.Context, current workspace.Tool, input map[string]any, 
 		}
 	}
 	return response
-}
-
-func textOutput(response *tool.ToolResponse) string {
-	var builder strings.Builder
-	for _, block := range response.Content {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func writeSkill(dir, name, description, body string) {

@@ -50,16 +50,24 @@ func main() {
 	glob := runTool(builtin.NewGlob(), map[string]any{"pattern": "**/*.txt", "path": dir}, state)
 	grep := runTool(builtin.NewGrep(), map[string]any{"pattern": "AgentScope", "path": dir, "glob": "*.txt"}, state)
 	bash := runTool(builtin.NewBash(), map[string]any{"command": "printf shell-ok"}, state)
+	readText := read.GetTextContent("")
+	globText := glob.GetTextContent("")
+	grepText := grep.GetTextContent("")
+	bashText := bash.GetTextContent("")
+	bashOutput := ""
+	if bashText != nil {
+		bashOutput = strings.TrimSpace(*bashText)
+	}
 
 	fmt.Printf(
 		"builtin_tools=%s write=%s read_has_text=%t edit=%s glob_has_file=%t grep_has_text=%t bash=%q\n",
 		toolNames(tools),
 		write.State,
-		strings.Contains(textOutput(read), "AgentScope Go"),
+		readText != nil && strings.Contains(*readText, "AgentScope Go"),
 		edit.State,
-		strings.Contains(textOutput(glob), "note.txt"),
-		strings.Contains(textOutput(grep), "AgentScope"),
-		strings.TrimSpace(textOutput(bash)),
+		globText != nil && strings.Contains(*globText, "note.txt"),
+		grepText != nil && strings.Contains(*grepText, "AgentScope"),
+		bashOutput,
 	)
 	kit := mustToolkit(tool.NewToolkit(builtin.NewRead()))
 	fmt.Println(runDashScopeToolCall(context.Background(), kit, state, fmt.Sprintf("Use the Read tool to read %s, then answer with one short sentence about the file.", filePath)))
@@ -85,16 +93,6 @@ func runTool(t tool.Tool, input map[string]any, state *asstate.AgentState) *tool
 		}
 	}
 	return response
-}
-
-func textOutput(response *tool.ToolResponse) string {
-	var builder strings.Builder
-	for _, block := range response.Content {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func toolNames(tools []tool.Tool) string {
@@ -142,10 +140,13 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 		}
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
-			if lastToolCall == nil {
-				panic(fmt.Sprintf("DashScope returned no tool call: %q", textOutputBlocks(response.Content)))
+			text := ""
+			if responseText := response.GetTextContent(""); responseText != nil {
+				text = *responseText
 			}
-			text := textOutputBlocks(response.Content)
+			if lastToolCall == nil {
+				panic(fmt.Sprintf("DashScope returned no tool call: %q", text))
+			}
 			if strings.TrimSpace(text) == "" {
 				panic(fmt.Sprintf("DashScope returned empty final text after %s", lastToolCall.Name))
 			}
@@ -172,16 +173,6 @@ func getenv(name, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func textOutputBlocks(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {

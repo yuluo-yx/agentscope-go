@@ -89,8 +89,8 @@ func TestGlobalAgentStreamFunctionToolE2E(t *testing.T) {
 		t.Fatalf("model should be called before and after tool execution, got %d calls", len(model.requests))
 	}
 	result := onlyToolResultFromLastModelRequest(t, model)
-	if result.State != message.ToolResultSuccess || blocksText(result.Output.Blocks) != "hello Ada" {
-		t.Fatalf("unexpected tool result passed back to model: %#v", result)
+	if text := result.Output.Blocks.GetTextContent(""); result.State != message.ToolResultSuccess || text == nil || *text != "hello Ada" {
+		t.Fatalf("unexpected tool result passed back to model: %#v text=%#v", result, text)
 	}
 }
 
@@ -160,8 +160,8 @@ func TestGlobalPermissionConfirmationResumeE2E(t *testing.T) {
 		t.Fatalf("final reply text mismatch: %#v", reply)
 	}
 	result := onlyToolResultFromLastModelRequest(t, model)
-	if result.State != message.ToolResultSuccess || blocksText(result.Output.Blocks) != "published release" {
-		t.Fatalf("unexpected resumed tool result: %#v", result)
+	if text := result.Output.Blocks.GetTextContent(""); result.State != message.ToolResultSuccess || text == nil || *text != "published release" {
+		t.Fatalf("unexpected resumed tool result: %#v text=%#v", result, text)
 	}
 }
 
@@ -222,8 +222,8 @@ func TestGlobalWorkspaceFileToolsE2E(t *testing.T) {
 		t.Fatalf("expected write, read, and final model calls, got %d", len(model.requests))
 	}
 	result := lastToolResultFromLastModelRequest(t, model)
-	if result.Name != "Read" || !strings.Contains(blocksText(result.Output.Blocks), "workspace note") {
-		t.Fatalf("read tool result should be passed back to the final model call, got %#v", result)
+	if text := result.Output.Blocks.GetTextContent(""); result.Name != "Read" || text == nil || !strings.Contains(*text, "workspace note") {
+		t.Fatalf("read tool result should be passed back to the final model call, got %#v text=%#v", result, text)
 	}
 }
 
@@ -267,8 +267,8 @@ func TestGlobalMCPToolAgentE2E(t *testing.T) {
 		t.Fatalf("initial model request should expose MCP schema: %#v", model.requests[0].Tools)
 	}
 	result := onlyToolResultFromLastModelRequest(t, model)
-	if result.State != message.ToolResultSuccess || blocksText(result.Output.Blocks) != "profile:Ada" {
-		t.Fatalf("unexpected MCP tool result passed back to model: %#v", result)
+	if text := result.Output.Blocks.GetTextContent(""); result.State != message.ToolResultSuccess || text == nil || *text != "profile:Ada" {
+		t.Fatalf("unexpected MCP tool result passed back to model: %#v text=%#v", result, text)
 	}
 }
 
@@ -427,16 +427,6 @@ func lastModelRequestMessage(t *testing.T, model *scriptedChatModel) *message.Me
 		t.Fatalf("last request has no messages: %#v", request)
 	}
 	return request.Messages[len(request.Messages)-1]
-}
-
-func blocksText(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }
 
 func findToolByName(t *testing.T, tools []tool.Tool, name string) tool.Tool {

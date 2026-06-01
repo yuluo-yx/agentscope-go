@@ -123,18 +123,11 @@ func main() {
 		message.ToolResultSuccess,
 	)
 	reply := mustReply(agent.Reply(context.Background(), message.NewExternalExecutionResultEvent(required.ReplyID(), []*message.ToolResultBlock{result})))
-	fmt.Printf("external_reply=%s result_state=%s\n", textContent(reply), result.State)
-}
-
-func textContent(msg *message.Message) string {
-	if msg == nil {
-		return ""
+	replyText := ""
+	if text := reply.GetTextContent(""); text != nil {
+		replyText = *text
 	}
-	text := msg.GetTextContent("")
-	if text == nil {
-		return ""
-	}
-	return *text
+	fmt.Printf("external_reply=%s result_state=%s\n", replyText, result.State)
 }
 
 func mustTool(t *tool.FunctionTool, err error) *tool.FunctionTool {

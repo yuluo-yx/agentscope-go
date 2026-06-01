@@ -56,8 +56,8 @@ func TestToolResponseAppendChunkMergesTextAndBase64Data(t *testing.T) {
 	if len(response.Content) != 2 {
 		t.Fatalf("expected merged text and data blocks, got %d: %#v", len(response.Content), response.Content)
 	}
-	if got := response.Content[0].(*message.TextBlock).Text; got != "hello world" {
-		t.Fatalf("text blocks not merged: %q", got)
+	if got := response.GetTextContent(""); got == nil || *got != "hello world" {
+		t.Fatalf("unexpected response text content: %#v", got)
 	}
 	data := response.Content[1].(*message.DataBlock)
 	if got := data.Source.(*message.Base64Source).Data; got != "abcdef" {
@@ -104,7 +104,7 @@ func TestToolChunkAndResponseClone(t *testing.T) {
 	}
 	clonedChunk := chunk.Clone()
 	clonedChunk.Content[0].(*message.TextBlock).Text = "changed"
-	if chunk.Content[0].(*message.TextBlock).Text != "hello" {
+	if text := chunk.Content.GetTextContent(""); text == nil || *text != "hello" {
 		t.Fatalf("chunk clone mutated original: %#v", chunk)
 	}
 	if (*toolpkg.ToolChunk)(nil).Clone() != nil {
@@ -151,7 +151,7 @@ func TestToolResponseAppendChunkHandlesConflictingBlockTypes(t *testing.T) {
 	}
 	cloned := response.Clone()
 	cloned.Content[0].(*message.TextBlock).Text = "changed"
-	if response.Content[0].(*message.TextBlock).Text != "hello" {
+	if text := response.GetTextContent(""); text == nil || *text != "hello" {
 		t.Fatalf("response clone mutated original: %#v", response)
 	}
 }

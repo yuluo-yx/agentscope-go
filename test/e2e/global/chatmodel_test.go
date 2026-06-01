@@ -110,7 +110,7 @@ func TestGlobalChatModelCallStreamAndToolSchemaE2E(t *testing.T) {
 	}
 
 	model.requests[0].Messages[0].Content[0].(*message.TextBlock).Text = "mutated"
-	if systemMsg.Content[0].(*message.TextBlock).Text != "Reply through the direct ChatModel API." {
+	if text := systemMsg.GetTextContent(""); text == nil || *text != "Reply through the direct ChatModel API." {
 		t.Fatalf("recorded direct request should be cloned away from caller messages: %#v", systemMsg)
 	}
 }
@@ -174,8 +174,8 @@ func assertChatResponseText(t *testing.T, response *modelpkg.ChatResponse, want 
 	if response == nil {
 		t.Fatal("chat response is nil")
 	}
-	if got := blocksText(response.Content); got != want {
-		t.Fatalf("chat response text mismatch: got %q want %q", got, want)
+	if got := response.GetTextContent(""); got == nil || *got != want {
+		t.Fatalf("chat response text mismatch: got %#v want %q", got, want)
 	}
 }
 

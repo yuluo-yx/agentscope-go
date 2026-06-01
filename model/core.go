@@ -162,6 +162,38 @@ func (r *ChatResponse) Clone() *ChatResponse {
 	return &cp
 }
 
+// GetTextContent 返回模型响应中的文本块内容；不存在文本块时返回 nil。
+func (r *ChatResponse) GetTextContent(separator string) *string {
+	if r == nil {
+		return nil
+	}
+	return r.Content.GetTextContent(separator)
+}
+
+// HasContentBlocks 判断模型响应是否包含指定类型的内容块；未传类型时判断响应是否有内容。
+func (r *ChatResponse) HasContentBlocks(types ...string) bool {
+	if r == nil {
+		return false
+	}
+	return r.Content.HasContentBlocks(types...)
+}
+
+// GetContentBlocks 返回模型响应中匹配类型的内容块；未传类型时返回所有内容块的浅拷贝。
+func (r *ChatResponse) GetContentBlocks(types ...string) []message.ContentBlock {
+	if r == nil {
+		return nil
+	}
+	return r.Content.GetContentBlocks(types...)
+}
+
+// FindBlock 按内容块类型和 ID 查找模型响应中的内容块；未找到时返回 nil。
+func (r *ChatResponse) FindBlock(blockType, blockID string) message.ContentBlock {
+	if r == nil {
+		return nil
+	}
+	return r.Content.FindBlock(blockType, blockID)
+}
+
 // StructuredResponse is a structured-output model response.
 type StructuredResponse struct {
 	Content   map[string]any   `json:"content"`

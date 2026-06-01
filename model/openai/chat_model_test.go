@@ -187,8 +187,8 @@ func assertCallResponse(t *testing.T, resp *asmodel.ChatResponse) {
 	if resp.ID != "chatcmpl-1" || !resp.IsLast {
 		t.Fatalf("unexpected response envelope: %#v", resp)
 	}
-	if got := resp.Content[0].(*message.TextBlock).Text; got != "hello" {
-		t.Fatalf("text block mismatch: %q", got)
+	if got := resp.GetTextContent(""); got == nil || *got != "hello" {
+		t.Fatalf("text block mismatch: %#v", got)
 	}
 	call := resp.Content[1].(*message.ToolCallBlock)
 	if call.ID != "call-1" || call.Name != "Read" || call.Input != `{"path":"README.md"}` {
@@ -241,17 +241,17 @@ func assertStreamResponses(t *testing.T, chunks []asmodel.ChatResponse) {
 	if len(chunks) != 4 {
 		t.Fatalf("unexpected stream chunk count: %d %#v", len(chunks), chunks)
 	}
-	if chunks[0].IsLast || chunks[0].Content[0].(*message.TextBlock).Text != "hel" {
+	if text := chunks[0].Content.GetTextContent(""); chunks[0].IsLast || text == nil || *text != "hel" {
 		t.Fatalf("first delta mismatch: %#v", chunks[0])
 	}
-	if chunks[1].Content[0].(*message.TextBlock).Text != "lo" || chunks[1].Content[1].(*message.ToolCallBlock).Input != `{"path"` {
+	if text := chunks[1].Content.GetTextContent(""); text == nil || *text != "lo" || chunks[1].Content[1].(*message.ToolCallBlock).Input != `{"path"` {
 		t.Fatalf("second delta mismatch: %#v", chunks[1])
 	}
 	final := chunks[len(chunks)-1]
 	if !final.IsLast || final.ID != "chatcmpl-stream" {
 		t.Fatalf("final stream response mismatch: %#v", final)
 	}
-	if final.Content[0].(*message.TextBlock).Text != "hello" {
+	if text := final.GetTextContent(""); text == nil || *text != "hello" {
 		t.Fatalf("final text not accumulated: %#v", final.Content[0])
 	}
 	toolCall := final.Content[1].(*message.ToolCallBlock)

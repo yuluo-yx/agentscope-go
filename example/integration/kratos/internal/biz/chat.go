@@ -232,7 +232,11 @@ User request: %s`, promptOrDefault(prompt, "杭州一日游")))
 	if err != nil {
 		return nil, err
 	}
-	raw := strings.TrimSpace(textContent(response.Content))
+	responseText := response.GetTextContent("")
+	if responseText == nil {
+		responseText = new(string)
+	}
+	raw := strings.TrimSpace(*responseText)
 	if start := strings.Index(raw, "{"); start >= 0 {
 		if end := strings.LastIndex(raw, "}"); end >= start {
 			raw = raw[start : end+1]
@@ -301,14 +305,4 @@ func promptOrDefault(prompt, fallback string) string {
 		return fallback
 	}
 	return prompt
-}
-
-func textContent(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
 }

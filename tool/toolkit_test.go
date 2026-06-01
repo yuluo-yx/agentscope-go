@@ -107,8 +107,8 @@ func TestToolkitCallToolParsesInputAndAccumulatesResponse(t *testing.T) {
 	if response.ID != "call-1" || response.State != message.ToolResultSuccess {
 		t.Fatalf("unexpected response metadata: %#v", response)
 	}
-	if got := response.Content[0].(*message.TextBlock).Text; got != "hello" {
-		t.Fatalf("tool output not accumulated: %q", got)
+	if got := response.GetTextContent(""); got == nil || *got != "hello" {
+		t.Fatalf("tool output not accumulated: %#v", got)
 	}
 }
 
@@ -148,9 +148,9 @@ func TestToolkitCallToolReturnsErrorChunksForBadCalls(t *testing.T) {
 			if response.State != message.ToolResultError {
 				t.Fatalf("expected error response, got %#v", response)
 			}
-			got := response.Content[0].(*message.TextBlock).Text
-			if !strings.Contains(got, tt.want) {
-				t.Fatalf("error text %q does not contain %q", got, tt.want)
+			got := response.GetTextContent("")
+			if got == nil || !strings.Contains(*got, tt.want) {
+				t.Fatalf("error text %#v does not contain %q", got, tt.want)
 			}
 		})
 	}

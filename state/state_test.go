@@ -45,8 +45,8 @@ func TestAgentStateDefaultsAndClone(t *testing.T) {
 	if state.SessionID == "" || state.ReplyID == "" {
 		t.Fatalf("state should create ids: %#v", state)
 	}
-	if got := state.Context[0].Content[0].(*message.TextBlock).Text; got != "hello" {
-		t.Fatalf("message clone mutated original: %q", got)
+	if got := state.Context[0].GetTextContent(""); got == nil || *got != "hello" {
+		t.Fatalf("message clone mutated original: %#v", got)
 	}
 	if got := state.PermissionContext.AllowRules["Bash"][0].RuleContent; got != "go test:*" {
 		t.Fatalf("permission context clone mutated original: %q", got)
