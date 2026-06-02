@@ -232,7 +232,7 @@ User request: %s`, promptOrDefault(prompt, "杭州一日游")))
 	if err != nil {
 		return nil, err
 	}
-	responseText := response.GetTextContent("")
+	responseText := response.GetTextContent()
 	if responseText == nil {
 		responseText = new(string)
 	}

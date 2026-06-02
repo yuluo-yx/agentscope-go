@@ -47,7 +47,7 @@ func (s *ChatService) Chat(ctx context.Context, req *v1.ChatRequest) (*v1.ChatRe
 	if err != nil {
 		return nil, err
 	}
-	text := content.GetTextContent("")
+	text := content.GetTextContent()
 	if text == nil {
 		text = new(string)
 	}
@@ -64,7 +64,7 @@ func (s *ChatService) StreamChat(req *v1.ChatRequest, stream v1.Chat_StreamChatS
 // StreamChatEvents emits ChatModel stream replies for HTTP SSE and gRPC transports.
 func (s *ChatService) StreamChatEvents(ctx context.Context, prompt string, emit func(*v1.ChatStreamReply) error) error {
 	return s.uc.StreamChat(ctx, prompt, func(content message.ContentBlockList, final bool) error {
-		text := content.GetTextContent("")
+		text := content.GetTextContent()
 		if text == nil {
 			text = new(string)
 		}
@@ -82,7 +82,7 @@ func (s *ChatService) StreamChatTool(req *v1.ChatRequest, stream v1.Chat_StreamC
 // StreamChatToolEvents emits the two-step ChatModel tool-call stream for HTTP SSE and gRPC transports.
 func (s *ChatService) StreamChatToolEvents(ctx context.Context, prompt string, emit func(*v1.ChatStreamReply) error) error {
 	return s.uc.StreamChatTool(ctx, prompt, func(content message.ContentBlockList, final bool) error {
-		text := content.GetTextContent("")
+		text := content.GetTextContent()
 		if text == nil {
 			text = new(string)
 		}
@@ -96,7 +96,7 @@ func (s *ChatService) AgentChat(ctx context.Context, req *v1.ChatRequest) (*v1.C
 	if err != nil {
 		return nil, err
 	}
-	text := content.GetTextContent("")
+	text := content.GetTextContent()
 	if text == nil {
 		text = new(string)
 	}
@@ -149,7 +149,7 @@ func contentToProto(blocks message.ContentBlockList) []*v1.ContentBlock {
 			out = append(out, &v1.ContentBlock{Type: b.Type, Id: b.ID, Name: b.Name, State: string(b.State)})
 		case *message.ToolResultBlock:
 			content := &v1.ContentBlock{Type: b.Type, Id: b.ID, Name: b.Name, State: string(b.State)}
-			if text := b.Output.Blocks.GetTextContent(""); text != nil {
+			if text := b.Output.Blocks.GetTextContent(); text != nil {
 				content.Text = *text
 			}
 			out = append(out, content)

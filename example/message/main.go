@@ -40,7 +40,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if text := systemCallResponse.GetTextContent(""); text != nil {
+	if text := systemCallResponse.GetTextContent(); text != nil {
 		fmt.Println(*text)
 	}
 
@@ -54,7 +54,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if text := userCallResponse.GetTextContent(""); text != nil {
+	if text := userCallResponse.GetTextContent(); text != nil {
 		fmt.Println(*text)
 	}
 
@@ -72,7 +72,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if text := historyCallResponse.GetTextContent(""); text != nil {
+	if text := historyCallResponse.GetTextContent(); text != nil {
 		fmt.Println(*text)
 	}
 }

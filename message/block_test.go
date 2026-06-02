@@ -84,6 +84,10 @@ func TestContentBlockListQueries(t *testing.T) {
 	if text == nil || *text != "hello world" {
 		t.Fatalf("unexpected text content: %#v", text)
 	}
+	defaultText := blocks.GetTextContent()
+	if defaultText == nil || *defaultText != "hello\nworld" {
+		t.Fatalf("unexpected default text content: %#v", defaultText)
+	}
 	if !blocks.HasContentBlocks("text") || !blocks.HasContentBlocks("tool_call", "data") || !blocks.HasContentBlocks() {
 		t.Fatalf("content block list should report existing blocks: %#v", blocks)
 	}
@@ -159,7 +163,8 @@ func TestBlockConstructorsOptionsAndClone(t *testing.T) {
 		message.WithDataBlockName("image"),
 	)
 	call := message.NewToolCallBlock("call-1", "Bash", "{}", message.WithToolCallExtra("x", map[string]any{"nested": "y"}))
-	result := message.NewToolResultBlock("call-1", "Bash", message.ToolResultOutput{Blocks: message.ContentBlockList{text}}, "")
+	result := message.NewToolResultBlock("call-1", "Bash", message.ToolResultOutput{Blocks: message.ContentBlockList{text}})
+	successResult := message.NewToolResultBlock("call-1", "Bash", message.ToolResultOutput{Raw: "ok"}, message.ToolResultSuccess)
 
 	blocks := []message.ContentBlock{text, thinking, hint, data, call, result}
 	for _, block := range blocks {
@@ -175,7 +180,10 @@ func TestBlockConstructorsOptionsAndClone(t *testing.T) {
 		t.Fatalf("data block name not set: %#v", data.Name)
 	}
 	if result.State != message.ToolResultRunning {
-		t.Fatalf("empty tool result state should default to running, got %q", result.State)
+		t.Fatalf("tool result state should default to running, got %q", result.State)
+	}
+	if successResult.State != message.ToolResultSuccess {
+		t.Fatalf("explicit tool result state should be preserved, got %q", successResult.State)
 	}
 
 	clonedCall := call.Clone().(*message.ToolCallBlock)

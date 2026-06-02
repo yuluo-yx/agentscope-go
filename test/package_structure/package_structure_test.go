@@ -61,7 +61,7 @@ func TestDomainPackagesAndRootFacadeShareCoreTypes(t *testing.T) {
 		t.Fatal("facade AgentState alias should preserve initialized state")
 	}
 
-	domainChunk := tool.NewToolChunk("call-1", message.ContentBlockList{message.NewTextBlock("ok")})
+	domainChunk := tool.NewToolChunk(message.ContentBlockList{message.NewTextBlock("ok")}, tool.WithToolChunkID("call-1"))
 	rootChunk := domainChunk
 	if rootChunk.ID != "call-1" {
 		t.Fatalf("facade ToolChunk alias mismatch: %q", rootChunk.ID)

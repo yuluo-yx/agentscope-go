@@ -117,7 +117,7 @@ func main() {
 	}})
 	reply := mustReply(agent.Reply(context.Background(), confirmEvent))
 	replyText := ""
-	if text := reply.GetTextContent(""); text != nil {
+	if text := reply.GetTextContent(); text != nil {
 		replyText = *text
 	}
 	fmt.Printf("confirmed_reply=%s executed=%t\n", replyText, executed)

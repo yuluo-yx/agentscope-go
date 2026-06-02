@@ -52,6 +52,9 @@ func assertWorkspaceLifecycle(t *testing.T, ws *workspace.LocalWorkspace, workdi
 	if !ws.IsAlive() || ws.WorkspaceID() == "" {
 		t.Fatalf("workspace lifecycle fields not set: alive=%v id=%q", ws.IsAlive(), ws.WorkspaceID())
 	}
+	if len(ws.WorkspaceID()) != 32 || strings.Contains(ws.WorkspaceID(), "-") {
+		t.Fatalf("workspace id should match Python uuid4().hex format: %q", ws.WorkspaceID())
+	}
 	for _, subdir := range []string{"data", "skills", "sessions"} {
 		info, statErr := os.Stat(filepath.Join(workdir, subdir))
 		if statErr != nil {

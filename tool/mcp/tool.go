@@ -151,7 +151,6 @@ func (t *Tool) Execute(ctx context.Context, input map[string]any, _ *asstate.Age
 		result, err := t.client.CallTool(ctx, t.raw.Name, input)
 		if err != nil {
 			chunks <- *astool.NewToolChunk(
-				"",
 				message.ContentBlockList{message.NewTextBlock(err.Error())},
 				astool.WithToolChunkState(message.ToolResultError),
 			)
@@ -162,7 +161,6 @@ func (t *Tool) Execute(ctx context.Context, input map[string]any, _ *asstate.Age
 			state = message.ToolResultError
 		}
 		chunks <- *astool.NewToolChunk(
-			"",
 			ConvertToolResult(result),
 			astool.WithToolChunkState(state),
 		)

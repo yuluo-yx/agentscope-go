@@ -20,8 +20,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/types"
 	"github.com/yuluo-yx/agentscope-go/utils"
@@ -124,7 +122,7 @@ func NewChatResponse(content message.ContentBlockList, isLast bool, opts ...Chat
 	resp := &ChatResponse{
 		Content:   content.Clone(),
 		IsLast:    isLast,
-		ID:        uuid.NewString(),
+		ID:        utils.NewID(),
 		CreatedAt: nowRFC3339Nano(),
 		Type:      ChatResponseType,
 		Metadata:  map[string]any{},
@@ -133,7 +131,7 @@ func NewChatResponse(content message.ContentBlockList, isLast bool, opts ...Chat
 		opt(resp)
 	}
 	if resp.ID == "" {
-		resp.ID = uuid.NewString()
+		resp.ID = utils.NewID()
 	}
 	if resp.CreatedAt == "" {
 		resp.CreatedAt = nowRFC3339Nano()
@@ -162,15 +160,15 @@ func (r *ChatResponse) Clone() *ChatResponse {
 	return &cp
 }
 
-// GetTextContent 返回模型响应中的文本块内容；不存在文本块时返回 nil。
-func (r *ChatResponse) GetTextContent(separator string) *string {
+// GetTextContent returns concatenated text blocks from the response content.
+func (r *ChatResponse) GetTextContent(separator ...string) *string {
 	if r == nil {
 		return nil
 	}
-	return r.Content.GetTextContent(separator)
+	return r.Content.GetTextContent(separator...)
 }
 
-// HasContentBlocks 判断模型响应是否包含指定类型的内容块；未传类型时判断响应是否有内容。
+// HasContentBlocks reports whether the response contains any block of the requested types.
 func (r *ChatResponse) HasContentBlocks(types ...string) bool {
 	if r == nil {
 		return false
@@ -178,7 +176,7 @@ func (r *ChatResponse) HasContentBlocks(types ...string) bool {
 	return r.Content.HasContentBlocks(types...)
 }
 
-// GetContentBlocks 返回模型响应中匹配类型的内容块；未传类型时返回所有内容块的浅拷贝。
+// GetContentBlocks returns matching response blocks, or all response blocks when no type is provided.
 func (r *ChatResponse) GetContentBlocks(types ...string) []message.ContentBlock {
 	if r == nil {
 		return nil
@@ -186,7 +184,7 @@ func (r *ChatResponse) GetContentBlocks(types ...string) []message.ContentBlock 
 	return r.Content.GetContentBlocks(types...)
 }
 
-// FindBlock 按内容块类型和 ID 查找模型响应中的内容块；未找到时返回 nil。
+// FindBlock returns the response block matching the given type and ID.
 func (r *ChatResponse) FindBlock(blockType, blockID string) message.ContentBlock {
 	if r == nil {
 		return nil

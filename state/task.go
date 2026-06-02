@@ -16,10 +16,7 @@ package state
 
 import (
 	"fmt"
-	"strings"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
@@ -160,5 +157,5 @@ func nowRFC3339Nano() string {
 }
 
 func newTaskID() string {
-	return strings.ReplaceAll(uuid.NewString(), "-", "")
+	return utils.NewID()
 }

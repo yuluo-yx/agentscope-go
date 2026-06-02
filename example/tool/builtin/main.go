@@ -51,10 +51,10 @@ func main() {
 	glob := runTool(builtin.NewGlob(), map[string]any{"pattern": "**/*.txt", "path": dir}, state)
 	grep := runTool(builtin.NewGrep(), map[string]any{"pattern": "AgentScope", "path": dir, "glob": "*.txt"}, state)
 	bash := runTool(builtin.NewBash(), map[string]any{"command": "printf shell-ok"}, state)
-	readText := read.GetTextContent("")
-	globText := glob.GetTextContent("")
-	grepText := grep.GetTextContent("")
-	bashText := bash.GetTextContent("")
+	readText := read.GetTextContent()
+	globText := glob.GetTextContent()
+	grepText := grep.GetTextContent()
+	bashText := bash.GetTextContent()
 	bashOutput := ""
 	if bashText != nil {
 		bashOutput = strings.TrimSpace(*bashText)
@@ -87,7 +87,7 @@ func runTool(t tool.Tool, input map[string]any, state *asstate.AgentState) *tool
 	if err != nil {
 		panic(err)
 	}
-	response := tool.NewToolResponse("example-call")
+	response := tool.NewToolResponse()
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
 			panic(err)
@@ -138,7 +138,7 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
 			text := ""
-			if responseText := response.GetTextContent(""); responseText != nil {
+			if responseText := response.GetTextContent(); responseText != nil {
 				text = *responseText
 			}
 			if lastToolCall == nil {

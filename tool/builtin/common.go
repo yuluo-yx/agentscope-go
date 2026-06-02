@@ -119,7 +119,6 @@ func (b baseTool) GenerateSuggestions(map[string]any) []permission.Rule {
 func singleTextChunk(text string, state message.ToolResultState) <-chan astool.ToolChunk {
 	chunks := make(chan astool.ToolChunk, 1)
 	chunks <- *astool.NewToolChunk(
-		"",
 		message.ContentBlockList{message.NewTextBlock(text)},
 		astool.WithToolChunkState(state),
 	)

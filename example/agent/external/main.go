@@ -124,7 +124,7 @@ func main() {
 	)
 	reply := mustReply(agent.Reply(context.Background(), message.NewExternalExecutionResultEvent(required.ReplyID(), []*message.ToolResultBlock{result})))
 	replyText := ""
-	if text := reply.GetTextContent(""); text != nil {
+	if text := reply.GetTextContent(); text != nil {
 		replyText = *text
 	}
 	fmt.Printf("external_reply=%s result_state=%s\n", replyText, result.State)

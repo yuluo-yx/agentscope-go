@@ -55,7 +55,7 @@ func main() {
 	direct := runTool(ctx, lookup, map[string]any{"name": "Ada"}, asstate.NewAgentState())
 	kit := mustToolkit(tool.NewToolkit(tools...))
 	directText := ""
-	if text := direct.GetTextContent(""); text != nil {
+	if text := direct.GetTextContent(); text != nil {
 		directText = *text
 	}
 
@@ -104,7 +104,7 @@ func runTool(ctx context.Context, current tool.Tool, input map[string]any, state
 	if err != nil {
 		panic(err)
 	}
-	response := tool.NewToolResponse("mcp-example-call")
+	response := tool.NewToolResponse()
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
 			panic(err)
@@ -147,7 +147,7 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
 			text := ""
-			if responseText := response.GetTextContent(""); responseText != nil {
+			if responseText := response.GetTextContent(); responseText != nil {
 				text = *responseText
 			}
 			if lastToolCall == nil {

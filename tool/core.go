@@ -18,8 +18,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
-
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/permission"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
@@ -80,6 +78,13 @@ type ToolChunk struct {
 // ToolChunkOption configures a tool chunk.
 type ToolChunkOption func(*ToolChunk)
 
+// WithToolChunkID sets the tool chunk identifier.
+func WithToolChunkID(id string) ToolChunkOption {
+	return func(chunk *ToolChunk) {
+		chunk.ID = id
+	}
+}
+
 // WithToolChunkState sets the tool chunk state.
 func WithToolChunkState(state message.ToolResultState) ToolChunkOption {
 	return func(chunk *ToolChunk) {
@@ -102,19 +107,19 @@ func WithToolChunkMetadata(metadata map[string]any) ToolChunkOption {
 }
 
 // NewToolChunk creates a tool chunk.
-func NewToolChunk(id string, content message.ContentBlockList, opts ...ToolChunkOption) *ToolChunk {
-	if id == "" {
-		id = uuid.NewString()
-	}
+func NewToolChunk(content message.ContentBlockList, opts ...ToolChunkOption) *ToolChunk {
 	chunk := &ToolChunk{
 		Content:  content.Clone(),
 		State:    message.ToolResultRunning,
 		IsLast:   true,
 		Metadata: map[string]any{},
-		ID:       id,
+		ID:       utils.NewID(),
 	}
 	for _, opt := range opts {
 		opt(chunk)
+	}
+	if chunk.ID == "" {
+		chunk.ID = utils.NewID()
 	}
 	if chunk.State == "" {
 		chunk.State = message.ToolResultRunning
@@ -144,17 +149,31 @@ type ToolResponse struct {
 	ID       string                   `json:"id"`
 }
 
-// NewToolResponse creates an accumulated tool response.
-func NewToolResponse(id string) *ToolResponse {
-	if id == "" {
-		id = uuid.NewString()
+// ToolResponseOption configures an accumulated tool response.
+type ToolResponseOption func(*ToolResponse)
+
+// WithToolResponseID sets the tool response identifier.
+func WithToolResponseID(id string) ToolResponseOption {
+	return func(response *ToolResponse) {
+		response.ID = id
 	}
-	return &ToolResponse{
+}
+
+// NewToolResponse creates an accumulated tool response.
+func NewToolResponse(opts ...ToolResponseOption) *ToolResponse {
+	response := &ToolResponse{
 		Content:  message.ContentBlockList{},
 		State:    message.ToolResultSuccess,
 		Metadata: map[string]any{},
-		ID:       id,
+		ID:       utils.NewID(),
 	}
+	for _, opt := range opts {
+		opt(response)
+	}
+	if response.ID == "" {
+		response.ID = utils.NewID()
+	}
+	return response
 }
 
 // AppendChunk accumulates a tool chunk and merges text/base64 blocks by block ID.
@@ -210,12 +229,12 @@ func (r *ToolResponse) Clone() *ToolResponse {
 	return &cp
 }
 
-// GetTextContent 返回工具响应中的文本块内容；不存在文本块时返回 nil。
-func (r *ToolResponse) GetTextContent(separator string) *string {
+// GetTextContent returns concatenated text blocks from the tool response content.
+func (r *ToolResponse) GetTextContent(separator ...string) *string {
 	if r == nil {
 		return nil
 	}
-	return r.Content.GetTextContent(separator)
+	return r.Content.GetTextContent(separator...)
 }
 
 func appendContentBlock(response *ToolResponse, index int, chunkBlock message.ContentBlock) error {
@@ -256,7 +275,7 @@ func appendContentBlock(response *ToolResponse, index int, chunkBlock message.Co
 }
 
 func assignNewBlockID(block message.ContentBlock) {
-	id := uuid.NewString()
+	id := utils.NewID()
 	switch typed := block.(type) {
 	case *message.TextBlock:
 		typed.ID = id

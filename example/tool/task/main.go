@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
@@ -36,7 +37,7 @@ func main() {
 		"metadata":    map[string]any{"phase": "examples"},
 	}, state)
 	if create.State != message.ToolResultSuccess {
-		text := create.GetTextContent("")
+		text := create.GetTextContent()
 		if text == nil {
 			panic("TaskCreate returned no text content")
 		}
@@ -51,8 +52,8 @@ func main() {
 	}, state)
 	list := runTool(tasktool.NewTaskList(), nil, state)
 	get := runTool(tasktool.NewTaskGet(), map[string]any{"task_id": taskID}, state)
-	listText := list.GetTextContent("")
-	getText := get.GetTextContent("")
+	listText := list.GetTextContent()
+	getText := get.GetTextContent()
 
 	fmt.Printf(
 		"task_tools=%s tasks=%d status=%s update=%s list_has_task=%t get_has_owner=%t\n",
@@ -72,7 +73,7 @@ func runTool(t tool.Tool, input map[string]any, state *asstate.AgentState) *tool
 	if err != nil {
 		panic(err)
 	}
-	response := tool.NewToolResponse("example-call")
+	response := tool.NewToolResponse()
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
 			panic(err)
@@ -123,7 +124,7 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
 			text := ""
-			if responseText := response.GetTextContent(""); responseText != nil {
+			if responseText := response.GetTextContent(); responseText != nil {
 				text = *responseText
 			}
 			if lastToolCall == nil {

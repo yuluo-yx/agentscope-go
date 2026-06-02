@@ -330,10 +330,10 @@ func (t testTool) Execute(ctx context.Context, input map[string]any, _ *astate.A
 		defer close(chunks)
 		select {
 		case <-ctx.Done():
-			chunks <- *tool.NewToolChunk("", message.ContentBlockList{message.NewTextBlock(ctx.Err().Error())}, tool.WithToolChunkState(message.ToolResultInterrupted))
+			chunks <- *tool.NewToolChunk(message.ContentBlockList{message.NewTextBlock(ctx.Err().Error())}, tool.WithToolChunkState(message.ToolResultInterrupted))
 		default:
 			value, _ := input["value"].(string)
-			chunks <- *tool.NewToolChunk("", message.ContentBlockList{message.NewTextBlock(value)}, tool.WithToolChunkState(message.ToolResultSuccess))
+			chunks <- *tool.NewToolChunk(message.ContentBlockList{message.NewTextBlock(value)}, tool.WithToolChunkState(message.ToolResultSuccess))
 		}
 	}()
 	return chunks, nil

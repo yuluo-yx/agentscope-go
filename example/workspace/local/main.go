@@ -76,7 +76,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	readText := readResponse.GetTextContent("")
+	readText := readResponse.GetTextContent()
 
 	fmt.Printf(
 		"workspace_alive=%t tools=%d skills=%d write=%s read_has_brief=%t context_file=%t result_file=%t tool_names=%s\n",
@@ -105,7 +105,7 @@ func runTool(ctx context.Context, current workspace.Tool, input map[string]any, 
 	if err != nil {
 		panic(err)
 	}
-	response := tool.NewToolResponse("workspace-example-call")
+	response := tool.NewToolResponse()
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
 			panic(err)

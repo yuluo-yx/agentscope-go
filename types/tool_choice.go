@@ -37,7 +37,7 @@ type ToolChoice struct {
 // NewToolChoice creates tool-choice config and validates mode/tool filters.
 func NewToolChoice(mode string, tools ...string) (*ToolChoice, error) {
 	if mode == "" {
-		mode = string(ToolChoiceAuto)
+		return nil, fmt.Errorf("agentscope/types: tool choice mode is empty")
 	}
 	choice := &ToolChoice{Mode: mode, Tools: append([]string(nil), tools...)}
 	if len(choice.Tools) > 0 && !choice.isBuiltInMode() && !containsString(choice.Tools, choice.Mode) {

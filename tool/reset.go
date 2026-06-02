@@ -165,7 +165,6 @@ func (t *ResetTools) Execute(_ context.Context, input map[string]any, state *ass
 	}
 	chunks := make(chan ToolChunk, 1)
 	chunks <- *NewToolChunk(
-		"",
 		message.ContentBlockList{message.NewTextBlock(text)},
 		WithToolChunkState(message.ToolResultSuccess),
 	)

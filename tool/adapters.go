@@ -123,7 +123,7 @@ func NewFunctionTool(
 				chunks <- errorChunk("", err.Error())
 				return
 			}
-			chunks <- *NewToolChunk("", content, WithToolChunkState(message.ToolResultSuccess))
+			chunks <- *NewToolChunk(content, WithToolChunkState(message.ToolResultSuccess))
 		}()
 		return chunks, nil
 	}
@@ -246,9 +246,9 @@ func cloneSchemaOrObject(schema map[string]any) map[string]any {
 }
 
 func errorChunk(id, text string) ToolChunk {
-	return *NewToolChunk(
-		id,
-		message.ContentBlockList{message.NewTextBlock(text)},
-		WithToolChunkState(message.ToolResultError),
-	)
+	opts := []ToolChunkOption{WithToolChunkState(message.ToolResultError)}
+	if id != "" {
+		opts = append(opts, WithToolChunkID(id))
+	}
+	return *NewToolChunk(message.ContentBlockList{message.NewTextBlock(text)}, opts...)
 }

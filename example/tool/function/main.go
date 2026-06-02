@@ -51,7 +51,7 @@ func main() {
 
 	response := runTool(greet, map[string]any{"name": "Go"}, nil)
 	output := ""
-	if text := response.GetTextContent(""); text != nil {
+	if text := response.GetTextContent(); text != nil {
 		output = *text
 	}
 	fmt.Printf("function_tool=%s state=%s output=%q\n", greet.Name(), response.State, output)
@@ -64,7 +64,7 @@ func runTool(t tool.Tool, input map[string]any, state *asstate.AgentState) *tool
 	if err != nil {
 		panic(err)
 	}
-	response := tool.NewToolResponse("example-call")
+	response := tool.NewToolResponse()
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
 			panic(err)
@@ -107,7 +107,7 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
 			text := ""
-			if responseText := response.GetTextContent(""); responseText != nil {
+			if responseText := response.GetTextContent(); responseText != nil {
 				text = *responseText
 			}
 			if lastToolCall == nil {

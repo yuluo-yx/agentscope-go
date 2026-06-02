@@ -15,6 +15,7 @@
 package tool_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/yuluo-yx/agentscope-go/message"
@@ -24,21 +25,21 @@ import (
 func TestToolResponseAppendChunkMergesTextAndBase64Data(t *testing.T) {
 	t.Parallel()
 
-	response := toolpkg.NewToolResponse("tool-call-1")
+	response := toolpkg.NewToolResponse(toolpkg.WithToolResponseID("tool-call-1"))
 	first := toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{
 			message.NewTextBlock("hello ", message.WithBlockID("text-1")),
 			message.NewDataBlock(message.NewBase64Source("abc", "image/png"), message.WithDataBlockID("data-1")),
 		},
+		toolpkg.WithToolChunkID("tool-call-1"),
 		toolpkg.WithToolChunkMetadata(map[string]any{"a": 1}),
 	)
 	second := toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{
 			message.NewTextBlock("world", message.WithBlockID("text-1")),
 			message.NewDataBlock(message.NewBase64Source("def", "image/png"), message.WithDataBlockID("data-1"), message.WithDataBlockName("image")),
 		},
+		toolpkg.WithToolChunkID("tool-call-1"),
 		toolpkg.WithToolChunkState(message.ToolResultError),
 		toolpkg.WithToolChunkMetadata(map[string]any{"b": 2}),
 	)
@@ -74,17 +75,17 @@ func TestToolResponseAppendChunkMergesTextAndBase64Data(t *testing.T) {
 func TestToolResponseRejectsURLDataAppendWithSameID(t *testing.T) {
 	t.Parallel()
 
-	response := toolpkg.NewToolResponse("tool-call-1")
+	response := toolpkg.NewToolResponse(toolpkg.WithToolResponseID("tool-call-1"))
 	if err := response.AppendChunk(toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{message.NewDataBlock(message.NewURLSource("https://example.com/a", "image/png"), message.WithDataBlockID("data-1"))},
+		toolpkg.WithToolChunkID("tool-call-1"),
 	)); err != nil {
 		t.Fatalf("AppendChunk returned error: %v", err)
 	}
 
 	err := response.AppendChunk(toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{message.NewDataBlock(message.NewURLSource("https://example.com/b", "image/png"), message.WithDataBlockID("data-1"))},
+		toolpkg.WithToolChunkID("tool-call-1"),
 	))
 	if err == nil {
 		t.Fatal("URL data blocks with the same id should not be appended")
@@ -95,12 +96,21 @@ func TestToolChunkAndResponseClone(t *testing.T) {
 	t.Parallel()
 
 	chunk := toolpkg.NewToolChunk(
-		"",
 		message.ContentBlockList{message.NewTextBlock("hello")},
 		toolpkg.WithToolChunkIsLast(false),
 	)
 	if chunk.ID == "" || chunk.IsLast {
 		t.Fatalf("chunk defaults/options not applied: %#v", chunk)
+	}
+	if len(chunk.ID) != 32 || strings.Contains(chunk.ID, "-") {
+		t.Fatalf("chunk id should match Python uuid4().hex format: %q", chunk.ID)
+	}
+	chunkWithID := toolpkg.NewToolChunk(
+		message.ContentBlockList{message.NewTextBlock("hello")},
+		toolpkg.WithToolChunkID("tool-call-1"),
+	)
+	if chunkWithID.ID != "tool-call-1" {
+		t.Fatalf("chunk id option not applied: %#v", chunkWithID)
 	}
 	clonedChunk := chunk.Clone()
 	clonedChunk.Content[0].(*message.TextBlock).Text = "changed"
@@ -111,9 +121,16 @@ func TestToolChunkAndResponseClone(t *testing.T) {
 		t.Fatal("nil chunk clone should return nil")
 	}
 
-	response := toolpkg.NewToolResponse("")
+	response := toolpkg.NewToolResponse()
 	if response.ID == "" {
-		t.Fatalf("empty response id should be generated: %#v", response)
+		t.Fatalf("response id should be generated: %#v", response)
+	}
+	if len(response.ID) != 32 || strings.Contains(response.ID, "-") {
+		t.Fatalf("response id should match Python uuid4().hex format: %q", response.ID)
+	}
+	responseWithID := toolpkg.NewToolResponse(toolpkg.WithToolResponseID("tool-call-1"))
+	if responseWithID.ID != "tool-call-1" {
+		t.Fatalf("response id option not applied: %#v", responseWithID)
 	}
 	if err := response.AppendChunk(nil); err != nil {
 		t.Fatalf("nil chunk should be ignored: %v", err)
@@ -126,16 +143,16 @@ func TestToolChunkAndResponseClone(t *testing.T) {
 func TestToolResponseAppendChunkHandlesConflictingBlockTypes(t *testing.T) {
 	t.Parallel()
 
-	response := toolpkg.NewToolResponse("tool-call-1")
+	response := toolpkg.NewToolResponse(toolpkg.WithToolResponseID("tool-call-1"))
 	if err := response.AppendChunk(toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{message.NewTextBlock("hello", message.WithBlockID("same"))},
+		toolpkg.WithToolChunkID("tool-call-1"),
 	)); err != nil {
 		t.Fatalf("AppendChunk text returned error: %v", err)
 	}
 	if err := response.AppendChunk(toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{message.NewDataBlock(message.NewBase64Source("abc", "image/png"), message.WithDataBlockID("same"))},
+		toolpkg.WithToolChunkID("tool-call-1"),
 		toolpkg.WithToolChunkState(message.ToolResultDenied),
 	)); err != nil {
 		t.Fatalf("AppendChunk data returned error: %v", err)
@@ -160,42 +177,42 @@ func TestToolResponseAppendChunkCoversStateAndSourceEdges(t *testing.T) {
 	t.Parallel()
 
 	chunk := toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{message.NewTextBlock("hello")},
+		toolpkg.WithToolChunkID("tool-call-1"),
 		toolpkg.WithToolChunkState(""),
 	)
 	if chunk.State != message.ToolResultRunning {
 		t.Fatalf("empty chunk state should default to running, got %q", chunk.State)
 	}
 
-	response := toolpkg.NewToolResponse("tool-call-1")
+	response := toolpkg.NewToolResponse(toolpkg.WithToolResponseID("tool-call-1"))
 	if err := response.AppendChunk(toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{message.NewDataBlock(message.NewBase64Source("abc", "image/png"), message.WithDataBlockID("data-1"))},
+		toolpkg.WithToolChunkID("tool-call-1"),
 	)); err != nil {
 		t.Fatalf("AppendChunk base64 returned error: %v", err)
 	}
 	err := response.AppendChunk(toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{message.NewDataBlock(message.NewURLSource("https://example.com/a", "image/png"), message.WithDataBlockID("data-1"))},
+		toolpkg.WithToolChunkID("tool-call-1"),
 		toolpkg.WithToolChunkState(message.ToolResultSuccess),
 	))
 	if err == nil {
 		t.Fatal("base64 target should reject URL chunk with the same id")
 	}
 
-	response = toolpkg.NewToolResponse("tool-call-2")
+	response = toolpkg.NewToolResponse(toolpkg.WithToolResponseID("tool-call-2"))
 	if err := response.AppendChunk(toolpkg.NewToolChunk(
-		"tool-call-2",
 		message.ContentBlockList{
 			message.NewDataBlock(message.NewBase64Source("abc", "image/png"), message.WithDataBlockID("data-1")),
 			message.NewTextBlock(" tail", message.WithBlockID("text-1")),
 		},
+		toolpkg.WithToolChunkID("tool-call-2"),
 		toolpkg.WithToolChunkState(message.ToolResultInterrupted),
 	)); err != nil {
 		t.Fatalf("AppendChunk returned error: %v", err)
 	}
-	if err := response.AppendChunk(toolpkg.NewToolChunk("tool-call-2", nil, toolpkg.WithToolChunkState(message.ToolResultSuccess))); err != nil {
+	if err := response.AppendChunk(toolpkg.NewToolChunk(nil, toolpkg.WithToolChunkID("tool-call-2"), toolpkg.WithToolChunkState(message.ToolResultSuccess))); err != nil {
 		t.Fatalf("success chunk should not lower interrupted state: %v", err)
 	}
 	if response.State != message.ToolResultInterrupted {
@@ -206,10 +223,10 @@ func TestToolResponseAppendChunkCoversStateAndSourceEdges(t *testing.T) {
 func TestToolResponseAssignsNewIDsForAllConflictingBlockKinds(t *testing.T) {
 	t.Parallel()
 
-	response := toolpkg.NewToolResponse("tool-call-1")
+	response := toolpkg.NewToolResponse(toolpkg.WithToolResponseID("tool-call-1"))
 	if err := response.AppendChunk(toolpkg.NewToolChunk(
-		"tool-call-1",
 		message.ContentBlockList{message.NewTextBlock("base", message.WithBlockID("same"))},
+		toolpkg.WithToolChunkID("tool-call-1"),
 	)); err != nil {
 		t.Fatalf("AppendChunk base returned error: %v", err)
 	}
@@ -221,7 +238,7 @@ func TestToolResponseAssignsNewIDsForAllConflictingBlockKinds(t *testing.T) {
 		message.NewToolResultBlock("same", "Read", message.ToolResultOutput{Raw: "ok"}, message.ToolResultSuccess),
 	}
 	for _, block := range conflicts {
-		if err := response.AppendChunk(toolpkg.NewToolChunk("tool-call-1", message.ContentBlockList{block})); err != nil {
+		if err := response.AppendChunk(toolpkg.NewToolChunk(message.ContentBlockList{block}, toolpkg.WithToolChunkID("tool-call-1"))); err != nil {
 			t.Fatalf("AppendChunk conflict returned error: %v", err)
 		}
 		if response.Content[len(response.Content)-1].BlockID() == "same" {
@@ -234,7 +251,7 @@ func TestNilToolResponseAppendChunkReturnsError(t *testing.T) {
 	t.Parallel()
 
 	var response *toolpkg.ToolResponse
-	if err := response.AppendChunk(toolpkg.NewToolChunk("id", nil)); err == nil {
+	if err := response.AppendChunk(toolpkg.NewToolChunk(nil, toolpkg.WithToolChunkID("id"))); err == nil {
 		t.Fatal("nil response should return error")
 	}
 }

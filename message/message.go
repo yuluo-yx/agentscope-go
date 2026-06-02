@@ -186,11 +186,11 @@ func (m *Message) HasContentBlocks(types ...string) bool {
 	return m.Content.HasContentBlocks(types...)
 }
 
-func (m *Message) GetTextContent(separator string) *string {
+func (m *Message) GetTextContent(separator ...string) *string {
 	if m == nil {
 		return nil
 	}
-	return m.Content.GetTextContent(separator)
+	return m.Content.GetTextContent(separator...)
 }
 
 func (m *Message) GetContentBlocks(types ...string) []ContentBlock {

@@ -29,11 +29,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/google/uuid"
-
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/tool/builtin"
 	"github.com/yuluo-yx/agentscope-go/tool/skill"
+	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
 const defaultWorkspaceInstructions = `<workspace>
@@ -96,7 +95,7 @@ func NewLocalWorkspace(workdir string, opts ...LocalOption) (*LocalWorkspace, er
 		return nil, err
 	}
 	workspace := &LocalWorkspace{
-		id:           uuid.New().String(),
+		id:           utils.NewID(),
 		workdir:      absWorkdir,
 		instructions: defaultWorkspaceInstructions,
 	}
@@ -104,7 +103,7 @@ func NewLocalWorkspace(workdir string, opts ...LocalOption) (*LocalWorkspace, er
 		opt(workspace)
 	}
 	if workspace.id == "" {
-		workspace.id = uuid.New().String()
+		workspace.id = utils.NewID()
 	}
 	if workspace.instructions == "" {
 		workspace.instructions = defaultWorkspaceInstructions

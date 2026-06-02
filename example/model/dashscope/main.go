@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
@@ -99,7 +100,7 @@ func chat() {
 		panic(err)
 	}
 	responseText := ""
-	if text := response.GetTextContent(""); text != nil {
+	if text := response.GetTextContent(); text != nil {
 		responseText = *text
 	}
 	fmt.Printf("dashscope_live=ok response=%q\n", shorten(responseText, 120))
@@ -115,7 +116,7 @@ func chat() {
 	weatherCall := firstToolCall(toolCallResponse.Content)
 	if weatherCall == nil {
 		text := ""
-		if responseText := toolCallResponse.GetTextContent(""); responseText != nil {
+		if responseText := toolCallResponse.GetTextContent(); responseText != nil {
 			text = *responseText
 		}
 		panic(fmt.Sprintf("DashScope weather request returned no tool call: %q", text))
@@ -137,7 +138,7 @@ func chat() {
 	}
 
 	weatherText := ""
-	if text := weatherResponse.GetTextContent(""); text != nil {
+	if text := weatherResponse.GetTextContent(); text != nil {
 		weatherText = *text
 	}
 	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(weatherText, 120))
@@ -205,7 +206,7 @@ func streamChat() {
 	var finalText string
 	for response := range responses {
 		text := ""
-		if responseText := response.GetTextContent(""); responseText != nil {
+		if responseText := response.GetTextContent(); responseText != nil {
 			text = *responseText
 		}
 		if response.IsLast {

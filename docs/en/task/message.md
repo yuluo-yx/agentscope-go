@@ -38,9 +38,38 @@ result := message.NewToolResultBlock(
 	"call-1",
 	"Read",
 	message.ToolResultOutput{Blocks: message.ContentBlockList{message.NewTextBlock("content")}},
-	message.ToolResultSuccess,
 )
 ```
+
+`NewToolResultBlock` defaults to `ToolResultRunning`, matching Python's `ToolResultBlock.state` default. Pass an explicit state, such as `message.ToolResultSuccess`, when you are constructing a completed tool result to send back to a model.
+
+Use content query helpers when you need plain text or filtered blocks:
+
+```go
+blocks := message.ContentBlockList{
+	message.NewTextBlock("hello"),
+	message.NewToolCallBlock("call-1", "Read", `{"path":"README.md"}`),
+	message.NewTextBlock("world"),
+}
+
+text := blocks.GetTextContent()
+if text != nil {
+	fmt.Println(*text) // hello
+	// world
+}
+
+joined := blocks.GetTextContent(" ")
+if joined != nil {
+	fmt.Println(*joined) // hello world
+}
+
+toolCalls := blocks.GetContentBlocks("tool_call")
+if len(toolCalls) > 0 {
+	fmt.Println(toolCalls[0].BlockID())
+}
+```
+
+`GetTextContent()` matches the Python API default and joins multiple text blocks with a newline. Pass a custom separator only when a different join format is required.
 
 ## Conversation History
 

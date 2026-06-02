@@ -16,6 +16,7 @@ package model_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,9 @@ func TestChatModelInterfaceAndResponseDefaults(t *testing.T) {
 	if got.ID == "" || got.CreatedAt == "" {
 		t.Fatalf("response should have id and creation time: %#v", got)
 	}
+	if len(got.ID) != 32 || strings.Contains(got.ID, "-") {
+		t.Fatalf("response id should match Python uuid4().hex format: %q", got.ID)
+	}
 	if got.Usage.Type != modelpkg.UsageTypeChat {
 		t.Fatalf("chat usage type should default to chat, got %q", got.Usage.Type)
 	}
@@ -101,6 +105,10 @@ func TestChatResponseContentQueries(t *testing.T) {
 	text := resp.GetTextContent(" ")
 	if text == nil || *text != "hello world" {
 		t.Fatalf("unexpected response text content: %#v", text)
+	}
+	defaultText := resp.GetTextContent()
+	if defaultText == nil || *defaultText != "hello\nworld" {
+		t.Fatalf("unexpected default response text content: %#v", defaultText)
 	}
 	if !resp.HasContentBlocks("text") || !resp.HasContentBlocks("tool_call") || !resp.HasContentBlocks() {
 		t.Fatalf("chat response should report existing blocks: %#v", resp.Content)

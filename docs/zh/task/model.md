@@ -40,7 +40,7 @@ response, err := chat.Call(ctx, model.CallRequest{
 `Call` 和 `Stream` 都使用同一个 `ChatResponse` 结构。需要读取模型返回的文本块内容时，可以直接调用：
 
 ```go
-text := response.GetTextContent("")
+text := response.GetTextContent()
 if text != nil {
 	fmt.Println(*text)
 }

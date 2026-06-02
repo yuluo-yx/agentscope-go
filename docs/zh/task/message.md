@@ -38,9 +38,10 @@ result := message.NewToolResultBlock(
 	"call-1",
 	"Read",
 	message.ToolResultOutput{Blocks: message.ContentBlockList{message.NewTextBlock("content")}},
-	message.ToolResultSuccess,
 )
 ```
+
+`NewToolResultBlock` 默认状态是 `ToolResultRunning`，与 Python 的 `ToolResultBlock.state` 默认值一致。构造已经完成的工具结果并回填给模型时，再显式传入 `message.ToolResultSuccess` 等真实状态。
 
 需要从内容块列表中读取文本或筛选内容块时，可以使用统一的查询方法：
 
@@ -51,9 +52,15 @@ blocks := message.ContentBlockList{
 	message.NewTextBlock("world"),
 }
 
-text := blocks.GetTextContent(" ")
+text := blocks.GetTextContent()
 if text != nil {
-	fmt.Println(*text) // hello world
+	fmt.Println(*text) // hello
+	// world
+}
+
+joined := blocks.GetTextContent(" ")
+if joined != nil {
+	fmt.Println(*joined) // hello world
 }
 
 toolCalls := blocks.GetContentBlocks("tool_call")
@@ -61,6 +68,8 @@ if len(toolCalls) > 0 {
 	fmt.Println(toolCalls[0].BlockID())
 }
 ```
+
+`GetTextContent()` 与 Python API 的默认语义一致，多个文本块会用换行符拼接；只有需要自定义拼接格式时才传入分隔符。
 
 ## 对话历史
 

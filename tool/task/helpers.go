@@ -36,7 +36,6 @@ func taskContextOrError(toolName string, state *astate.AgentState) (*astate.Task
 
 func successText(text string) <-chan astool.ToolChunk {
 	return singleChunk(astool.NewToolChunk(
-		"",
 		message.ContentBlockList{message.NewTextBlock(text)},
 		astool.WithToolChunkState(message.ToolResultSuccess),
 	))
@@ -44,7 +43,6 @@ func successText(text string) <-chan astool.ToolChunk {
 
 func errorText(text string) <-chan astool.ToolChunk {
 	return singleChunk(astool.NewToolChunk(
-		"",
 		message.ContentBlockList{message.NewTextBlock(text)},
 		astool.WithToolChunkState(message.ToolResultError),
 	))

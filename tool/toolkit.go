@@ -106,7 +106,7 @@ func (t *Toolkit) RunTool(ctx context.Context, call *message.ToolCallBlock, stat
 	if err != nil {
 		return nil, err
 	}
-	response := NewToolResponse(call.ID)
+	response := NewToolResponse(WithToolResponseID(call.ID))
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
 			return nil, err
@@ -268,8 +268,8 @@ func activeSet(groups []string) map[string]bool {
 
 func interruptedChunk(id, text string) ToolChunk {
 	return *NewToolChunk(
-		id,
 		message.ContentBlockList{message.NewTextBlock(text)},
+		WithToolChunkID(id),
 		WithToolChunkState(message.ToolResultInterrupted),
 	)
 }

@@ -73,12 +73,15 @@ func TestJSONPrimitiveValidation(t *testing.T) {
 func TestToolChoiceBuiltInModesAndClone(t *testing.T) {
 	t.Parallel()
 
-	choice, err := types.NewToolChoice("")
+	choice, err := types.NewToolChoice(string(types.ToolChoiceAuto))
 	if err != nil {
-		t.Fatalf("empty mode should default to auto: %v", err)
+		t.Fatalf("auto mode should be valid: %v", err)
 	}
 	if choice.Mode != string(types.ToolChoiceAuto) {
-		t.Fatalf("unexpected default mode: %q", choice.Mode)
+		t.Fatalf("unexpected mode: %q", choice.Mode)
+	}
+	if _, err := types.NewToolChoice(""); err == nil {
+		t.Fatal("empty mode should return validation error")
 	}
 	if err := (&types.ToolChoice{Mode: ""}).Validate(nil); err == nil {
 		t.Fatal("empty explicit mode should return validation error")

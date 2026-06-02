@@ -12,18 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package message
+package utils
 
 import (
-	"time"
+	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/utils"
+	"github.com/google/uuid"
 )
 
-func newID() string {
-	return utils.NewID()
-}
-
-func nowISO() string {
-	return time.Now().Format(time.RFC3339Nano)
+// NewID returns a Python-compatible UUID hex identifier without dashes.
+func NewID() string {
+	return strings.ReplaceAll(uuid.NewString(), "-", "")
 }

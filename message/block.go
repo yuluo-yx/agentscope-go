@@ -52,7 +52,7 @@ func (l ContentBlockList) Clone() ContentBlockList {
 	return out
 }
 
-// HasContentBlocks 判断内容块列表是否包含指定类型的内容块；未传类型时判断列表是否非空。
+// HasContentBlocks reports whether the list contains any block of the requested types.
 func (l ContentBlockList) HasContentBlocks(types ...string) bool {
 	if len(types) == 0 {
 		return len(l) > 0
@@ -70,8 +70,13 @@ func (l ContentBlockList) HasContentBlocks(types ...string) bool {
 	return false
 }
 
-// GetTextContent 返回内容块列表中的文本块内容；不存在文本块时返回 nil。
-func (l ContentBlockList) GetTextContent(separator string) *string {
+// GetTextContent returns concatenated TextBlock content, using "\n" as the default separator.
+func (l ContentBlockList) GetTextContent(separator ...string) *string {
+	sep := "\n"
+	if len(separator) > 0 {
+		sep = separator[0]
+	}
+
 	var builder strings.Builder
 	found := false
 	for _, block := range l {
@@ -80,7 +85,7 @@ func (l ContentBlockList) GetTextContent(separator string) *string {
 			continue
 		}
 		if found {
-			builder.WriteString(separator)
+			builder.WriteString(sep)
 		}
 		builder.WriteString(text.Text)
 		found = true
@@ -92,7 +97,7 @@ func (l ContentBlockList) GetTextContent(separator string) *string {
 	return &out
 }
 
-// GetContentBlocks 返回匹配类型的内容块；未传类型时返回所有内容块的浅拷贝。
+// GetContentBlocks returns matching blocks, or a shallow copy of all blocks when no type is provided.
 func (l ContentBlockList) GetContentBlocks(types ...string) []ContentBlock {
 	if len(types) == 0 {
 		return append([]ContentBlock(nil), l...)
@@ -112,7 +117,7 @@ func (l ContentBlockList) GetContentBlocks(types ...string) []ContentBlock {
 	return out
 }
 
-// FindBlock 按内容块类型和 ID 查找内容块；未找到时返回 nil。
+// FindBlock returns the block matching the given type and ID, or nil when no block matches.
 func (l ContentBlockList) FindBlock(blockType, blockID string) ContentBlock {
 	for _, block := range l {
 		if block == nil {
@@ -315,16 +320,17 @@ func NewToolCallBlock(id, name, input string, opts ...ToolCallBlockOption) *Tool
 	return block
 }
 
-func NewToolResultBlock(id, name string, output ToolResultOutput, state ToolResultState) *ToolResultBlock {
-	if state == "" {
-		state = ToolResultRunning
+func NewToolResultBlock(id, name string, output ToolResultOutput, state ...ToolResultState) *ToolResultBlock {
+	resultState := ToolResultRunning
+	if len(state) > 0 && state[0] != "" {
+		resultState = state[0]
 	}
 	return &ToolResultBlock{
 		Type:   "tool_result",
 		ID:     id,
 		Name:   name,
 		Output: output,
-		State:  state,
+		State:  resultState,
 	}
 }
 

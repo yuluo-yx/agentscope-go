@@ -138,7 +138,7 @@ func main() {
 	))
 	reply := mustReply(agent.Reply(context.Background(), mustMessage(message.NewUserMessage("user", "Use configured fallback."))))
 	replyText := ""
-	if text := reply.GetTextContent(""); text != nil {
+	if text := reply.GetTextContent(); text != nil {
 		replyText = *text
 	}
 	fmt.Printf("reply=%s primary_stream_calls=%d fallback_stream_calls=%d compressed=%t\n",
@@ -161,7 +161,7 @@ func contextCompressed(state *asstate.AgentState) bool {
 	if !ok {
 		return false
 	}
-	text := result.Output.Blocks.GetTextContent("")
+	text := result.Output.Blocks.GetTextContent()
 	return strings.Contains(result.Output.Raw, "truncated") &&
 		len(result.Output.Blocks) > 0 &&
 		text != nil &&

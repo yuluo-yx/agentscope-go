@@ -17,10 +17,9 @@ package state
 import (
 	"os"
 
-	"github.com/google/uuid"
-
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/permission"
+	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
 // SummaryContent represents a compressed context summary as text or blocks.
@@ -154,9 +153,9 @@ type AgentState struct {
 // NewAgentState creates a fully initialized Agent state.
 func NewAgentState() *AgentState {
 	return &AgentState{
-		SessionID:         uuid.NewString(),
+		SessionID:         utils.NewID(),
 		Context:           []*message.Message{},
-		ReplyID:           uuid.NewString(),
+		ReplyID:           utils.NewID(),
 		PermissionContext: permission.NewContext(permission.ModeDefault),
 		ToolContext:       NewToolContext(),
 		TaskContext:       NewTaskContext(),

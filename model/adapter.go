@@ -17,8 +17,6 @@ package model
 import (
 	"fmt"
 
-	"github.com/google/uuid"
-
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
@@ -179,7 +177,7 @@ func NormalizeError(provider string, err error, opts ...ErrorOption) error {
 func normalizePart(part ResponsePart) (message.ContentBlock, error) {
 	id := part.ID
 	if id == "" {
-		id = uuid.NewString()
+		id = utils.NewID()
 	}
 	switch part.Kind {
 	case PartText:

@@ -12,18 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package message
+package utils_test
 
 import (
-	"time"
+	"encoding/hex"
+	"testing"
 
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
-func newID() string {
-	return utils.NewID()
-}
+func TestNewIDUsesPythonCompatibleHexUUID(t *testing.T) {
+	t.Parallel()
 
-func nowISO() string {
-	return time.Now().Format(time.RFC3339Nano)
+	id := utils.NewID()
+	if len(id) != 32 {
+		t.Fatalf("id should be 32 hex characters, got %q", id)
+	}
+	if _, err := hex.DecodeString(id); err != nil {
+		t.Fatalf("id should be hex encoded: %v", err)
+	}
 }

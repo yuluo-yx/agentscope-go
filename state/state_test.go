@@ -45,6 +45,12 @@ func TestAgentStateDefaultsAndClone(t *testing.T) {
 	if state.SessionID == "" || state.ReplyID == "" {
 		t.Fatalf("state should create ids: %#v", state)
 	}
+	if len(state.SessionID) != 32 || strings.Contains(state.SessionID, "-") {
+		t.Fatalf("session id should match Python uuid4().hex format: %q", state.SessionID)
+	}
+	if len(state.ReplyID) != 32 || strings.Contains(state.ReplyID, "-") {
+		t.Fatalf("reply id should match Python uuid4().hex format: %q", state.ReplyID)
+	}
 	if got := state.Context[0].GetTextContent(""); got == nil || *got != "hello" {
 		t.Fatalf("message clone mutated original: %#v", got)
 	}

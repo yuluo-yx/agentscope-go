@@ -20,11 +20,10 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/google/uuid"
-
 	agenterrors "github.com/yuluo-yx/agentscope-go/errors"
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/permission"
+	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
 // ToolProvider is the minimal tool registry interface required by Agent.
@@ -256,7 +255,7 @@ func (a *Agent) runReply(ctx context.Context, input any, emit func(message.Event
 		a.state.ReplyID = assistant.ID
 		return a.continueReply(ctx, assistant, emit)
 	}
-	a.state.ReplyID = uuid.NewString()
+	a.state.ReplyID = utils.NewID()
 	a.state.CurIter = 0
 	assistant, err := message.NewAssistantMessage(a.name, nil, message.WithMessageID(a.state.ReplyID))
 	if err != nil {

@@ -36,3 +36,17 @@ response, err := chat.Call(ctx, model.CallRequest{
 	Tools:    schemas,
 })
 ```
+
+`Call` and `Stream` both use `ChatResponse`. Use the content query helpers to read text blocks or tool calls:
+
+```go
+text := response.GetTextContent()
+if text != nil {
+	fmt.Println(*text)
+}
+
+toolCalls := response.GetContentBlocks("tool_call")
+if len(toolCalls) > 0 {
+	fmt.Println(toolCalls[0].BlockID())
+}
+```

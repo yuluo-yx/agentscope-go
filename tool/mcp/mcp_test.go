@@ -231,7 +231,7 @@ func runTool(t *testing.T, current astool.Tool, input map[string]any) *astool.To
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-	response := astool.NewToolResponse("test-call")
+	response := astool.NewToolResponse(astool.WithToolResponseID("test-call"))
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
 			t.Fatalf("AppendChunk returned error: %v", err)

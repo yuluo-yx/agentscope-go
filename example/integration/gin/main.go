@@ -339,7 +339,7 @@ User request: %s`, prompt))
 		return
 	}
 
-	responseText := chatResponse.GetTextContent("")
+	responseText := chatResponse.GetTextContent()
 	if responseText == nil {
 		responseText = new(string)
 	}
