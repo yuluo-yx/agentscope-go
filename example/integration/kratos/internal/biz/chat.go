@@ -18,10 +18,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
@@ -274,9 +274,10 @@ func newJourneyAgent(stream bool) (*agentpkg.Agent, error) {
 }
 
 func newChatModel(stream bool) (asmodel.ChatModel, error) {
+	cfg := modelconfig.DashScope("qwen3.7-max")
 	return dashscope.NewChatModel(
-		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
-		"qwen3.7-max",
+		dashscope.NewCredential(cfg.APIKey),
+		cfg.Model,
 		dashscope.WithStream(stream),
 	)
 }

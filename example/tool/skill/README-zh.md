@@ -1,13 +1,13 @@
-# Skill 加载示例
+# 通过 Agent 使用 Skill 示例
 
-英文文档：[README.md](README.md)。
+英文文档见 [README.md](README.md)。
 
-本示例展示 `tool/skill` 包如何加载本地 `SKILL.md`：
+这个示例演示一个完整闭环：把本地 `SKILL.md` 加载成工具，再由 Agent 调用。
 
-- 从 `resources/` 读取两个示例 skill 目录。
-- 每个 `SKILL.md` 使用 YAML front matter 声明 `name` 和 `description`。
-- 使用 `NewLocalLoader(..., WithScanSubdirs(true))` 扫描子目录。
-- 读取 skill 名称、描述和 Markdown 正文。
+- 使用 `tool/skill.LocalLoader` 加载 `resources/**/SKILL.md`。
+- 把每个 skill 包装成 `tool.FunctionTool`（命名为 `Skill_<name>`）。
+- 把这些工具注册到 `tool.Toolkit`。
+- 使用本地 scripted model 产出一次 skill 的 tool call，并通过 `agent.ReplyStream` 执行。
 
 ## 前置条件
 
@@ -26,5 +26,5 @@ go run .
 输出包含：
 
 ```text
-skills=2
+skills=2 names=code-review,planning agent_reply=I used Skill_planning and summarized its guidance. events=tool_call:Skill_planning,tool_result:success
 ```

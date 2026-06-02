@@ -17,9 +17,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
@@ -42,19 +42,14 @@ func main() {
 func chat() {
 
 	// get apiKey and set some params.
-	apiKey := strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY"))
-	live := apiKey != ""
-	if apiKey == "" {
-		apiKey = "demo-dashscope-key"
-	}
-	modelID := getenv("AI_DASHSCOPE_MODEL", "qwen3.7-max")
+	cfg := modelconfig.DashScope("qwen3.7-max")
 	temperature := 0.2
 	maxTokens := int64(256)
 
 	// create chatModel instance
 	chat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(apiKey),
-		modelID,
+		dashscope.NewCredential(cfg.APIKey),
+		cfg.Model,
 		dashscope.WithStream(false),
 		dashscope.WithChatParameters(dashscope.ChatParameters{
 			MaxTokens:   &maxTokens,
@@ -90,7 +85,7 @@ func chat() {
 		len(visionMessage.Content),
 		tokens,
 	)
-	if !live {
+	if !cfg.Live {
 		fmt.Println("dashscope_live=skipped")
 		return
 	}
@@ -150,18 +145,13 @@ func chat() {
 
 func streamChat() {
 
-	apiKey := strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY"))
-	live := apiKey != ""
-	if apiKey == "" {
-		apiKey = "demo-dashscope-key"
-	}
-	modelID := getenv("AI_DASHSCOPE_MODEL", "qwen3.7-max")
+	cfg := modelconfig.DashScope("qwen3.7-max")
 	temperature := 0.2
 	maxTokens := int64(256)
 
 	streamChat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(apiKey),
-		modelID,
+		dashscope.NewCredential(cfg.APIKey),
+		cfg.Model,
 		dashscope.WithStream(true),
 		dashscope.WithChatParameters(dashscope.ChatParameters{
 			MaxTokens:   &maxTokens,
@@ -197,7 +187,7 @@ func streamChat() {
 		len(visionMessage.Content),
 		tokens,
 	)
-	if !live {
+	if !cfg.Live {
 		fmt.Println("dashscope_live=skipped")
 		return
 	}
@@ -250,6 +240,16 @@ func weatherTool() *tool.FunctionTool {
 		},
 		tool.WithFunctionReadOnly(true),
 	))
+}
+
+func textContent(blocks message.ContentBlockList) string {
+	var builder strings.Builder
+	for _, block := range blocks {
+		if text, ok := block.(*message.TextBlock); ok {
+			builder.WriteString(text.Text)
+		}
+	}
+	return builder.String()
 }
 
 func getenv(name, fallback string) string {

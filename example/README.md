@@ -12,7 +12,7 @@ Each subdirectory is an independent module. Enter the directory you want to try 
 go run .
 ```
 
-Model and tool examples demonstrate ChatModel tool-call loops where that matches the module purpose. Without `AI_DASHSCOPE_API_KEY`, those examples stay on an offline path and print tool schema/token information. With `AI_DASHSCOPE_API_KEY`, they run the full model -> tool call -> local tool execution -> tool result -> final model response loop.
+Model and tool examples demonstrate ChatModel tool-call loops where that matches the module purpose. Without an API key, those examples stay on an offline path and print tool schema/token information. With one global API key, they run the full model -> tool call -> local tool execution -> tool result -> final model response loop.
 
 ## Example List
 
@@ -37,8 +37,16 @@ Model and tool examples demonstrate ChatModel tool-call loops where that matches
 
 ## External Services
 
-The examples use locally verifiable paths by default. To make real DashScope requests in model/tool examples, set:
+The examples use locally verifiable paths by default. To make real DashScope requests in model/tool examples, set one key once:
 
 ```bash
-AI_DASHSCOPE_API_KEY=your-key go run .
+export AI_API_KEY=your-key
+```
+
+Optional overrides:
+
+```bash
+export AI_DASHSCOPE_API_KEY=your-dashscope-key  # provider-specific key (higher priority)
+export AI_MODEL=qwen3.7-max                     # global model override
+export AI_DASHSCOPE_MODEL=qwen3.7-max           # provider-specific model (higher priority)
 ```
