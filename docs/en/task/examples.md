@@ -29,6 +29,7 @@ go run .
 | `tool/task` | Task tool usage |
 | `tool/skill` | Local `SKILL.md` loading |
 | `workspace/local` | Local workspace tools, skills, and offload |
+| `workspace/docker` | Docker workspace tools, container file operations, and optional ChatModel response |
 
 ## Live Model Calls
 

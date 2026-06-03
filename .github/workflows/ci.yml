@@ -35,3 +35,4 @@ jobs:
       - uses: ./tools/github-setup-deps
       - run: make download
       - run: make ci
+      - run: make test-e2e-docker

@@ -1,5 +1,7 @@
 # Built-in Tool Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example demonstrates the current built-in tools:

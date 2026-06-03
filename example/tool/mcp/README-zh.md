@@ -1,5 +1,7 @@
 # MCP 工具示例
 
+项目主页：[README-zh.md](../../../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 本示例演示如何把 MCP server 接入 AgentScope Go 工具体系。

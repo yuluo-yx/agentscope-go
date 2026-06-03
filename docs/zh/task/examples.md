@@ -29,6 +29,7 @@ go run .
 | `tool/task` | 任务工具用法 |
 | `tool/skill` | 加载本地 `SKILL.md` |
 | `workspace/local` | 本地 Workspace 工具、Skill 和卸载能力 |
+| `workspace/docker` | Docker Workspace 工具、容器文件操作和可选 ChatModel 回复 |
 
 ## 真实模型调用
 

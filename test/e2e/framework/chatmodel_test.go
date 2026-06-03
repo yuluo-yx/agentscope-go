@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package global_test
+package frameworke2e_test
 
 import (
 	"context"
@@ -27,7 +27,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/tool"
 )
 
-func TestGlobalChatModelCallStreamAndToolSchemaE2E(t *testing.T) {
+func TestFrameworkChatModelCallStreamAndToolSchemaE2E(t *testing.T) {
 	t.Parallel()
 
 	echoTool, err := tool.NewFunctionTool(
@@ -115,7 +115,7 @@ func TestGlobalChatModelCallStreamAndToolSchemaE2E(t *testing.T) {
 	}
 }
 
-func TestGlobalChatModelStreamErrorE2E(t *testing.T) {
+func TestFrameworkChatModelStreamErrorE2E(t *testing.T) {
 	t.Parallel()
 
 	expectedErr := errors.New("provider stream failed")

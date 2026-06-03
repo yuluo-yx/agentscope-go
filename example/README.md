@@ -1,5 +1,7 @@
 # AgentScope Go Examples
 
+Project home: [README.md](../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This directory organizes examples by feature area. Each subdirectory is a standalone Go module with its own `go.mod`, `main.go`, `README.md`, and `README-zh.md`.
@@ -34,6 +36,7 @@ Model and tool examples demonstrate ChatModel tool-call loops where that matches
 | `tool/task` | TaskCreate/TaskGet/TaskList/TaskUpdate |
 | `tool/skill` | Local `SKILL.md` loading |
 | `workspace/local` | Workspace-backed tool file operations, skills, context offload, and tool result offload |
+| `workspace/docker` | Docker workspace tools, container file operations, and optional ChatModel response |
 
 ## External Services
 

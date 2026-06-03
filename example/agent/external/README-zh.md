@@ -1,5 +1,7 @@
 # Agent 外部执行示例
 
+项目主页：[README-zh.md](../../../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 这个示例展示 Agent 遇到必须在当前 Go 进程外执行的工具时如何暂停：

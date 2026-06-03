@@ -1,5 +1,7 @@
 # Agent Hooks Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows how one middleware value can implement every Agent hook:

@@ -1,5 +1,7 @@
 # AgentScope Go 与 Kratos 集成
 
+项目主页：[README-zh.md](../../../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 该示例用 Kratos 项目结构暴露与 Gin 示例一致的 AgentScope Go 流程：

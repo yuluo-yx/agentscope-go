@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package global_test
+package frameworke2e_test
 
 import (
 	"context"
@@ -33,7 +33,7 @@ type scriptedChatModel struct {
 }
 
 func (m *scriptedChatModel) Name() string {
-	return "scripted-global-e2e"
+	return "scripted-framework-e2e"
 }
 
 func (m *scriptedChatModel) Call(_ context.Context, request modelpkg.CallRequest) (*modelpkg.ChatResponse, error) {
@@ -77,7 +77,7 @@ func (m *scriptedChatModel) CountTokens(request modelpkg.CallRequest) (int, erro
 	return modelpkg.ApproximateTokenCount(request.Messages, request.Tools), nil
 }
 
-func TestGlobalAgentToolStateE2E(t *testing.T) {
+func TestFrameworkAgentToolStateE2E(t *testing.T) {
 	t.Parallel()
 
 	kit, err := tool.NewToolkit(tasktool.NewTaskCreate())

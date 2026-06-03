@@ -1,5 +1,7 @@
 # AgentScope Go with Gin
 
+Project home: [README.md](../../../README.md).
+
 Chinese docs: [README-zh.md](README-zh.md).
 
 This example exposes AgentScope Go ChatModel, ChatModel streaming, ChatModel tool calling, Agent auto tool execution, Agent streaming events, and structured JSON output through Gin.

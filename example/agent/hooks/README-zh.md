@@ -1,5 +1,7 @@
 # Agent Hook 示例
 
+项目主页：[README-zh.md](../../../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 这个示例展示一个 middleware 如何同时实现 Agent 的所有 hook：

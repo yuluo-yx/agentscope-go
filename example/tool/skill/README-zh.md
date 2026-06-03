@@ -1,5 +1,7 @@
 # 通过 Agent 使用 Skill 示例
 
+项目主页：[README-zh.md](../../../README-zh.md)。
+
 英文文档见 [README.md](README.md)。
 
 这个示例演示一个完整闭环：把本地 `SKILL.md` 加载成工具，再由 Agent 调用。

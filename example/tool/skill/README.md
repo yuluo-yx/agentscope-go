@@ -1,5 +1,7 @@
 # Skill Through Agent Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows an end-to-end flow where an Agent uses local skills as tools:

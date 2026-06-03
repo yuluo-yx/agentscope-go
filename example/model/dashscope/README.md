@@ -1,5 +1,7 @@
 # DashScope ChatModel Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example covers the current DashScope capability boundary in the Go implementation:

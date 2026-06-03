@@ -1,5 +1,7 @@
 # AgentScope Go with Kratos
 
+Project home: [README.md](../../../README.md).
+
 Chinese docs: [README-zh.md](README-zh.md).
 
 This example exposes the same AgentScope Go flows as the Gin example through a Kratos project layout:

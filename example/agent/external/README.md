@@ -1,5 +1,7 @@
 # Agent External Execution Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows how an Agent pauses for a tool that must run outside the current Go process:

@@ -1,5 +1,7 @@
 # 消息示例
 
+项目主页：[README-zh.md](../../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 本示例展示 `message` 包的基本用法：

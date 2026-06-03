@@ -1,5 +1,7 @@
 # Agent 配置示例
 
+项目主页：[README-zh.md](../../../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 这个示例展示常见 Agent 配置点：

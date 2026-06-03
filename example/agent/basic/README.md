@@ -1,5 +1,7 @@
 # Basic Agent Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows a minimal end-to-end Agent flow:

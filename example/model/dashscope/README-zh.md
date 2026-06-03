@@ -1,5 +1,7 @@
 # DashScope ChatModel 示例
 
+项目主页：[README-zh.md](../../../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 本示例覆盖当前 Go 实现中的 DashScope 能力边界：

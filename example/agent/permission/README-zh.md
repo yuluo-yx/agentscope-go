@@ -1,5 +1,7 @@
 # Agent 权限确认示例
 
+项目主页：[README-zh.md](../../../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 这个示例展示 Agent 的权限暂停与恢复流程：

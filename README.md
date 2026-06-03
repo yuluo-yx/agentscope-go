@@ -105,22 +105,23 @@ Each example is an independent Go module with its own `go.mod`, English
 
 | Example | Purpose |
 | --- | --- |
-| `example/agent/basic` | Build a basic agent backed by a ChatModel. |
-| `example/agent/configuration` | Configure model fallback, ReAct limits, and context cleanup. |
-| `example/agent/external` | Pause and resume an Agent around externally executed tools. |
-| `example/agent/hooks` | Implement Agent middleware hooks around reply, reasoning, model calls, acting, and system prompts. |
-| `example/agent/permission` | Handle permission confirmation and resume a pending tool call. |
-| `example/message` | Compose user, assistant, system, and tool messages. |
-| `example/model/dashscope` | Call DashScope models and demonstrate model tool calling. |
-| `example/model/providers` | Compare the available model provider adapters. |
-| `example/integration/gin` | Expose direct ChatModel streaming and Agent event streaming through Gin. |
-| `example/integration/kratos` | Expose direct ChatModel streaming and Agent event streaming through Kratos. |
-| `example/tool/function` | Register and execute function tools from model tool calls. |
-| `example/tool/builtin` | Use builtin shell and filesystem tools with permissions. |
-| `example/tool/mcp` | Connect to MCP servers and expose MCP tools to an agent. |
-| `example/tool/skill` | Load local `SKILL.md` resources as agent tools. |
-| `example/tool/task` | Wrap task-style work as tools. |
-| `example/workspace/local` | Provide local workspace files for AI-assisted tool workflows. |
+| [`example/agent/basic`](example/agent/basic) | Build a basic agent backed by a ChatModel. |
+| [`example/agent/configuration`](example/agent/configuration) | Configure model fallback, ReAct limits, and context cleanup. |
+| [`example/agent/external`](example/agent/external) | Pause and resume an Agent around externally executed tools. |
+| [`example/agent/hooks`](example/agent/hooks) | Implement Agent middleware hooks around reply, reasoning, model calls, acting, and system prompts. |
+| [`example/agent/permission`](example/agent/permission) | Handle permission confirmation and resume a pending tool call. |
+| [`example/message`](example/message) | Compose user, assistant, system, and tool messages. |
+| [`example/model/dashscope`](example/model/dashscope) | Call DashScope models and demonstrate model tool calling. |
+| [`example/model/providers`](example/model/providers) | Compare the available model provider adapters. |
+| [`example/integration/gin`](example/integration/gin) | Expose direct ChatModel streaming and Agent event streaming through Gin. |
+| [`example/integration/kratos`](example/integration/kratos) | Expose direct ChatModel streaming and Agent event streaming through Kratos. |
+| [`example/tool/function`](example/tool/function) | Register and execute function tools from model tool calls. |
+| [`example/tool/builtin`](example/tool/builtin) | Use builtin shell and filesystem tools with permissions. |
+| [`example/tool/mcp`](example/tool/mcp) | Connect to MCP servers and expose MCP tools to an agent. |
+| [`example/tool/skill`](example/tool/skill) | Load local `SKILL.md` resources as agent tools. |
+| [`example/tool/task`](example/tool/task) | Wrap task-style work as tools. |
+| [`example/workspace/local`](example/workspace/local) | Provide local workspace files for AI-assisted tool workflows. |
+| [`example/workspace/docker`](example/workspace/docker) | Run workspace tools inside a Docker container and send the result through a ChatModel. |
 
 Start with the examples if you want the quickest path to a working agent.
 

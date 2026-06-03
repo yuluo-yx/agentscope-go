@@ -1,5 +1,7 @@
 # Agent Permission Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows the Agent permission pause-and-resume flow:

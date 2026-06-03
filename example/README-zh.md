@@ -1,5 +1,7 @@
 # AgentScope Go 示例
 
+项目主页：[README-zh.md](../README-zh.md)。
+
 英文文档：[README.md](README.md)。
 
 本目录按功能模块组织示例。每个子目录都是独立 Go 项目，包含自己的 `go.mod`、`main.go`、`README.md` 和 `README-zh.md`，可以单独进入目录运行。
@@ -34,6 +36,7 @@ go run .
 | `tool/task` | TaskCreate/TaskGet/TaskList/TaskUpdate |
 | `tool/skill` | 本地 `SKILL.md` 加载 |
 | `workspace/local` | workspace 支撑的工具文件操作、skills、上下文与工具结果 offload |
+| `workspace/docker` | Docker workspace 工具、容器文件操作和可选 ChatModel 回复 |
 
 ## 外部服务
 

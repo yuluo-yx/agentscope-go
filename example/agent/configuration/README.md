@@ -1,5 +1,7 @@
 # Agent Configuration Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows common Agent configuration points:

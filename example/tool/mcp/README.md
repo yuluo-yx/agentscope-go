@@ -1,5 +1,7 @@
 # MCP Tool Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows how to connect an MCP server to AgentScope Go tools.

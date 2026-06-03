@@ -1,5 +1,7 @@
 # Function Tool Example
 
+Project home: [README.md](../../../README.md).
+
 Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows how to wrap a Go function as an AgentScope tool:

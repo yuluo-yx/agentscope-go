@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package global_test
+package frameworke2e_test
 
 import (
 	"context"
@@ -35,7 +35,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/workspace"
 )
 
-func TestGlobalAgentStreamFunctionToolE2E(t *testing.T) {
+func TestFrameworkAgentStreamFunctionToolE2E(t *testing.T) {
 	t.Parallel()
 
 	greet, err := tool.NewFunctionTool(
@@ -94,7 +94,7 @@ func TestGlobalAgentStreamFunctionToolE2E(t *testing.T) {
 	}
 }
 
-func TestGlobalPermissionConfirmationResumeE2E(t *testing.T) {
+func TestFrameworkPermissionConfirmationResumeE2E(t *testing.T) {
 	t.Parallel()
 
 	executed := false
@@ -165,12 +165,12 @@ func TestGlobalPermissionConfirmationResumeE2E(t *testing.T) {
 	}
 }
 
-func TestGlobalWorkspaceFileToolsE2E(t *testing.T) {
+func TestFrameworkWorkspaceFileToolsE2E(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	workdir := t.TempDir()
-	ws, err := workspace.NewLocalWorkspace(workdir, workspace.WithWorkspaceID("global-workspace-e2e"))
+	ws, err := workspace.NewLocalWorkspace(workdir, workspace.WithWorkspaceID("framework-workspace-e2e"))
 	requireNoErr(t, err, "NewLocalWorkspace returned error")
 	requireNoErr(t, ws.Initialize(ctx), "Initialize returned error")
 	t.Cleanup(func() {
@@ -227,7 +227,7 @@ func TestGlobalWorkspaceFileToolsE2E(t *testing.T) {
 	}
 }
 
-func TestGlobalMCPToolAgentE2E(t *testing.T) {
+func TestFrameworkMCPToolAgentE2E(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -272,7 +272,7 @@ func TestGlobalMCPToolAgentE2E(t *testing.T) {
 	}
 }
 
-func TestGlobalWorkspaceOffloadMessageAndToolDataE2E(t *testing.T) {
+func TestFrameworkWorkspaceOffloadMessageAndToolDataE2E(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
