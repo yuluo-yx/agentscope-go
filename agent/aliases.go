@@ -23,13 +23,14 @@ import (
 )
 
 type (
-	AgentState   = asstate.AgentState
-	ChatModel    = asmodel.ChatModel
-	CallRequest  = asmodel.CallRequest
-	ChatResponse = asmodel.ChatResponse
-	ToolSchema   = asmodel.ToolSchema
-	Tool         = astool.Tool
-	ToolChunk    = astool.ToolChunk
+	AgentState     = asstate.AgentState
+	ChatModel      = asmodel.ChatModel
+	CallRequest    = asmodel.CallRequest
+	ChatResponse   = asmodel.ChatResponse
+	FunctionSchema = asmodel.FunctionSchema
+	ToolSchema     = asmodel.ToolSchema
+	Tool           = astool.Tool
+	ToolChunk      = astool.ToolChunk
 )
 
 var NewAgentState = asstate.NewAgentState

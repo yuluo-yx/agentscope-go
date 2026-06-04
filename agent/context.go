@@ -27,6 +27,26 @@ func (a *Agent) CompressContext(ctx context.Context) error {
 	if a == nil || a.state == nil {
 		return nil
 	}
+	strategies := a.contextStrategies
+	if strategies == nil {
+		strategies = DefaultContextStrategies()
+	}
+	input := a.newContextStrategyInput()
+	for _, strategy := range strategies {
+		if strategy == nil {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := strategy.ApplyContextStrategy(ctx, input); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *Agent) compressToolResults(ctx context.Context) error {
 	if err := a.offloadDataBlocks(ctx); err != nil {
 		return err
 	}

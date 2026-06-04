@@ -44,8 +44,17 @@ agent.WithReActConfig(agent.ReActConfig{
 agent.WithContextConfig(agent.ContextConfig{
 	TriggerRatio:    0.8,
 	ReserveRatio:    0.1,
+	MaxTokens:       32000,
 	ToolResultLimit: 3000,
 })
+```
+
+`MaxTokens` 用于启用摘要压缩。为 `0` 时，默认策略链只保留既有的轻量清理行为：在配置 offloader 时卸载 base64 `DataBlock`，再截断或卸载超长工具结果。为正数且当前请求超过 `TriggerRatio * MaxTokens` 时，摘要策略会保留最新上下文，让模型生成结构化摘要，并通过已配置的 offloader 或 workspace 卸载被压缩的旧消息。
+
+应用需要自定义存储或压缩策略时，可以替换上下文策略链：
+
+```go
+agent.WithContextStrategies(customStrategy)
 ```
 
 只需要覆盖少量字段时，可以先使用 `agent.DefaultContextConfig()` 获取默认值。
@@ -53,3 +62,11 @@ agent.WithContextConfig(agent.ContextConfig{
 ## 中间件
 
 使用 `agent.WithMiddlewares` 注册中间件。中间件可以拦截回复、推理、模型调用、工具执行和系统提示词构造。
+
+可选 `middleware` 包提供 tracing middleware，不让 tracing 进入核心 `agent` 包路径：
+
+```go
+agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
+```
+
+需要接入 OpenTelemetry 时，再显式使用 `middleware/otel` 子包。

@@ -18,8 +18,10 @@ go run .
 | `model/dashscope` | DashScope chat, tool schemas, data-block input, and optional live call |
 | `agent/basic` | Agent with scripted model and task tool |
 | `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
+| `agent/context_strategy` | Summary compression, workspace offload, and custom context strategies |
 | `agent/external` | Agent pause/resume flow for external tool execution |
 | `agent/hooks` | Agent middleware hooks for reply, reasoning, model call, acting, and system prompt |
+| `agent/middleware_tracing` | Tracing middleware for reply, model-call, and tool-execution spans |
 | `agent/permission` | Agent permission confirmation and resume flow |
 | `integration/gin` | Gin HTTP integration for direct ChatModel streams and Agent event streams |
 | `integration/kratos` | Kratos HTTP integration for direct ChatModel streams and Agent event streams |

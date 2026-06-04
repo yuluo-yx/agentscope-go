@@ -50,9 +50,10 @@ type Agent struct {
 	state        *AgentState
 	offloader    asworkspace.Offloader
 
-	modelConfig   ModelConfig
-	contextConfig ContextConfig
-	reactConfig   ReActConfig
+	modelConfig       ModelConfig
+	contextConfig     ContextConfig
+	reactConfig       ReActConfig
+	contextStrategies []ContextStrategy
 
 	replyHooks        []ReplyHook
 	reasoningHooks    []ReasoningHook
@@ -130,6 +131,19 @@ func WithContextConfig(config ContextConfig) AgentOption {
 	}
 }
 
+// WithContextStrategies replaces the default context compression strategy chain.
+func WithContextStrategies(strategies ...ContextStrategy) AgentOption {
+	return func(agent *Agent) error {
+		for _, strategy := range strategies {
+			if strategy == nil {
+				return agenterrors.NewDeveloperError("agent context strategy is nil")
+			}
+		}
+		agent.contextStrategies = append([]ContextStrategy(nil), strategies...)
+		return nil
+	}
+}
+
 // WithReActConfig sets ReAct loop configuration.
 func WithReActConfig(config ReActConfig) AgentOption {
 	return func(agent *Agent) error {
@@ -164,14 +178,15 @@ func NewAgent(name, systemPrompt string, model ChatModel, opts ...AgentOption) (
 		return nil, agenterrors.NewDeveloperError("agent model is nil")
 	}
 	agent := &Agent{
-		name:          name,
-		systemPrompt:  systemPrompt,
-		model:         model,
-		toolkit:       emptyToolProvider{},
-		state:         NewAgentState(),
-		modelConfig:   DefaultModelConfig(),
-		contextConfig: DefaultContextConfig(),
-		reactConfig:   DefaultReActConfig(),
+		name:              name,
+		systemPrompt:      systemPrompt,
+		model:             model,
+		toolkit:           emptyToolProvider{},
+		state:             NewAgentState(),
+		modelConfig:       DefaultModelConfig(),
+		contextConfig:     DefaultContextConfig(),
+		reactConfig:       DefaultReActConfig(),
+		contextStrategies: DefaultContextStrategies(),
 	}
 	for _, opt := range opts {
 		if opt == nil {

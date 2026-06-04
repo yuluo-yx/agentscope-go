@@ -25,12 +25,14 @@ import (
 )
 
 type (
-	Agent         = asagent.Agent
-	AgentOption   = asagent.AgentOption
-	ContextConfig = asagent.ContextConfig
-	ReActConfig   = asagent.ReActConfig
-	ModelConfig   = asagent.ModelConfig
-	ToolProvider  = asagent.ToolProvider
+	Agent                = asagent.Agent
+	AgentOption          = asagent.AgentOption
+	ContextConfig        = asagent.ContextConfig
+	ReActConfig          = asagent.ReActConfig
+	ModelConfig          = asagent.ModelConfig
+	ToolProvider         = asagent.ToolProvider
+	ContextStrategy      = asagent.ContextStrategy
+	ContextStrategyInput = asagent.ContextStrategyInput
 )
 
 type (
@@ -93,19 +95,21 @@ const (
 )
 
 var (
-	NewAgent          = asagent.NewAgent
-	WithToolkit       = asagent.WithToolkit
-	WithAgentState    = asagent.WithAgentState
-	WithModelConfig   = asagent.WithModelConfig
-	WithContextConfig = asagent.WithContextConfig
-	WithReActConfig   = asagent.WithReActConfig
-	WithMiddlewares   = asagent.WithMiddlewares
+	NewAgent              = asagent.NewAgent
+	WithToolkit           = asagent.WithToolkit
+	WithAgentState        = asagent.WithAgentState
+	WithModelConfig       = asagent.WithModelConfig
+	WithContextConfig     = asagent.WithContextConfig
+	WithContextStrategies = asagent.WithContextStrategies
+	WithReActConfig       = asagent.WithReActConfig
+	WithMiddlewares       = asagent.WithMiddlewares
 
-	DefaultContextConfig   = asagent.DefaultContextConfig
-	DefaultSummarySchema   = asagent.DefaultSummarySchema
-	DefaultReActConfig     = asagent.DefaultReActConfig
-	DefaultModelConfig     = asagent.DefaultModelConfig
-	ApplySystemPromptHooks = asagent.ApplySystemPromptHooks
+	DefaultContextConfig     = asagent.DefaultContextConfig
+	DefaultContextStrategies = asagent.DefaultContextStrategies
+	DefaultSummarySchema     = asagent.DefaultSummarySchema
+	DefaultReActConfig       = asagent.DefaultReActConfig
+	DefaultModelConfig       = asagent.DefaultModelConfig
+	ApplySystemPromptHooks   = asagent.ApplySystemPromptHooks
 
 	NewAgentState  = asstate.NewAgentState
 	NewToolContext = asstate.NewToolContext
