@@ -27,6 +27,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/tool/skill"
 	"github.com/yuluo-yx/agentscope-go/utils"
 	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
+	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
 )
 
 const defaultInstructions = `<workspace>
@@ -421,6 +422,21 @@ func (w *Workspace) OffloadToolResult(ctx context.Context, sessionID string, res
 	return local.OffloadToolResult(ctx, sessionID, result)
 }
 
+// OffloadDataBlock persists a DataBlock to the workspace mirror when a host workdir exists.
+func (w *Workspace) OffloadDataBlock(ctx context.Context, block *message.DataBlock) (*message.DataBlock, error) {
+	if w == nil {
+		return nil, fmt.Errorf("workspace/docker: nil workspace")
+	}
+	if w.hostWorkdir == "" {
+		return nil, fmt.Errorf("workspace/docker: OffloadDataBlock requires WithHostWorkdir")
+	}
+	local, err := w.localMirror()
+	if err != nil {
+		return nil, err
+	}
+	return local.OffloadDataBlock(ctx, block)
+}
+
 // AddMCP records an MCP client for future gateway support.
 func (w *Workspace) AddMCP(ctx context.Context, mcp asworkspace.MCPClient) error {
 	if err := ctx.Err(); err != nil {
@@ -501,8 +517,8 @@ func (w *Workspace) prepareHostWorkdir() error {
 	return nil
 }
 
-func (w *Workspace) localMirror() (*asworkspace.LocalWorkspace, error) {
-	return asworkspace.NewLocalWorkspace(w.hostWorkdir, asworkspace.WithWorkspaceID(w.id), asworkspace.WithInstructions(w.instructions))
+func (w *Workspace) localMirror() (*wslocal.Workspace, error) {
+	return wslocal.NewWorkspace(w.hostWorkdir, wslocal.WithWorkspaceID(w.id), wslocal.WithInstructions(w.instructions))
 }
 
 func cloneStringMap(in map[string]string) map[string]string {

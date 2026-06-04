@@ -25,6 +25,7 @@ import (
 	gomcp "github.com/mark3labs/mcp-go/mcp"
 
 	astool "github.com/yuluo-yx/agentscope-go/tool"
+	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
 )
 
 // ClientOption configures an MCP client.
@@ -85,6 +86,7 @@ type Client struct {
 	executionTimeout time.Duration
 	clientInfo       gomcp.Implementation
 	factory          clientFactory
+	config           asworkspace.MCPClientConfig
 
 	mu          sync.Mutex
 	client      *goclient.Client
@@ -98,6 +100,31 @@ func (c *Client) Name() string {
 		return ""
 	}
 	return c.name
+}
+
+// MCPClientConfig returns the stable JSON config used for workspace persistence.
+func (c *Client) MCPClientConfig() (asworkspace.MCPClientConfig, error) {
+	if c == nil {
+		return asworkspace.MCPClientConfig{}, fmt.Errorf("mcp: nil client")
+	}
+	if c.config.Type == "" {
+		return asworkspace.MCPClientConfig{}, fmt.Errorf("mcp: client %q cannot be serialized", c.name)
+	}
+	config := c.config
+	config.EnabledTools = append([]string(nil), config.EnabledTools...)
+	config.DisabledTools = append([]string(nil), config.DisabledTools...)
+	if config.Stdio != nil {
+		stdio := *config.Stdio
+		stdio.Args = append([]string(nil), config.Stdio.Args...)
+		stdio.Env = cloneStringMap(config.Stdio.Env)
+		config.Stdio = &stdio
+	}
+	if config.HTTP != nil {
+		http := *config.HTTP
+		http.Headers = cloneStringMap(config.HTTP.Headers)
+		config.HTTP = &http
+	}
+	return config, nil
 }
 
 // IsStateful reports whether this client uses a persistent connection.
@@ -258,7 +285,7 @@ func defaultClientOptions() clientOptions {
 	}
 }
 
-func newClient(name string, options clientOptions, factory clientFactory) (*Client, error) {
+func newClient(name string, options clientOptions, config asworkspace.MCPClientConfig, factory clientFactory) (*Client, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("mcp: client name is required")
@@ -294,6 +321,7 @@ func newClient(name string, options clientOptions, factory clientFactory) (*Clie
 		executionTimeout: options.executionTimeout,
 		clientInfo:       options.clientInfo,
 		factory:          factory,
+		config:           config,
 	}, nil
 }
 

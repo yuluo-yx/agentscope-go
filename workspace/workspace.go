@@ -17,19 +17,94 @@ package workspace
 
 import (
 	"context"
+	"time"
 
 	"github.com/yuluo-yx/agentscope-go/message"
+	"github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/tool"
 	"github.com/yuluo-yx/agentscope-go/tool/skill"
 )
 
-// Tool is the workspace-visible tool interface.
+// Tool is the tool interface exposed by a workspace to an Agent.
 type Tool = tool.Tool
 
-// MCPClient is the minimal MCP client contract tracked by a workspace.
+// ToolSchema is the model-facing JSON Schema for one tool.
+type ToolSchema = model.ToolSchema
+
+// Skill is one Agent skill loaded from a workspace.
+type Skill = skill.Skill
+
+// MCPClient is the minimal contract a workspace needs to track MCP clients and expose MCP tools.
 type MCPClient interface {
-	// Name returns the stable MCP server name used for workspace registration and removal.
+	// Name returns the stable MCP name used for registration, removal, and diagnostics.
 	Name() string
+	// IsStateful reports whether this MCP requires a persistent connection.
+	IsStateful() bool
+	// IsConnected reports whether a stateful MCP is currently connected.
+	IsConnected() bool
+	// Connect starts a persistent MCP connection. Stateless MCP clients may no-op.
+	Connect(context.Context) error
+	// Close releases a persistent MCP connection. Stateless MCP clients may no-op.
+	Close() error
+	// ListTools returns AgentScope tools exposed by this MCP.
+	ListTools(context.Context) ([]Tool, error)
+}
+
+// MCPClientType identifies a serializable workspace MCP transport.
+type MCPClientType string
+
+const (
+	// MCPClientTypeStdio describes a subprocess-backed MCP server.
+	MCPClientTypeStdio MCPClientType = "stdio_mcp"
+	// MCPClientTypeHTTP describes an HTTP MCP server.
+	MCPClientTypeHTTP MCPClientType = "http_mcp"
+)
+
+// MCPStdioConfig is the persisted workspace config for a stdio MCP server.
+type MCPStdioConfig struct {
+	Command              string            `json:"command"`
+	Args                 []string          `json:"args,omitempty"`
+	Env                  map[string]string `json:"env,omitempty"`
+	CWD                  string            `json:"cwd,omitempty"`
+	EncodingErrorHandler string            `json:"encoding_error_handler,omitempty"`
+}
+
+// MCPHTTPConfig is the persisted workspace config for an HTTP MCP server.
+type MCPHTTPConfig struct {
+	URL       string            `json:"url"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Timeout   time.Duration     `json:"timeout,omitempty"`
+	Transport string            `json:"transport,omitempty"`
+}
+
+// MCPClientConfig is the stable JSON config written to workspace indexes and sent to gateways.
+type MCPClientConfig struct {
+	Name             string          `json:"name"`
+	Type             MCPClientType   `json:"type"`
+	Stateful         bool            `json:"is_stateful"`
+	Stdio            *MCPStdioConfig `json:"stdio,omitempty"`
+	HTTP             *MCPHTTPConfig  `json:"http,omitempty"`
+	EnabledTools     []string        `json:"enable_tools,omitempty"`
+	DisabledTools    []string        `json:"disable_tools,omitempty"`
+	ExecutionTimeout time.Duration   `json:"execution_timeout,omitempty"`
+}
+
+// MCPConfigProvider exposes a serializable MCP config for workspace persistence.
+type MCPConfigProvider interface {
+	MCPClientConfig() (MCPClientConfig, error)
+}
+
+// MCPClientFactory restores an MCP client from persisted config.
+type MCPClientFactory func(MCPClientConfig) (MCPClient, error)
+
+// Offloader persists data that should leave the active model context.
+type Offloader interface {
+	// OffloadContext persists compressed or oversized context and returns a reference.
+	OffloadContext(context.Context, string, []*message.Message) (string, error)
+	// OffloadToolResult persists the omitted portion of a tool result and returns a reference.
+	OffloadToolResult(context.Context, string, *message.ToolResultBlock) (string, error)
+	// OffloadDataBlock persists a base64 DataBlock and returns a URL-backed block.
+	OffloadDataBlock(context.Context, *message.DataBlock) (*message.DataBlock, error)
 }
 
 // Workspace describes the lifecycle and resources of an agent workspace.
@@ -52,10 +127,7 @@ type Workspace interface {
 	ListMCPs(context.Context) ([]MCPClient, error)
 	// ListSkills returns skills currently available inside this workspace.
 	ListSkills(context.Context) ([]skill.Skill, error)
-	// OffloadContext persists a compressed or oversized message context and returns a reference string.
-	OffloadContext(context.Context, string, []*message.Message) (string, error)
-	// OffloadToolResult persists a large tool result and returns a reference that can be kept in agent context.
-	OffloadToolResult(context.Context, string, *message.ToolResultBlock) (string, error)
+	Offloader
 	// AddMCP registers an MCP client so its tools can be recovered or exposed through the workspace.
 	AddMCP(context.Context, MCPClient) error
 	// RemoveMCP unregisters an MCP client by name.

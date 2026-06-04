@@ -1,6 +1,6 @@
 # Workspace
 
-`workspace.LocalWorkspace` provides a local environment for tools and resources.
+`workspace/local.Workspace` provides a local environment for tools and resources.
 
 ## Local Workspace
 
@@ -11,7 +11,7 @@ A local workspace initializes a directory with:
 - `sessions/` for offloaded context and tool results.
 
 ```go
-ws, err := workspace.NewLocalWorkspace("/tmp/agentscope-workspace")
+ws, err := local.NewWorkspace("/tmp/agentscope-workspace")
 if err != nil {
 	panic(err)
 }
@@ -32,12 +32,12 @@ Register them in a Toolkit when the agent should use workspace-backed tools.
 
 ## Skills
 
-Seed skills with `workspace.WithSkillPaths`:
+Seed skills with `local.WithSkillPaths`:
 
 ```go
-ws, err := workspace.NewLocalWorkspace(
+ws, err := local.NewWorkspace(
 	"/tmp/agentscope-workspace",
-	workspace.WithSkillPaths("./skills/review"),
+	local.WithSkillPaths("./skills/review"),
 )
 ```
 

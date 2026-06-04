@@ -1,6 +1,6 @@
 # Workspace
 
-`workspace.LocalWorkspace` 为工具和资源提供本地环境。
+`workspace/local.Workspace` 为工具和资源提供本地环境。
 
 ## 本地 Workspace
 
@@ -11,7 +11,7 @@
 - `sessions/`：卸载后的上下文和工具结果。
 
 ```go
-ws, err := workspace.NewLocalWorkspace("/tmp/agentscope-workspace")
+ws, err := local.NewWorkspace("/tmp/agentscope-workspace")
 if err != nil {
 	panic(err)
 }
@@ -32,12 +32,12 @@ tools, err := ws.ListTools(ctx)
 
 ## Skills
 
-使用 `workspace.WithSkillPaths` 预置 Skill：
+使用 `local.WithSkillPaths` 预置 Skill：
 
 ```go
-ws, err := workspace.NewLocalWorkspace(
+ws, err := local.NewWorkspace(
 	"/tmp/agentscope-workspace",
-	workspace.WithSkillPaths("./skills/review"),
+	local.WithSkillPaths("./skills/review"),
 )
 ```
 

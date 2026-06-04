@@ -24,6 +24,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/permission"
 	"github.com/yuluo-yx/agentscope-go/utils"
+	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
 )
 
 // ToolProvider is the minimal tool registry interface required by Agent.
@@ -47,6 +48,7 @@ type Agent struct {
 	model        ChatModel
 	toolkit      ToolProvider
 	state        *AgentState
+	offloader    asworkspace.Offloader
 
 	modelConfig   ModelConfig
 	contextConfig ContextConfig
@@ -66,6 +68,31 @@ func WithToolkit(toolkit ToolProvider) AgentOption {
 			return agenterrors.NewDeveloperError("agent toolkit is nil")
 		}
 		agent.toolkit = toolkit
+		return nil
+	}
+}
+
+// WithOffloader sets the offloader used for context, tool result, and DataBlock lifecycle.
+func WithOffloader(offloader asworkspace.Offloader) AgentOption {
+	return func(agent *Agent) error {
+		if offloader == nil {
+			return agenterrors.NewDeveloperError("agent offloader is nil")
+		}
+		agent.offloader = offloader
+		return nil
+	}
+}
+
+// WithWorkspace initializes a workspace and wires instructions, tools, skills, MCPs, and offloader into the Agent.
+func WithWorkspace(ctx context.Context, workspace asworkspace.Workspace) AgentOption {
+	return func(agent *Agent) error {
+		resources, err := asworkspace.BuildAgentResources(ctx, workspace)
+		if err != nil {
+			return agenterrors.NewDeveloperError("invalid agent workspace", agenterrors.WithErrorCause(err))
+		}
+		agent.systemPrompt = appendSystemPrompt(agent.systemPrompt, resources.SystemPrompt)
+		agent.toolkit = resources.Toolkit
+		agent.offloader = resources.Offloader
 		return nil
 	}
 }
@@ -155,6 +182,19 @@ func NewAgent(name, systemPrompt string, model ChatModel, opts ...AgentOption) (
 		}
 	}
 	return agent, nil
+}
+
+func appendSystemPrompt(base, extra string) string {
+	base = strings.TrimSpace(base)
+	extra = strings.TrimSpace(extra)
+	switch {
+	case base == "":
+		return extra
+	case extra == "":
+		return base
+	default:
+		return base + "\n" + extra
+	}
 }
 
 // AgentName returns the Agent name.
@@ -282,6 +322,9 @@ func (a *Agent) continueReply(ctx context.Context, assistant *message.Message, e
 			if waiting {
 				return a.emitAndApply(assistant, message.NewReplyEndEvent(a.state.SessionID, a.state.ReplyID), emit)
 			}
+			if err := a.CompressContext(ctx); err != nil {
+				return err
+			}
 			a.state.CurIter++
 			continue
 		}
@@ -298,6 +341,9 @@ func (a *Agent) continueReply(ctx context.Context, assistant *message.Message, e
 		}
 		if waiting {
 			return a.emitAndApply(assistant, message.NewReplyEndEvent(a.state.SessionID, a.state.ReplyID), emit)
+		}
+		if err := a.CompressContext(ctx); err != nil {
+			return err
 		}
 		a.state.CurIter++
 	}

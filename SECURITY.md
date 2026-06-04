@@ -51,7 +51,7 @@ default.
   permission by the application.
 - Permission checks and shell parsing are safety controls, not a complete
   operating-system sandbox.
-- `LocalWorkspace` stores files on the local filesystem. Docker, E2B, and other
+- `workspace/local.Workspace` stores files on the local filesystem. E2B, and other
   remote sandbox backends are not currently implemented.
 - MCP servers are external trust boundaries. Use trusted server binaries and
   review their configuration before connecting them to an agent.

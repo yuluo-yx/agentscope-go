@@ -57,4 +57,4 @@ Use `tool.NewToolkit` to register tools and to run model-created `ToolCallBlock`
 
 ## Workspace
 
-`workspace.LocalWorkspace` provides a local execution environment for file tools, skill loading, context offload, and tool-result offload.
+`workspace/local.Workspace` provides a local execution environment for file tools, skill loading, context offload, and tool-result offload.

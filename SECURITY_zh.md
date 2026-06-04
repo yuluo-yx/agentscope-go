@@ -41,7 +41,7 @@ AgentScope Go 提供构建模块，但不会让应用默认安全。
 - 工具执行由注册工具的应用控制。
 - builtin shell 和 filesystem 工具在获得应用授权后，可能影响本地机器。
 - 权限检查和 shell 解析是安全控制，不是完整的操作系统沙箱。
-- `LocalWorkspace` 使用本地文件系统保存文件。当前尚未实现 Docker、E2B 等远程沙箱后端。
+- `workspace/local.Workspace` 使用本地文件系统保存文件。当前尚未实现 E2B 等远程沙箱后端。
 - MCP server 属于外部信任边界。连接到 Agent 前，应使用可信 server，并审查其配置。
 - 消息、工具结果、日志和 workspace 文件可能包含敏感数据。应用开发者负责存储、脱敏和保留策略。
 

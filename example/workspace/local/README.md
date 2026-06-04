@@ -4,7 +4,7 @@ Project home: [README.md](../../../README.md).
 
 Chinese documentation: [README-zh.md](README-zh.md).
 
-This example demonstrates `workspace.LocalWorkspace`:
+This example demonstrates `workspace/local.Workspace`:
 
 - Initialize a local workspace directory.
 - Get built-in `Write` and `Read` tools from the workspace.

@@ -12,7 +12,7 @@ AgentScope Go 提供智能体开发需要的基础组件：模型调用、消息
 - **工具系统**：函数工具、内置文件和 Shell 工具、任务工具、Skill 加载器、MCP 工具适配器共用 `tool.Tool` 接口。
 - **权限控制**：权限模式和规则决定工具调用是否允许执行。
 - **运行状态**：`state.AgentState` 保存对话上下文、任务状态、权限上下文和工具缓存。
-- **Workspace**：`workspace.LocalWorkspace` 为工具提供本地文件环境、Skill 资源和内容卸载能力。
+- **Workspace**：`workspace/local.Workspace` 为工具提供本地文件环境、Skill 资源和内容卸载能力。
 
 ## 环境要求
 

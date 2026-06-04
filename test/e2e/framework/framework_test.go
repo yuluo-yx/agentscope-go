@@ -32,7 +32,7 @@ import (
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	"github.com/yuluo-yx/agentscope-go/tool"
 	asmcp "github.com/yuluo-yx/agentscope-go/tool/mcp"
-	"github.com/yuluo-yx/agentscope-go/workspace"
+	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
 )
 
 func TestFrameworkAgentStreamFunctionToolE2E(t *testing.T) {
@@ -170,8 +170,8 @@ func TestFrameworkWorkspaceFileToolsE2E(t *testing.T) {
 
 	ctx := context.Background()
 	workdir := t.TempDir()
-	ws, err := workspace.NewLocalWorkspace(workdir, workspace.WithWorkspaceID("framework-workspace-e2e"))
-	requireNoErr(t, err, "NewLocalWorkspace returned error")
+	ws, err := wslocal.NewWorkspace(workdir, wslocal.WithWorkspaceID("framework-workspace-e2e"))
+	requireNoErr(t, err, "NewWorkspace returned error")
 	requireNoErr(t, ws.Initialize(ctx), "Initialize returned error")
 	t.Cleanup(func() {
 		requireNoErr(t, ws.Close(context.Background()), "Close returned error")
@@ -277,8 +277,8 @@ func TestFrameworkWorkspaceOffloadMessageAndToolDataE2E(t *testing.T) {
 
 	ctx := context.Background()
 	workdir := t.TempDir()
-	ws, err := workspace.NewLocalWorkspace(workdir)
-	requireNoErr(t, err, "NewLocalWorkspace returned error")
+	ws, err := wslocal.NewWorkspace(workdir)
+	requireNoErr(t, err, "NewWorkspace returned error")
 	requireNoErr(t, ws.Initialize(ctx), "Initialize returned error")
 	userMsg, err := message.NewUserMessage("Tony", message.ContentBlockList{
 		message.NewTextBlock("Inspect this badge."),

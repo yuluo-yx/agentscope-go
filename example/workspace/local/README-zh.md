@@ -4,7 +4,7 @@
 
 英文文档：[README.md](README.md)。
 
-本示例展示 `workspace.LocalWorkspace`：
+本示例展示 `workspace/local.Workspace`：
 
 - 初始化本地 workspace 目录。
 - 从 workspace 获取内置 `Write` 和 `Read` 工具。

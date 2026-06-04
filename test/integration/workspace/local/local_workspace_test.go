@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/yuluo-yx/agentscope-go/test/integration/workspace/internal/workspacetest"
-	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
+	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
 )
 
 func TestLocalWorkspaceToolAndOffloadIntegration(t *testing.T) {
@@ -28,9 +28,9 @@ func TestLocalWorkspaceToolAndOffloadIntegration(t *testing.T) {
 
 	ctx := context.Background()
 	workdir := t.TempDir()
-	ws, err := asworkspace.NewLocalWorkspace(workdir, asworkspace.WithWorkspaceID("local-integration"))
+	ws, err := wslocal.NewWorkspace(workdir, wslocal.WithWorkspaceID("local-integration"))
 	if err != nil {
-		t.Fatalf("NewLocalWorkspace returned error: %v", err)
+		t.Fatalf("NewWorkspace returned error: %v", err)
 	}
 	workspacetest.ExerciseToolsAndOffload(t, ctx, ws, filepath.Join(workdir, "data", "brief.txt"))
 }

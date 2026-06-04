@@ -27,6 +27,8 @@ import (
 	goclient "github.com/mark3labs/mcp-go/client"
 	gotransport "github.com/mark3labs/mcp-go/client/transport"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+
+	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
 )
 
 // HTTPTransport selects the MCP HTTP transport implementation.
@@ -72,7 +74,16 @@ func NewStdioClient(name string, config StdioConfig, opts ...ClientOption) (*Cli
 	if err := validateStdioConfig(config); err != nil {
 		return nil, err
 	}
-	return newClient(name, options, func(context.Context) (*goclient.Client, error) {
+	configSnapshot := asworkspace.MCPClientConfig{
+		Name:             strings.TrimSpace(name),
+		Type:             asworkspace.MCPClientTypeStdio,
+		Stateful:         options.stateful,
+		Stdio:            &asworkspace.MCPStdioConfig{Command: config.Command, Args: append([]string(nil), config.Args...), Env: cloneStringMap(config.Env), CWD: config.CWD, EncodingErrorHandler: config.EncodingErrorHandler},
+		EnabledTools:     append([]string(nil), options.enabledTools...),
+		DisabledTools:    append([]string(nil), options.disabledTools...),
+		ExecutionTimeout: options.executionTimeout,
+	}
+	return newClient(name, options, configSnapshot, func(context.Context) (*goclient.Client, error) {
 		stdioOptions := []gotransport.StdioOption{}
 		if strings.TrimSpace(config.CWD) != "" {
 			stdioOptions = append(stdioOptions, gotransport.WithCommandFunc(func(ctx context.Context, command string, env, args []string) (*exec.Cmd, error) {
@@ -96,7 +107,16 @@ func NewHTTPClient(name string, config HTTPConfig, opts ...ClientOption) (*Clien
 	if err := validateHTTPConfig(config); err != nil {
 		return nil, err
 	}
-	return newClient(name, options, func(context.Context) (*goclient.Client, error) {
+	configSnapshot := asworkspace.MCPClientConfig{
+		Name:             strings.TrimSpace(name),
+		Type:             asworkspace.MCPClientTypeHTTP,
+		Stateful:         options.stateful,
+		HTTP:             &asworkspace.MCPHTTPConfig{URL: config.URL, Headers: cloneStringMap(config.Headers), Timeout: config.Timeout, Transport: string(config.Transport)},
+		EnabledTools:     append([]string(nil), options.enabledTools...),
+		DisabledTools:    append([]string(nil), options.disabledTools...),
+		ExecutionTimeout: options.executionTimeout,
+	}
+	return newClient(name, options, configSnapshot, func(context.Context) (*goclient.Client, error) {
 		switch resolveHTTPTransport(config) {
 		case HTTPTransportSSE:
 			sseOptions := []gotransport.ClientOption{}
@@ -129,7 +149,7 @@ func NewInProcessClient(name string, server *mcpserver.MCPServer, opts ...Client
 	if server == nil {
 		return nil, fmt.Errorf("mcp: in-process server is required")
 	}
-	return newClient(name, options, func(context.Context) (*goclient.Client, error) {
+	return newClient(name, options, asworkspace.MCPClientConfig{}, func(context.Context) (*goclient.Client, error) {
 		return goclient.NewInProcessClient(server)
 	})
 }

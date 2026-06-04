@@ -24,7 +24,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/message"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	"github.com/yuluo-yx/agentscope-go/tool"
-	"github.com/yuluo-yx/agentscope-go/workspace"
+	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
 )
 
 func main() {
@@ -36,7 +36,7 @@ func main() {
 	writeSkill(skillDir, "review", "Review files", "Read files before writing changes.\n")
 
 	workspacePath := filepath.Join(root, "workspace")
-	ws := mustWorkspace(workspace.NewLocalWorkspace(workspacePath, workspace.WithSkillPaths(skillDir)))
+	ws := mustWorkspace(wslocal.NewWorkspace(workspacePath, wslocal.WithSkillPaths(skillDir)))
 	if err := ws.Initialize(ctx); err != nil {
 		panic(err)
 	}
@@ -91,7 +91,7 @@ func main() {
 	)
 }
 
-func findTool(tools []workspace.Tool, name string) workspace.Tool {
+func findTool(tools []tool.Tool, name string) tool.Tool {
 	for _, current := range tools {
 		if current.Name() == name {
 			return current
@@ -100,7 +100,7 @@ func findTool(tools []workspace.Tool, name string) workspace.Tool {
 	panic("missing workspace tool: " + name)
 }
 
-func runTool(ctx context.Context, current workspace.Tool, input map[string]any, state *asstate.AgentState) *tool.ToolResponse {
+func runTool(ctx context.Context, current tool.Tool, input map[string]any, state *asstate.AgentState) *tool.ToolResponse {
 	chunks, err := current.Execute(ctx, input, state)
 	if err != nil {
 		panic(err)
@@ -124,7 +124,7 @@ func writeSkill(dir, name, description, body string) {
 	}
 }
 
-func toolNames(tools []workspace.Tool) string {
+func toolNames(tools []tool.Tool) string {
 	names := make([]string, 0, len(tools))
 	for _, current := range tools {
 		names = append(names, current.Name())
@@ -145,7 +145,7 @@ func mustTempDir(pattern string) string {
 	return dir
 }
 
-func mustWorkspace(ws *workspace.LocalWorkspace, err error) *workspace.LocalWorkspace {
+func mustWorkspace(ws *wslocal.Workspace, err error) *wslocal.Workspace {
 	if err != nil {
 		panic(err)
 	}

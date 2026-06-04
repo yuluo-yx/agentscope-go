@@ -317,7 +317,7 @@ func agentStreamChat(c *gin.Context) {
 	}
 }
 
-// curl -v '127.0.0.1:8080/structured?prompt=杭州一日游'
+// curl -v '127.0.0.1:8080/structured?prompt=Hangzhou%20day%20trip'
 func structuredOutput(c *gin.Context) {
 	chatModel := newChatModel(false)
 	prompt := strings.TrimSpace(c.Query("prompt"))

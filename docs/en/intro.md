@@ -12,7 +12,7 @@ AgentScope Go provides the building blocks for agents that can talk to chat mode
 - **Tools**: function tools, built-in file/shell tools, task tools, skill loading, and MCP tool adapters share the same `tool.Tool` interface.
 - **Permissions**: permission modes and rules decide whether a tool call can run.
 - **State**: `state.AgentState` carries conversation context, task state, permission context, and tool caches.
-- **Workspace**: `workspace.LocalWorkspace` provides a local file environment, skills, and offload helpers for tools.
+- **Workspace**: `workspace/local.Workspace` provides a local file environment, skills, and offload helpers for tools.
 
 ## Requirements
 

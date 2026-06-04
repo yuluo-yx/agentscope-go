@@ -57,4 +57,4 @@ type ChatModel interface {
 
 ## Workspace
 
-`workspace.LocalWorkspace` 提供本地执行环境，用于文件工具、Skill 加载、上下文卸载和工具结果卸载。
+`workspace/local.Workspace` 提供本地执行环境，用于文件工具、Skill 加载、上下文卸载和工具结果卸载。
