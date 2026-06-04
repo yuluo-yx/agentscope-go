@@ -19,10 +19,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/yuluo-yx/agentscope-go/middleware"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/yuluo-yx/agentscope-go/middleware"
 )
 
 // Tracer adapts an OpenTelemetry tracer to middleware.Tracer.
