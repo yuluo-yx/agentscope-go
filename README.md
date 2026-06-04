@@ -107,8 +107,10 @@ Each example is an independent Go module with its own `go.mod`, English
 | --- | --- |
 | [`example/agent/basic`](example/agent/basic) | Build a basic agent backed by a ChatModel. |
 | [`example/agent/configuration`](example/agent/configuration) | Configure model fallback, ReAct limits, and context cleanup. |
+| [`example/agent/context_strategy`](example/agent/context_strategy) | Configure summary compression, workspace offload, and custom context strategies. |
 | [`example/agent/external`](example/agent/external) | Pause and resume an Agent around externally executed tools. |
 | [`example/agent/hooks`](example/agent/hooks) | Implement Agent middleware hooks around reply, reasoning, model calls, acting, and system prompts. |
+| [`example/agent/middleware_tracing`](example/agent/middleware_tracing) | Trace reply, model-call, and tool-execution middleware spans. |
 | [`example/agent/permission`](example/agent/permission) | Handle permission confirmation and resume a pending tool call. |
 | [`example/message`](example/message) | Compose user, assistant, system, and tool messages. |
 | [`example/model/dashscope`](example/model/dashscope) | Call DashScope models and demonstrate model tool calling. |

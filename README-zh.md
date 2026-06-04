@@ -104,8 +104,10 @@ func main() {
 | --- | --- |
 | [`example/agent/basic`](example/agent/basic) | 构建由 ChatModel 驱动的基础智能体。 |
 | [`example/agent/configuration`](example/agent/configuration) | 配置 model fallback、ReAct 限制和上下文清理。 |
+| [`example/agent/context_strategy`](example/agent/context_strategy) | 配置摘要压缩、workspace offload 和自定义上下文策略。 |
 | [`example/agent/external`](example/agent/external) | 围绕外部执行工具暂停并恢复 Agent。 |
 | [`example/agent/hooks`](example/agent/hooks) | 实现围绕 reply、reasoning、model call、acting 和 system prompt 的 Agent middleware hook。 |
+| [`example/agent/middleware_tracing`](example/agent/middleware_tracing) | 追踪 reply、model call 和 tool execution middleware span。 |
 | [`example/agent/permission`](example/agent/permission) | 处理权限确认，并恢复等待中的工具调用。 |
 | [`example/message`](example/message) | 组织 user、assistant、system 和 tool 消息。 |
 | [`example/model/dashscope`](example/model/dashscope) | 调用 DashScope 模型并演示模型工具调用。 |

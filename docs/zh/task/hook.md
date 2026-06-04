@@ -33,3 +33,13 @@ agent.WithMiddlewares(PromptNote{})
 ## 执行顺序
 
 中间件按注册顺序执行。中间件可以调用下一个处理器，检查结果，替换结果，或返回错误。
+
+## 可选 tracing
+
+使用 `github.com/yuluo-yx/agentscope-go/middleware` 获取 tracing middleware：
+
+```go
+agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
+```
+
+`TracingMiddleware` 只依赖很小的 `middleware.Tracer` 接口。核心 `agent` 包不导入 OpenTelemetry。需要接入 OpenTelemetry 的应用可以通过 `github.com/yuluo-yx/agentscope-go/middleware/otel` 适配 tracer。

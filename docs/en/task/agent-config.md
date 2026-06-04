@@ -44,8 +44,17 @@ agent.WithReActConfig(agent.ReActConfig{
 agent.WithContextConfig(agent.ContextConfig{
 	TriggerRatio:    0.8,
 	ReserveRatio:    0.1,
+	MaxTokens:       32000,
 	ToolResultLimit: 3000,
 })
+```
+
+`MaxTokens` enables summary compression. When it is `0`, the default strategy chain keeps the existing lightweight cleanup behavior: offload base64 `DataBlock` values when an offloader is configured, then truncate or offload oversized tool results. When `MaxTokens` is positive and the current request exceeds `TriggerRatio * MaxTokens`, the summary strategy keeps the most recent context, asks the model for a structured summary, and offloads the compressed messages through the configured offloader or workspace.
+
+Replace the context strategy chain when an application needs a custom store or compression policy:
+
+```go
+agent.WithContextStrategies(customStrategy)
 ```
 
 Use `agent.DefaultContextConfig()` when you only need to override one field.
@@ -53,3 +62,11 @@ Use `agent.DefaultContextConfig()` when you only need to override one field.
 ## Middleware
 
 Register middleware with `agent.WithMiddlewares`. Middleware can intercept replies, reasoning, model calls, tool execution, and system-prompt construction.
+
+The optional `middleware` package provides tracing middleware without making tracing part of the core `agent` package:
+
+```go
+agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
+```
+
+Use `middleware/otel` only when OpenTelemetry integration is needed.

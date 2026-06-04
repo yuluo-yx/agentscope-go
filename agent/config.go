@@ -24,6 +24,7 @@ const defaultSummaryTemplate = "<system-info>Here is a summary of your previous 
 type ContextConfig struct {
 	TriggerRatio      float64        `json:"trigger_ratio"`
 	ReserveRatio      float64        `json:"reserve_ratio"`
+	MaxTokens         int            `json:"max_tokens,omitempty"`
 	CompressionPrompt string         `json:"compression_prompt"`
 	SummaryTemplate   string         `json:"summary_template"`
 	SummarySchema     map[string]any `json:"summary_schema"`
@@ -35,6 +36,7 @@ func DefaultContextConfig() ContextConfig {
 	return ContextConfig{
 		TriggerRatio:      0.8,
 		ReserveRatio:      0.1,
+		MaxTokens:         0,
 		CompressionPrompt: defaultCompressionPrompt,
 		SummaryTemplate:   defaultSummaryTemplate,
 		SummarySchema:     DefaultSummarySchema(),
@@ -52,6 +54,9 @@ func (c ContextConfig) Validate() error {
 	}
 	if c.ReserveRatio >= c.TriggerRatio {
 		return fmt.Errorf("agentscope: reserve ratio must be smaller than trigger ratio")
+	}
+	if c.MaxTokens < 0 {
+		return fmt.Errorf("agentscope: max tokens must be non-negative")
 	}
 	if c.ToolResultLimit <= 0 {
 		return fmt.Errorf("agentscope: tool result limit must be positive")
