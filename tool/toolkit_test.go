@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/yuluo-yx/agentscope-go/message"
+	"github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/permission"
 	astate "github.com/yuluo-yx/agentscope-go/state"
 	"github.com/yuluo-yx/agentscope-go/tool"
@@ -87,6 +88,38 @@ func TestToolkitRejectsInvalidGroupsAndDuplicateTools(t *testing.T) {
 	dup := newTestTool("Echo", "first", map[string]any{"type": "object"})
 	if _, err := tool.NewToolkit(dup, dup); err == nil {
 		t.Fatal("duplicate tool names should fail")
+	}
+}
+
+func TestNewToolkitWithMCPsRegistersClientTools(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	forecast := newTestTool("mcp__weather__forecast", "Forecast weather.", map[string]any{"type": "object"})
+	client := &testMCPClient{name: "weather", stateful: true, connected: true, tools: []tool.Tool{forecast}}
+
+	kit, err := tool.NewToolkitWithMCPs(ctx, nil, client)
+	if err != nil {
+		t.Fatalf("NewToolkitWithMCPs returned error: %v", err)
+	}
+	if client.listCalls != 1 {
+		t.Fatalf("expected MCP tools to be listed once during toolkit construction, got %d", client.listCalls)
+	}
+	schemas, err := kit.ToolSchemas()
+	if err != nil {
+		t.Fatalf("ToolSchemas returned error: %v", err)
+	}
+	if got := schemaNames(schemas); strings.Join(got, ",") != "mcp__weather__forecast" {
+		t.Fatalf("unexpected schemas from MCP toolkit: %#v", got)
+	}
+}
+
+func TestNewToolkitWithMCPsRejectsDisconnectedStatefulClient(t *testing.T) {
+	t.Parallel()
+
+	client := &testMCPClient{name: "browser", stateful: true, connected: false}
+	if _, err := tool.NewToolkitWithMCPs(context.Background(), nil, client); err == nil {
+		t.Fatalf("expected disconnected stateful MCP client to be rejected")
 	}
 }
 
@@ -341,4 +374,47 @@ func (t testTool) Execute(ctx context.Context, input map[string]any, _ *astate.A
 
 func (t cancelingTool) Execute(context.Context, map[string]any, *astate.AgentState) (<-chan tool.ToolChunk, error) {
 	return nil, context.Canceled
+}
+
+func schemaNames(schemas []model.ToolSchema) []string {
+	names := make([]string, 0, len(schemas))
+	for _, schema := range schemas {
+		names = append(names, schema.Function.Name)
+	}
+	return names
+}
+
+type testMCPClient struct {
+	name      string
+	stateful  bool
+	connected bool
+	tools     []tool.Tool
+	listCalls int
+}
+
+func (c *testMCPClient) Name() string {
+	return c.name
+}
+
+func (c *testMCPClient) IsStateful() bool {
+	return c.stateful
+}
+
+func (c *testMCPClient) IsConnected() bool {
+	return c.connected
+}
+
+func (c *testMCPClient) Connect(context.Context) error {
+	c.connected = true
+	return nil
+}
+
+func (c *testMCPClient) Close() error {
+	c.connected = false
+	return nil
+}
+
+func (c *testMCPClient) ListTools(context.Context) ([]tool.Tool, error) {
+	c.listCalls++
+	return append([]tool.Tool(nil), c.tools...), nil
 }

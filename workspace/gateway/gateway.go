@@ -1,3 +1,17 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package gateway
 
 import (
@@ -9,6 +23,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	gomcp "github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/permission"
@@ -35,8 +51,10 @@ type ToolCallResponse struct {
 
 // Client is the host-side client for the workspace MCP gateway.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL     string
+	httpClient  *http.Client
+	headers     map[string]string
+	bearerToken string
 }
 
 // Option configures a gateway client.
@@ -48,6 +66,20 @@ func WithHTTPClient(client *http.Client) Option {
 		if client != nil {
 			gateway.httpClient = client
 		}
+	}
+}
+
+// WithHeaders sets static headers sent to every gateway request.
+func WithHeaders(headers map[string]string) Option {
+	return func(gateway *Client) {
+		gateway.headers = cloneStringMap(headers)
+	}
+}
+
+// WithBearerToken sends Authorization: Bearer on every gateway request.
+func WithBearerToken(token string) Option {
+	return func(gateway *Client) {
+		gateway.bearerToken = strings.TrimSpace(token)
 	}
 }
 
@@ -63,6 +95,7 @@ func NewHTTPClient(baseURL string, opts ...Option) (*Client, error) {
 	client := &Client{
 		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
+		headers:    map[string]string{},
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -79,7 +112,7 @@ func (c *Client) Bootstrap(ctx context.Context) error {
 
 // Health probes the gateway health endpoint.
 func (c *Client) Health(ctx context.Context) error {
-	return c.do(ctx, http.MethodGet, "/health", nil, nil, http.StatusOK)
+	return c.do(ctx, http.MethodGet, "/health", nil, nil, http.StatusOK, http.StatusNoContent)
 }
 
 // AddMCP registers one MCP server in the gateway.
@@ -101,6 +134,17 @@ func (c *Client) ListMCPs(ctx context.Context) ([]workspace.MCPClientConfig, err
 	return configs, nil
 }
 
+// NewMCPClient creates a host-side proxy for one gateway-registered MCP.
+func (c *Client) NewMCPClient(config workspace.MCPClientConfig, connected bool) workspace.MCPClient {
+	return &MCPClient{client: c, config: cloneMCPClientConfig(config), connected: connected}
+}
+
+// ListMCPTools returns wrapped tools for one gateway-registered MCP.
+func (c *Client) ListMCPTools(ctx context.Context, name string) ([]workspace.Tool, error) {
+	client := &MCPClient{client: c, config: workspace.MCPClientConfig{Name: name}, connected: true}
+	return client.ListTools(ctx)
+}
+
 // ListTools returns MCP tools exposed by the gateway.
 func (c *Client) ListTools(ctx context.Context) ([]workspace.Tool, error) {
 	var descriptors []ToolDescriptor
@@ -119,7 +163,33 @@ func (c *Client) Close(ctx context.Context) error {
 	return c.do(ctx, http.MethodPost, "/close", nil, nil, http.StatusOK, http.StatusNoContent, http.StatusNotFound)
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body any, out any, okStatuses ...int) error {
+func (c *Client) listMCPRawTools(ctx context.Context, name string) ([]gomcp.Tool, error) {
+	var tools []gomcp.Tool
+	path := "/mcps/" + url.PathEscape(name) + "/tools"
+	if err := c.do(ctx, http.MethodGet, path, nil, &tools, http.StatusOK); err != nil {
+		return nil, err
+	}
+	return tools, nil
+}
+
+func (c *Client) callMCPTool(ctx context.Context, mcpName, toolName string, input map[string]any) (*tool.ToolChunk, error) {
+	var response struct {
+		Chunk *tool.ToolChunk `json:"chunk"`
+	}
+	path := "/mcps/" + url.PathEscape(mcpName) + "/tools/" + url.PathEscape(toolName)
+	if err := c.do(ctx, http.MethodPost, path, map[string]any{"arguments": input}, &response, http.StatusOK); err != nil {
+		return nil, err
+	}
+	if response.Chunk == nil {
+		return nil, fmt.Errorf("workspace/gateway: gateway returned no chunk for MCP tool %q", toolName)
+	}
+	if response.Chunk.State == "" || response.Chunk.State == message.ToolResultRunning {
+		response.Chunk.State = message.ToolResultSuccess
+	}
+	return response.Chunk, nil
+}
+
+func (c *Client) do(ctx context.Context, method, path string, body, out any, okStatuses ...int) error {
 	if c == nil {
 		return fmt.Errorf("workspace/gateway: nil client")
 	}
@@ -139,6 +209,14 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any,
 	}
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
+	}
+	for key, value := range c.headers {
+		if strings.TrimSpace(key) != "" {
+			request.Header.Set(key, value)
+		}
+	}
+	if c.bearerToken != "" {
+		request.Header.Set("Authorization", "Bearer "+c.bearerToken)
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {
@@ -266,4 +344,305 @@ func cloneAnyMap(in map[string]any) map[string]any {
 	return out
 }
 
+func cloneStringMap(in map[string]string) map[string]string {
+	if in == nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
 var _ tool.Tool = (*gatewayTool)(nil)
+
+// MCPClient is a gateway-backed MCP proxy.
+type MCPClient struct {
+	client      *Client
+	config      workspace.MCPClientConfig
+	connected   bool
+	cachedTools []gomcp.Tool
+}
+
+// Name returns the registered MCP name.
+func (c *MCPClient) Name() string {
+	if c == nil {
+		return ""
+	}
+	return c.config.Name
+}
+
+// IsStateful reports whether the upstream MCP config is stateful.
+func (c *MCPClient) IsStateful() bool {
+	return c != nil && c.config.Stateful
+}
+
+// IsConnected reports whether this proxy is registered with the gateway.
+func (c *MCPClient) IsConnected() bool {
+	return c != nil && c.connected
+}
+
+// Connect registers the upstream MCP config on the gateway.
+func (c *MCPClient) Connect(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return fmt.Errorf("workspace/gateway: nil MCP client")
+	}
+	if !c.config.Stateful {
+		return nil
+	}
+	if c.connected {
+		return fmt.Errorf("workspace/gateway: MCP %q is already connected", c.Name())
+	}
+	if err := c.client.AddMCP(ctx, c.config); err != nil {
+		return err
+	}
+	c.connected = true
+	c.cachedTools = nil
+	return nil
+}
+
+// Close unregisters the upstream MCP config from the gateway.
+func (c *MCPClient) Close() error {
+	if c == nil || c.client == nil || !c.config.Stateful || !c.connected {
+		return nil
+	}
+	if err := c.client.RemoveMCP(context.Background(), c.Name()); err != nil {
+		return err
+	}
+	c.connected = false
+	c.cachedTools = nil
+	return nil
+}
+
+// MCPClientConfig returns the persisted upstream MCP config.
+func (c *MCPClient) MCPClientConfig() (workspace.MCPClientConfig, error) {
+	if c == nil {
+		return workspace.MCPClientConfig{}, fmt.Errorf("workspace/gateway: nil MCP client")
+	}
+	return cloneMCPClientConfig(c.config), nil
+}
+
+// ListTools returns gateway-wrapped MCP tools.
+func (c *MCPClient) ListTools(ctx context.Context) ([]workspace.Tool, error) {
+	if c == nil || c.client == nil {
+		return nil, fmt.Errorf("workspace/gateway: nil MCP client")
+	}
+	if c.config.Stateful && !c.connected {
+		return nil, fmt.Errorf("workspace/gateway: MCP %q is not connected", c.Name())
+	}
+	rawTools, err := c.listRawTools(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tools := make([]workspace.Tool, 0, len(rawTools))
+	for _, raw := range rawTools {
+		tools = append(tools, &gatewayMCPTool{
+			client:      c.client,
+			mcpName:     c.Name(),
+			raw:         raw,
+			name:        qualifiedMCPToolName(c.Name(), raw.Name),
+			inputSchema: rawInputSchemaMap(raw),
+			readOnly:    rawReadOnly(raw),
+		})
+	}
+	return tools, nil
+}
+
+func (c *MCPClient) listRawTools(ctx context.Context) ([]gomcp.Tool, error) {
+	rawTools, err := c.client.listMCPRawTools(ctx, c.Name())
+	if err != nil {
+		return nil, err
+	}
+	c.cachedTools = append([]gomcp.Tool(nil), rawTools...)
+	return filterRawTools(rawTools, c.config.EnabledTools, c.config.DisabledTools)
+}
+
+type gatewayMCPTool struct {
+	client      *Client
+	mcpName     string
+	raw         gomcp.Tool
+	name        string
+	inputSchema map[string]any
+	readOnly    bool
+}
+
+func (t *gatewayMCPTool) Name() string {
+	return t.name
+}
+
+func (t *gatewayMCPTool) Description() string {
+	return t.raw.Description
+}
+
+func (t *gatewayMCPTool) InputSchema() map[string]any {
+	return cloneAnyMap(t.inputSchema)
+}
+
+func (t *gatewayMCPTool) IsConcurrencySafe() bool {
+	return false
+}
+
+func (t *gatewayMCPTool) IsReadOnly() bool {
+	return t.readOnly
+}
+
+func (t *gatewayMCPTool) IsExternalTool() bool {
+	return false
+}
+
+func (t *gatewayMCPTool) IsStateInjected() bool {
+	return false
+}
+
+func (t *gatewayMCPTool) IsMCP() bool {
+	return true
+}
+
+func (t *gatewayMCPTool) MCPName() string {
+	return t.mcpName
+}
+
+func (t *gatewayMCPTool) CheckPermissions(context.Context, map[string]any, *permission.Context) (*permission.Decision, error) {
+	if t.readOnly {
+		return &permission.Decision{
+			Behavior:       permission.BehaviorAllow,
+			Message:        "This is a read-only MCP tool. Allowing execution.",
+			DecisionReason: "MCP readOnlyHint is true",
+		}, nil
+	}
+	return &permission.Decision{
+		Behavior:       permission.BehaviorAsk,
+		Message:        "MCP tools must be explicitly allowed by the user.",
+		DecisionReason: "MCP tool is not read-only",
+	}, nil
+}
+
+func (t *gatewayMCPTool) MatchRule(ruleContent string, _ map[string]any) bool {
+	ruleContent = strings.TrimSpace(ruleContent)
+	if ruleContent == "" {
+		return true
+	}
+	return ruleContent == t.name ||
+		ruleContent == t.raw.Name ||
+		ruleContent == t.mcpName+"."+t.raw.Name ||
+		ruleContent == t.mcpName+":"+t.raw.Name
+}
+
+func (t *gatewayMCPTool) GenerateSuggestions(map[string]any) []permission.Rule {
+	return []permission.Rule{{
+		ToolName:    t.name,
+		RuleContent: t.mcpName + "." + t.raw.Name,
+		Behavior:    permission.BehaviorAllow,
+		Source:      "suggested",
+	}}
+}
+
+func (t *gatewayMCPTool) Execute(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	chunk, err := t.client.callMCPTool(ctx, t.mcpName, t.raw.Name, input)
+	if err != nil {
+		return singleChunk(tool.NewToolChunk(message.ContentBlockList{message.NewTextBlock(err.Error())}, tool.WithToolChunkState(message.ToolResultError))), nil
+	}
+	return singleChunk(chunk), nil
+}
+
+func qualifiedMCPToolName(mcpName, toolName string) string {
+	return "mcp__" + mcpName + "__" + toolName
+}
+
+func rawReadOnly(raw gomcp.Tool) bool {
+	return raw.Annotations.ReadOnlyHint != nil && *raw.Annotations.ReadOnlyHint
+}
+
+func rawInputSchemaMap(raw gomcp.Tool) map[string]any {
+	var data []byte
+	var err error
+	if raw.RawInputSchema != nil {
+		data = raw.RawInputSchema
+	} else {
+		data, err = json.Marshal(raw.InputSchema)
+		if err != nil {
+			data = nil
+		}
+	}
+	var schema map[string]any
+	if len(data) > 0 {
+		_ = json.Unmarshal(data, &schema)
+	}
+	if schema == nil {
+		schema = map[string]any{}
+	}
+	if schemaType, _ := schema["type"].(string); schemaType == "" {
+		schema["type"] = "object"
+	}
+	if _, ok := schema["properties"]; !ok || schema["properties"] == nil {
+		schema["properties"] = map[string]any{}
+	}
+	if _, ok := schema["required"]; !ok || schema["required"] == nil {
+		schema["required"] = []any{}
+	}
+	return schema
+}
+
+func filterRawTools(rawTools []gomcp.Tool, enabledTools, disabledTools []string) ([]gomcp.Tool, error) {
+	enabled, enabledSet, err := toolNameSet(enabledTools)
+	if err != nil {
+		return nil, err
+	}
+	disabled, _, err := toolNameSet(disabledTools)
+	if err != nil {
+		return nil, err
+	}
+	for name := range enabled {
+		if _, exists := disabled[name]; exists {
+			return nil, fmt.Errorf("workspace/gateway: enabled and disabled tools overlap on %q", name)
+		}
+	}
+	out := make([]gomcp.Tool, 0, len(rawTools))
+	for _, raw := range rawTools {
+		if enabledSet {
+			if _, ok := enabled[raw.Name]; !ok {
+				continue
+			}
+		}
+		if _, ok := disabled[raw.Name]; ok {
+			continue
+		}
+		out = append(out, raw)
+	}
+	return out, nil
+}
+
+func toolNameSet(names []string) (map[string]struct{}, bool, error) {
+	out := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, false, fmt.Errorf("workspace/gateway: tool filter name is empty")
+		}
+		out[name] = struct{}{}
+	}
+	return out, len(names) > 0, nil
+}
+
+func cloneMCPClientConfig(config workspace.MCPClientConfig) workspace.MCPClientConfig {
+	config.EnabledTools = append([]string(nil), config.EnabledTools...)
+	config.DisabledTools = append([]string(nil), config.DisabledTools...)
+	if config.Stdio != nil {
+		stdio := *config.Stdio
+		stdio.Args = append([]string(nil), config.Stdio.Args...)
+		stdio.Env = cloneStringMap(config.Stdio.Env)
+		config.Stdio = &stdio
+	}
+	if config.HTTP != nil {
+		httpConfig := *config.HTTP
+		httpConfig.Headers = cloneStringMap(config.HTTP.Headers)
+		config.HTTP = &httpConfig
+	}
+	return config
+}
+
+var (
+	_ workspace.MCPClient = (*MCPClient)(nil)
+	_ tool.Tool           = (*gatewayMCPTool)(nil)
+)

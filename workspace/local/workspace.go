@@ -980,5 +980,7 @@ func fileURL(path string) string {
 	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
 }
 
-var _ asworkspace.Workspace = (*Workspace)(nil)
-var _ asworkspace.Offloader = (*Workspace)(nil)
+var (
+	_ asworkspace.Workspace = (*Workspace)(nil)
+	_ asworkspace.Offloader = (*Workspace)(nil)
+)

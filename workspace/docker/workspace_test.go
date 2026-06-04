@@ -16,7 +16,10 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +27,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/message"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	"github.com/yuluo-yx/agentscope-go/tool"
+	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
 )
 
 func TestWorkspaceInitializesRuntimeAndListsSandboxTools(t *testing.T) {
@@ -142,6 +146,96 @@ func TestWorkspaceCloseStopsAndRemovesEphemeralContainer(t *testing.T) {
 	}
 	if !runtime.stopped || !runtime.removed || !runtime.closed {
 		t.Fatalf("runtime cleanup mismatch: stopped=%v removed=%v closed=%v", runtime.stopped, runtime.removed, runtime.closed)
+	}
+}
+
+func TestWorkspacePersistsMCPsAndRoutesThemThroughGateway(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	workdir := t.TempDir()
+	gateway := newFakeGateway()
+	weather := newPersistedMCP("weather")
+	ws, err := NewWorkspace(
+		WithHostWorkdir(workdir),
+		withRuntime(&fakeRuntime{}),
+		WithMCPGateway(gateway),
+		WithMCPs(weather),
+	)
+	if err != nil {
+		t.Fatalf("NewWorkspace returned error: %v", err)
+	}
+	if initErr := ws.Initialize(ctx); initErr != nil {
+		t.Fatalf("Initialize returned error: %v", initErr)
+	}
+	if !gateway.bootstrapped || len(gateway.added) != 1 || gateway.added[0].Name != "weather" {
+		t.Fatalf("gateway should bootstrap and receive seeded MCP: bootstrapped=%t added=%#v", gateway.bootstrapped, gateway.added)
+	}
+	assertMCPFileNames(t, filepath.Join(workdir, ".mcp"), "weather")
+
+	mcps, err := ws.ListMCPs(ctx)
+	if err != nil {
+		t.Fatalf("ListMCPs returned error: %v", err)
+	}
+	if len(mcps) != 1 || mcps[0].Name() != "weather" {
+		t.Fatalf("unexpected workspace MCPs: %#v", mcps)
+	}
+	tools, err := mcps[0].ListTools(ctx)
+	if err != nil {
+		t.Fatalf("gateway MCP ListTools returned error: %v", err)
+	}
+	if len(tools) != 1 || tools[0].Name() != "mcp__weather__forecast" || !tools[0].IsMCP() {
+		t.Fatalf("unexpected gateway MCP tools: %#v", tools)
+	}
+
+	news := newPersistedMCP("news")
+	if err := ws.AddMCP(ctx, news); err != nil {
+		t.Fatalf("AddMCP returned error: %v", err)
+	}
+	assertMCPFileNames(t, filepath.Join(workdir, ".mcp"), "weather", "news")
+	if err := ws.RemoveMCP(ctx, "weather"); err != nil {
+		t.Fatalf("RemoveMCP returned error: %v", err)
+	}
+	if strings.Join(gateway.removed, ",") != "weather" {
+		t.Fatalf("gateway should remove weather, got %#v", gateway.removed)
+	}
+	assertMCPFileNames(t, filepath.Join(workdir, ".mcp"), "news")
+
+	if err := ws.Close(ctx); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+	if !gateway.closed {
+		t.Fatalf("gateway Close should be called during workspace Close")
+	}
+}
+
+func TestWorkspaceRestoresMCPFileThroughGateway(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	workdir := t.TempDir()
+	data, err := json.Marshal([]asworkspace.MCPClientConfig{newPersistedMCP("weather").config})
+	if err != nil {
+		t.Fatalf("marshal .mcp: %v", err)
+	}
+	if writeErr := os.WriteFile(filepath.Join(workdir, ".mcp"), data, 0o600); writeErr != nil {
+		t.Fatalf("write .mcp: %v", writeErr)
+	}
+
+	gateway := newFakeGateway()
+	ws, err := NewWorkspace(
+		WithHostWorkdir(workdir),
+		withRuntime(&fakeRuntime{}),
+		WithMCPGateway(gateway),
+	)
+	if err != nil {
+		t.Fatalf("NewWorkspace returned error: %v", err)
+	}
+	if err := ws.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize returned error: %v", err)
+	}
+	if len(gateway.added) != 1 || gateway.added[0].Name != "weather" {
+		t.Fatalf("gateway should register restored .mcp entries: %#v", gateway.added)
 	}
 }
 
@@ -266,4 +360,166 @@ func (f *fakeRuntime) WriteFile(_ context.Context, _, path string, data []byte, 
 func (f *fakeRuntime) Close() error {
 	f.closed = true
 	return nil
+}
+
+type persistedMCP struct {
+	config asworkspace.MCPClientConfig
+}
+
+func newPersistedMCP(name string) *persistedMCP {
+	return &persistedMCP{config: asworkspace.MCPClientConfig{
+		Name:         name,
+		Type:         asworkspace.MCPClientTypeHTTP,
+		Stateful:     false,
+		HTTP:         &asworkspace.MCPHTTPConfig{URL: "https://example.invalid/" + name},
+		EnabledTools: []string{"forecast"},
+	}}
+}
+
+func (m *persistedMCP) Name() string {
+	return m.config.Name
+}
+
+func (m *persistedMCP) IsStateful() bool {
+	return m.config.Stateful
+}
+
+func (m *persistedMCP) IsConnected() bool {
+	return !m.config.Stateful
+}
+
+func (m *persistedMCP) Connect(context.Context) error {
+	return nil
+}
+
+func (m *persistedMCP) Close() error {
+	return nil
+}
+
+func (m *persistedMCP) ListTools(context.Context) ([]tool.Tool, error) {
+	return nil, errors.New("persisted MCP spec should be routed through the gateway")
+}
+
+func (m *persistedMCP) MCPClientConfig() (asworkspace.MCPClientConfig, error) {
+	config := m.config
+	config.EnabledTools = append([]string(nil), m.config.EnabledTools...)
+	if m.config.HTTP != nil {
+		httpConfig := *m.config.HTTP
+		config.HTTP = &httpConfig
+	}
+	return config, nil
+}
+
+type fakeGateway struct {
+	bootstrapped bool
+	added        []asworkspace.MCPClientConfig
+	removed      []string
+	closed       bool
+	configs      map[string]asworkspace.MCPClientConfig
+}
+
+func newFakeGateway() *fakeGateway {
+	return &fakeGateway{configs: map[string]asworkspace.MCPClientConfig{}}
+}
+
+func (g *fakeGateway) Bootstrap(context.Context) error {
+	g.bootstrapped = true
+	return nil
+}
+
+func (g *fakeGateway) AddMCP(_ context.Context, config asworkspace.MCPClientConfig) error {
+	g.added = append(g.added, config)
+	g.configs[config.Name] = config
+	return nil
+}
+
+func (g *fakeGateway) RemoveMCP(_ context.Context, name string) error {
+	g.removed = append(g.removed, name)
+	delete(g.configs, name)
+	return nil
+}
+
+func (g *fakeGateway) ListMCPs(context.Context) ([]asworkspace.MCPClientConfig, error) {
+	out := make([]asworkspace.MCPClientConfig, 0, len(g.configs))
+	for _, config := range g.configs {
+		out = append(out, config)
+	}
+	return out, nil
+}
+
+func (g *fakeGateway) NewMCPClient(config asworkspace.MCPClientConfig, connected bool) asworkspace.MCPClient {
+	return &fakeGatewayMCPClient{config: config, connected: connected}
+}
+
+func (g *fakeGateway) Close(context.Context) error {
+	g.closed = true
+	return nil
+}
+
+type fakeGatewayMCPClient struct {
+	config    asworkspace.MCPClientConfig
+	connected bool
+}
+
+func (c *fakeGatewayMCPClient) Name() string {
+	return c.config.Name
+}
+
+func (c *fakeGatewayMCPClient) IsStateful() bool {
+	return true
+}
+
+func (c *fakeGatewayMCPClient) IsConnected() bool {
+	return c.connected
+}
+
+func (c *fakeGatewayMCPClient) Connect(context.Context) error {
+	c.connected = true
+	return nil
+}
+
+func (c *fakeGatewayMCPClient) Close() error {
+	c.connected = false
+	return nil
+}
+
+func (c *fakeGatewayMCPClient) ListTools(context.Context) ([]tool.Tool, error) {
+	forecast, err := tool.NewFunctionTool(
+		"mcp__"+c.config.Name+"__forecast",
+		"Forecast weather.",
+		map[string]any{"type": "object"},
+		func(context.Context, map[string]any, *asstate.AgentState) (message.ContentBlockList, error) {
+			return message.ContentBlockList{message.NewTextBlock("sunny")}, nil
+		},
+		tool.WithFunctionMCP(c.config.Name),
+		tool.WithFunctionReadOnly(true),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return []tool.Tool{forecast}, nil
+}
+
+func (c *fakeGatewayMCPClient) MCPClientConfig() (asworkspace.MCPClientConfig, error) {
+	return c.config, nil
+}
+
+func assertMCPFileNames(t *testing.T, path string, expected ...string) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read .mcp: %v", err)
+	}
+	var configs []asworkspace.MCPClientConfig
+	if err := json.Unmarshal(data, &configs); err != nil {
+		t.Fatalf("unmarshal .mcp: %v\n%s", err, string(data))
+	}
+	names := make([]string, 0, len(configs))
+	for _, config := range configs {
+		names = append(names, config.Name)
+	}
+	if strings.Join(names, ",") != strings.Join(expected, ",") {
+		t.Fatalf(".mcp names mismatch: got %#v want %#v; json=%s", names, expected, string(data))
+	}
 }

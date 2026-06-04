@@ -41,9 +41,41 @@ type Toolkit struct {
 	resetTool  Tool
 }
 
+// MCPClient is the minimal MCP contract accepted by Toolkit.
+type MCPClient interface {
+	Name() string
+	IsStateful() bool
+	IsConnected() bool
+	Connect(context.Context) error
+	Close() error
+	ListTools(context.Context) ([]Tool, error)
+}
+
 // NewToolkit creates a toolkit with only basic tools.
 func NewToolkit(tools ...Tool) (*Toolkit, error) {
 	return NewToolkitWithGroups(tools)
+}
+
+// NewToolkitWithMCPs creates a toolkit from regular tools and MCP tools.
+func NewToolkitWithMCPs(ctx context.Context, tools []Tool, mcps ...MCPClient) (*Toolkit, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	collected := append([]Tool(nil), tools...)
+	for _, client := range mcps {
+		if client == nil {
+			return nil, fmt.Errorf("tool: nil MCP client")
+		}
+		if client.IsStateful() && !client.IsConnected() {
+			return nil, fmt.Errorf("tool: MCP client %q is stateful but not connected", client.Name())
+		}
+		mcpTools, err := client.ListTools(ctx)
+		if err != nil {
+			return nil, err
+		}
+		collected = append(collected, mcpTools...)
+	}
+	return NewToolkit(collected...)
 }
 
 // NewToolkitWithGroups creates a toolkit with basic tools and optional groups.

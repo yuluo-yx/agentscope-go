@@ -16,6 +16,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,6 +56,10 @@ type Workspace struct {
 	networkDisabled  bool
 	memoryBytes      int64
 	nanoCPUs         int64
+	defaultMCPs      []asworkspace.MCPClient
+	mcps             []asworkspace.MCPClient
+	gatewayMCPs      []asworkspace.MCPClient
+	mcpGateway       MCPGateway
 	runtime          runtime
 	ownsRuntime      bool
 	alive            bool
@@ -64,6 +69,16 @@ var _ asworkspace.Workspace = (*Workspace)(nil)
 
 // Option configures a Docker workspace.
 type Option func(*Workspace) error
+
+// MCPGateway registers MCP servers inside the Docker gateway and returns host-side proxies.
+type MCPGateway interface {
+	Bootstrap(context.Context) error
+	AddMCP(context.Context, asworkspace.MCPClientConfig) error
+	RemoveMCP(context.Context, string) error
+	ListMCPs(context.Context) ([]asworkspace.MCPClientConfig, error)
+	NewMCPClient(asworkspace.MCPClientConfig, bool) asworkspace.MCPClient
+	Close(context.Context) error
+}
 
 // WithWorkspaceID sets a stable workspace ID.
 func WithWorkspaceID(id string) Option {
@@ -198,6 +213,25 @@ func WithNanoCPUs(nanoCPUs int64) Option {
 	}
 }
 
+// WithMCPs sets MCP clients seeded when the workspace has no persisted .mcp file.
+func WithMCPs(mcps ...asworkspace.MCPClient) Option {
+	return func(workspace *Workspace) error {
+		workspace.defaultMCPs = append([]asworkspace.MCPClient(nil), mcps...)
+		return nil
+	}
+}
+
+// WithMCPGateway sets the in-container MCP gateway client.
+func WithMCPGateway(gateway MCPGateway) Option {
+	return func(workspace *Workspace) error {
+		if gateway == nil {
+			return fmt.Errorf("workspace/docker: MCP gateway is nil")
+		}
+		workspace.mcpGateway = gateway
+		return nil
+	}
+}
+
 func withRuntime(rt runtime) Option {
 	return func(workspace *Workspace) error {
 		if rt == nil {
@@ -271,6 +305,9 @@ func (w *Workspace) Initialize(ctx context.Context) error {
 	if err := w.prepareHostWorkdir(); err != nil {
 		return err
 	}
+	if err := w.restoreOrSeedMCPs(ctx); err != nil {
+		return err
+	}
 	if w.runtime == nil {
 		rt, err := newEngineRuntime(ctx)
 		if err != nil {
@@ -287,6 +324,12 @@ func (w *Workspace) Initialize(ctx context.Context) error {
 	if err := w.runtime.Start(ctx, containerID); err != nil {
 		return err
 	}
+	if err := w.initializeMCPGateway(ctx); err != nil {
+		return err
+	}
+	if err := w.saveMCPFile(); err != nil {
+		return err
+	}
 	w.alive = true
 	return nil
 }
@@ -297,6 +340,11 @@ func (w *Workspace) Close(ctx context.Context) error {
 		return nil
 	}
 	var errs []error
+	if w.mcpGateway != nil {
+		if err := w.mcpGateway.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if w.containerID != "" && w.runtime != nil {
 		if err := w.runtime.Stop(ctx, w.containerID); err != nil {
 			errs = append(errs, err)
@@ -375,7 +423,13 @@ func (w *Workspace) ListMCPs(ctx context.Context) ([]asworkspace.MCPClient, erro
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return []asworkspace.MCPClient{}, nil
+	if w == nil {
+		return nil, fmt.Errorf("workspace/docker: nil workspace")
+	}
+	if w.mcpGateway != nil {
+		return append([]asworkspace.MCPClient(nil), w.gatewayMCPs...), nil
+	}
+	return append([]asworkspace.MCPClient(nil), w.mcps...), nil
 }
 
 // ListSkills returns skills available in a host-mounted workspace.
@@ -437,23 +491,59 @@ func (w *Workspace) OffloadDataBlock(ctx context.Context, block *message.DataBlo
 	return local.OffloadDataBlock(ctx, block)
 }
 
-// AddMCP records an MCP client for future gateway support.
+// AddMCP registers an MCP client through the Docker gateway and persists it.
 func (w *Workspace) AddMCP(ctx context.Context, mcp asworkspace.MCPClient) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if w == nil {
+		return fmt.Errorf("workspace/docker: nil workspace")
+	}
 	if mcp == nil {
 		return fmt.Errorf("workspace/docker: nil MCP client")
 	}
-	return fmt.Errorf("workspace/docker: MCP gateway is not implemented yet")
+	if w.mcpGateway == nil {
+		return fmt.Errorf("workspace/docker: MCP gateway is not configured")
+	}
+	if w.findMCP(mcp.Name()) >= 0 {
+		return fmt.Errorf("workspace/docker: duplicate MCP %q", mcp.Name())
+	}
+	config, err := mcpConfig(mcp)
+	if err != nil {
+		return err
+	}
+	if err := w.mcpGateway.AddMCP(ctx, config); err != nil {
+		return err
+	}
+	w.mcps = append(w.mcps, mcp)
+	w.gatewayMCPs = append(w.gatewayMCPs, w.mcpGateway.NewMCPClient(config, true))
+	return w.saveMCPFile()
 }
 
 // RemoveMCP removes an MCP client by name.
-func (w *Workspace) RemoveMCP(ctx context.Context, _ string) error {
+func (w *Workspace) RemoveMCP(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return fmt.Errorf("workspace/docker: MCP gateway is not implemented yet")
+	if w == nil {
+		return nil
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("workspace/docker: MCP name is empty")
+	}
+	index := w.findMCP(name)
+	if index < 0 {
+		return nil
+	}
+	if w.mcpGateway != nil {
+		if err := w.mcpGateway.RemoveMCP(ctx, name); err != nil {
+			return err
+		}
+	}
+	w.mcps = append(w.mcps[:index], w.mcps[index+1:]...)
+	w.removeGatewayMCP(name)
+	return w.saveMCPFile()
 }
 
 // AddSkill copies a skill into a host-mounted workspace.
@@ -521,12 +611,183 @@ func (w *Workspace) localMirror() (*wslocal.Workspace, error) {
 	return wslocal.NewWorkspace(w.hostWorkdir, wslocal.WithWorkspaceID(w.id), wslocal.WithInstructions(w.instructions))
 }
 
+func (w *Workspace) restoreOrSeedMCPs(ctx context.Context) error {
+	if w == nil {
+		return fmt.Errorf("workspace/docker: nil workspace")
+	}
+	if w.hostWorkdir == "" {
+		w.mcps = append([]asworkspace.MCPClient(nil), w.defaultMCPs...)
+		return nil
+	}
+	path := filepath.Join(w.hostWorkdir, ".mcp")
+	data, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		var configs []asworkspace.MCPClientConfig
+		if len(strings.TrimSpace(string(data))) > 0 {
+			if unmarshalErr := json.Unmarshal(data, &configs); unmarshalErr != nil {
+				w.mcps = append([]asworkspace.MCPClient(nil), w.defaultMCPs...)
+				return nil
+			}
+		}
+		restored := make([]asworkspace.MCPClient, 0, len(configs))
+		for _, config := range configs {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			restored = append(restored, &persistedMCPClient{config: cloneMCPClientConfig(config)})
+		}
+		w.mcps = restored
+	case os.IsNotExist(err):
+		w.mcps = append([]asworkspace.MCPClient(nil), w.defaultMCPs...)
+	default:
+		w.mcps = append([]asworkspace.MCPClient(nil), w.defaultMCPs...)
+	}
+	return nil
+}
+
+func (w *Workspace) initializeMCPGateway(ctx context.Context) error {
+	if w == nil || w.mcpGateway == nil {
+		return nil
+	}
+	if err := w.mcpGateway.Bootstrap(ctx); err != nil {
+		return err
+	}
+	configs := make([]asworkspace.MCPClientConfig, 0, len(w.mcps))
+	for _, client := range w.mcps {
+		config, err := mcpConfig(client)
+		if err != nil {
+			return err
+		}
+		if err := w.mcpGateway.AddMCP(ctx, config); err != nil {
+			return err
+		}
+		configs = append(configs, config)
+	}
+	gatewayConfigs, err := w.mcpGateway.ListMCPs(ctx)
+	if err != nil {
+		return err
+	}
+	if len(gatewayConfigs) == 0 {
+		gatewayConfigs = configs
+	}
+	w.gatewayMCPs = make([]asworkspace.MCPClient, 0, len(gatewayConfigs))
+	for _, config := range gatewayConfigs {
+		w.gatewayMCPs = append(w.gatewayMCPs, w.mcpGateway.NewMCPClient(config, true))
+	}
+	return nil
+}
+
+func (w *Workspace) saveMCPFile() error {
+	if w == nil || w.hostWorkdir == "" {
+		return nil
+	}
+	configs := make([]asworkspace.MCPClientConfig, 0, len(w.mcps))
+	for _, client := range w.mcps {
+		config, err := mcpConfig(client)
+		if err != nil {
+			return err
+		}
+		configs = append(configs, config)
+	}
+	data, err := json.MarshalIndent(configs, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(w.hostWorkdir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(w.hostWorkdir, ".mcp"), data, 0o600)
+}
+
+func (w *Workspace) findMCP(name string) int {
+	for index, client := range w.mcps {
+		if client != nil && client.Name() == name {
+			return index
+		}
+	}
+	return -1
+}
+
+func (w *Workspace) removeGatewayMCP(name string) {
+	for index, client := range w.gatewayMCPs {
+		if client != nil && client.Name() == name {
+			w.gatewayMCPs = append(w.gatewayMCPs[:index], w.gatewayMCPs[index+1:]...)
+			return
+		}
+	}
+}
+
+func mcpConfig(client asworkspace.MCPClient) (asworkspace.MCPClientConfig, error) {
+	if client == nil {
+		return asworkspace.MCPClientConfig{}, fmt.Errorf("workspace/docker: nil MCP client")
+	}
+	provider, ok := client.(asworkspace.MCPConfigProvider)
+	if !ok {
+		return asworkspace.MCPClientConfig{}, fmt.Errorf("workspace/docker: MCP %q cannot be persisted", client.Name())
+	}
+	config, err := provider.MCPClientConfig()
+	if err != nil {
+		return asworkspace.MCPClientConfig{}, err
+	}
+	return cloneMCPClientConfig(config), nil
+}
+
+type persistedMCPClient struct {
+	config asworkspace.MCPClientConfig
+}
+
+func (c *persistedMCPClient) Name() string {
+	return c.config.Name
+}
+
+func (c *persistedMCPClient) IsStateful() bool {
+	return c.config.Stateful
+}
+
+func (c *persistedMCPClient) IsConnected() bool {
+	return false
+}
+
+func (c *persistedMCPClient) Connect(context.Context) error {
+	return fmt.Errorf("workspace/docker: persisted MCP %q must be routed through the Docker gateway", c.Name())
+}
+
+func (c *persistedMCPClient) Close() error {
+	return nil
+}
+
+func (c *persistedMCPClient) ListTools(context.Context) ([]tool.Tool, error) {
+	return nil, fmt.Errorf("workspace/docker: persisted MCP %q must be routed through the Docker gateway", c.Name())
+}
+
+func (c *persistedMCPClient) MCPClientConfig() (asworkspace.MCPClientConfig, error) {
+	return cloneMCPClientConfig(c.config), nil
+}
+
 func cloneStringMap(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
 	for key, value := range in {
 		out[key] = value
 	}
 	return out
+}
+
+func cloneMCPClientConfig(config asworkspace.MCPClientConfig) asworkspace.MCPClientConfig {
+	config.EnabledTools = append([]string(nil), config.EnabledTools...)
+	config.DisabledTools = append([]string(nil), config.DisabledTools...)
+	if config.Stdio != nil {
+		stdio := *config.Stdio
+		stdio.Args = append([]string(nil), config.Stdio.Args...)
+		stdio.Env = cloneStringMap(config.Stdio.Env)
+		config.Stdio = &stdio
+	}
+	if config.HTTP != nil {
+		httpConfig := *config.HTTP
+		httpConfig.Headers = cloneStringMap(config.HTTP.Headers)
+		config.HTTP = &httpConfig
+	}
+	return config
 }
 
 func cleanContainerPath(path string) string {

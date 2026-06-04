@@ -116,6 +116,16 @@ func TestClientValidationMatchesPythonMCPConstraints(t *testing.T) {
 	}
 }
 
+func TestCapabilityBoundariesMatchPythonMCPImplementation(t *testing.T) {
+	t.Parallel()
+
+	boundaries := CapabilityBoundaries()
+	assertFeatureBoundary(t, boundaries, FeatureOAuthAuth, FeatureStatusPartial, "static HTTP headers")
+	assertFeatureBoundary(t, boundaries, FeatureToolListChangedNotification, FeatureStatusUnsupported, "does not subscribe")
+	assertFeatureBoundary(t, boundaries, FeatureDeferredLoading, FeatureStatusUnsupported, "explicit ListTools")
+	assertFeatureBoundary(t, boundaries, FeatureTaskAugmentedTools, FeatureStatusUnsupported, "normal CallTool")
+}
+
 func newTestMCPServer() *mcpserver.MCPServer {
 	server := mcpserver.NewMCPServer(
 		"people-server",
@@ -223,6 +233,21 @@ func findTool(t *testing.T, tools []astool.Tool, name string) astool.Tool {
 	}
 	t.Fatalf("missing tool %q", name)
 	return nil
+}
+
+func assertFeatureBoundary(t *testing.T, boundaries map[Feature]FeatureBoundary, feature Feature, status FeatureStatus, detail string) {
+	t.Helper()
+
+	boundary, ok := boundaries[feature]
+	if !ok {
+		t.Fatalf("missing feature boundary %q", feature)
+	}
+	if boundary.Status != status {
+		t.Fatalf("feature %q status mismatch: got %q want %q", feature, boundary.Status, status)
+	}
+	if !strings.Contains(boundary.Detail, detail) {
+		t.Fatalf("feature %q detail should mention %q: %s", feature, detail, boundary.Detail)
+	}
 }
 
 func runTool(t *testing.T, current astool.Tool, input map[string]any) *astool.ToolResponse {

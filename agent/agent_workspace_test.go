@@ -1,3 +1,17 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package agent_test
 
 import (
@@ -117,22 +131,28 @@ func (w *agentWorkspace) Reset(context.Context) error      { return nil }
 func (w *agentWorkspace) GetInstructions(context.Context) (string, error) {
 	return w.instructions, nil
 }
+
 func (w *agentWorkspace) ListTools(context.Context) ([]workspace.Tool, error) {
 	return append([]workspace.Tool(nil), w.tools...), nil
 }
+
 func (w *agentWorkspace) ListMCPs(context.Context) ([]workspace.MCPClient, error) {
 	return []workspace.MCPClient{}, nil
 }
+
 func (w *agentWorkspace) ListSkills(context.Context) ([]skill.Skill, error) {
 	return append([]skill.Skill(nil), w.skills...), nil
 }
+
 func (w *agentWorkspace) OffloadContext(context.Context, string, []*message.Message) (string, error) {
 	return "workspace://context/context.jsonl", nil
 }
+
 func (w *agentWorkspace) OffloadToolResult(_ context.Context, _ string, result *message.ToolResultBlock) (string, error) {
 	w.offloadedToolResults = append(w.offloadedToolResults, result.Clone().(*message.ToolResultBlock))
 	return "workspace://tool-results/" + result.ID + ".txt", nil
 }
+
 func (w *agentWorkspace) OffloadDataBlock(context.Context, *message.DataBlock) (*message.DataBlock, error) {
 	return nil, nil
 }

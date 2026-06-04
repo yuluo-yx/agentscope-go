@@ -1,3 +1,17 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package workspace_test
 
 import (
@@ -106,21 +120,27 @@ func (w *contractWorkspace) Reset(context.Context) error      { return nil }
 func (w *contractWorkspace) GetInstructions(context.Context) (string, error) {
 	return w.instructions, nil
 }
+
 func (w *contractWorkspace) ListTools(context.Context) ([]workspace.Tool, error) {
 	return append([]workspace.Tool(nil), w.tools...), nil
 }
+
 func (w *contractWorkspace) ListMCPs(context.Context) ([]workspace.MCPClient, error) {
 	return append([]workspace.MCPClient(nil), w.mcps...), nil
 }
+
 func (w *contractWorkspace) ListSkills(context.Context) ([]skill.Skill, error) {
 	return append([]skill.Skill(nil), w.skills...), nil
 }
+
 func (w *contractWorkspace) OffloadContext(context.Context, string, []*message.Message) (string, error) {
 	return "context.jsonl", nil
 }
+
 func (w *contractWorkspace) OffloadToolResult(context.Context, string, *message.ToolResultBlock) (string, error) {
 	return "tool-result.txt", nil
 }
+
 func (w *contractWorkspace) OffloadDataBlock(context.Context, *message.DataBlock) (*message.DataBlock, error) {
 	return w.offloadedData, nil
 }
@@ -151,9 +171,11 @@ func schemaNames(schemas []workspace.ToolSchema) []string {
 	return names
 }
 
-var _ workspace.Workspace = (*contractWorkspace)(nil)
-var _ workspace.MCPClient = contractMCP{}
-var _ workspace.Offloader = (*contractWorkspace)(nil)
+var (
+	_ workspace.Workspace = (*contractWorkspace)(nil)
+	_ workspace.MCPClient = contractMCP{}
+	_ workspace.Offloader = (*contractWorkspace)(nil)
+)
 
 func TestSkillToolAllowsReadingWorkspaceSkillMarkdown(t *testing.T) {
 	t.Parallel()
