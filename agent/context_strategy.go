@@ -149,36 +149,58 @@ func (SummaryContextStrategy) ContextStrategyName() string {
 
 // ApplyContextStrategy summarizes old messages when MaxTokens and TriggerRatio indicate pressure.
 func (SummaryContextStrategy) ApplyContextStrategy(ctx context.Context, input *ContextStrategyInput) error {
-	if input == nil || input.State == nil || input.Model == nil {
+	if !summaryPreconditionsMet(input) {
 		return nil
 	}
-	config := input.Config
-	if config.MaxTokens <= 0 || len(input.State.Context) <= 1 {
-		return nil
-	}
-	currentRequest, err := input.CurrentModelRequest(ctx)
+	needed, err := isSummaryNeeded(ctx, input)
 	if err != nil {
 		return err
 	}
-	currentTokens, err := input.Model.CountTokens(currentRequest)
-	if err != nil {
-		return err
-	}
-	threshold := int(float64(config.MaxTokens) * config.TriggerRatio)
-	if threshold <= 0 || currentTokens < threshold {
+	if !needed {
 		return nil
 	}
 	tools, err := input.ToolSchemas()
 	if err != nil {
 		return err
 	}
-	toCompress, toReserve, err := splitContextForSummary(ctx, input.Model, input.State.Context, tools, int(float64(config.MaxTokens)*config.ReserveRatio))
+	reserveLimit := int(float64(input.Config.MaxTokens) * input.Config.ReserveRatio)
+	toCompress, toReserve, err := splitContextForSummary(ctx, input.Model, input.State.Context, tools, reserveLimit)
 	if err != nil {
 		return err
 	}
 	if len(toCompress) == 0 {
 		return nil
 	}
+	return executeSummary(ctx, input, toCompress, toReserve)
+}
+
+// summaryPreconditionsMet checks whether the input and config allow summary compression.
+func summaryPreconditionsMet(input *ContextStrategyInput) bool {
+	if input == nil || input.State == nil || input.Model == nil {
+		return false
+	}
+	return input.Config.MaxTokens > 0 && len(input.State.Context) > 1
+}
+
+// isSummaryNeeded returns true when current token count exceeds the summary threshold.
+func isSummaryNeeded(ctx context.Context, input *ContextStrategyInput) (bool, error) {
+	currentRequest, err := input.CurrentModelRequest(ctx)
+	if err != nil {
+		return false, err
+	}
+	currentTokens, err := input.Model.CountTokens(currentRequest)
+	if err != nil {
+		return false, err
+	}
+	threshold := int(float64(input.Config.MaxTokens) * input.Config.TriggerRatio)
+	if threshold <= 0 || currentTokens < threshold {
+		return false, nil
+	}
+	return true, nil
+}
+
+// executeSummary builds the summary, calls the model, and applies the result to state.
+func executeSummary(ctx context.Context, input *ContextStrategyInput, toCompress, toReserve []*message.Message) error {
 	request, err := buildSummaryRequest(ctx, input, toCompress)
 	if err != nil {
 		return err
@@ -187,7 +209,7 @@ func (SummaryContextStrategy) ApplyContextStrategy(ctx context.Context, input *C
 	if err != nil {
 		return err
 	}
-	summaryText, err := summaryTextFromResponse(response, config)
+	summaryText, err := summaryTextFromResponse(response, input.Config)
 	if err != nil {
 		return err
 	}
