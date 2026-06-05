@@ -97,8 +97,7 @@ func main() {
 
 ## 示例
 
-每个示例都是独立 Go module，包含自己的 `go.mod`、英文 `README.md` 和中文
-`README-zh.md`。
+每个示例都是独立 Go module，包含自己的 `go.mod`、英文 `README.md` 和中文 `README-zh.md`。
 
 | 示例 | 说明 |
 | --- | --- |
@@ -123,6 +122,8 @@ func main() {
 | [`example/workspace/docker`](example/workspace/docker) | 在 Docker 容器中运行 workspace 工具，并把结果交给 ChatModel。 |
 
 想快速理解框架用法时，建议先从这些示例开始。
+
+> Tips: 如果出现依赖问题，请先 `go mod tidy` 下再 `go run .`。
 
 ## 文档
 
