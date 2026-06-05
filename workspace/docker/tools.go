@@ -164,6 +164,7 @@ func executeBash(workspace *Workspace) func(context.Context, map[string]any, *as
 		timeout := timeoutValue(input, "timeout_ms", defaultBashTimeout, maxBashTimeout)
 		result, err := workspace.runtime.Run(ctx, workspace.containerID, runRequest{
 			Command: command,
+			User:    workspace.containerUser(),
 			Workdir: workspace.containerWorkdir,
 			Timeout: timeout,
 		})
@@ -283,6 +284,7 @@ func executeGlob(workspace *Workspace) func(context.Context, map[string]any, *as
 		command := fmt.Sprintf("find %s -type f -print", shellQuote(baseDir))
 		result, err := workspace.runtime.Run(ctx, workspace.containerID, runRequest{
 			Command: command,
+			User:    workspace.containerUser(),
 			Workdir: workspace.containerWorkdir,
 			Timeout: defaultBashTimeout,
 		})
@@ -321,6 +323,7 @@ func executeGrep(workspace *Workspace) func(context.Context, map[string]any, *as
 		command := fmt.Sprintf("grep %s -- %s %s", args, shellQuote(pattern), shellQuote(searchPath))
 		result, err := workspace.runtime.Run(ctx, workspace.containerID, runRequest{
 			Command: command,
+			User:    workspace.containerUser(),
 			Workdir: workspace.containerWorkdir,
 			Timeout: defaultBashTimeout,
 		})

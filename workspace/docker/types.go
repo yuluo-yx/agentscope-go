@@ -33,6 +33,7 @@ type containerSpec struct {
 	ID               string
 	Image            string
 	Name             string
+	User             string
 	Workdir          string
 	HostWorkdir      string
 	Env              map[string]string
@@ -50,6 +51,7 @@ type containerSpec struct {
 type runRequest struct {
 	Command string
 	Stdin   []byte
+	User    string
 	Workdir string
 	Env     map[string]string
 	Timeout time.Duration

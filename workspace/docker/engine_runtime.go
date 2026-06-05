@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -57,6 +58,7 @@ func (r *engineRuntime) Create(ctx context.Context, spec containerSpec) (string,
 	}
 	config := &container.Config{
 		Image:           spec.Image,
+		User:            spec.User,
 		WorkingDir:      spec.Workdir,
 		Cmd:             spec.ContainerCommand,
 		Env:             envList(spec.Env),
@@ -123,6 +125,7 @@ func (r *engineRuntime) Run(ctx context.Context, containerID string, req runRequ
 		AttachStdout: true,
 		AttachStderr: true,
 		TTY:          false,
+		User:         req.User,
 		WorkingDir:   req.Workdir,
 		Env:          envList(req.Env),
 		Cmd:          []string{"/bin/bash", "-lc", req.Command},
@@ -223,16 +226,16 @@ func tarFile(filePath string, data []byte, mode int64) (io.Reader, error) {
 			continue
 		}
 		dir = path.Join(dir, part)
-		if err := writer.WriteHeader(&tar.Header{Name: dir, Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
+		if dir == part {
+			continue
+		}
+		if err := writer.WriteHeader(hostTarHeader(dir, tar.TypeDir, 0o755)); err != nil {
 			return nil, err
 		}
 	}
-	if err := writer.WriteHeader(&tar.Header{
-		Name:     cleaned,
-		Mode:     mode,
-		Size:     int64(len(data)),
-		Typeflag: tar.TypeReg,
-	}); err != nil {
+	fileHeader := hostTarHeader(cleaned, tar.TypeReg, mode)
+	fileHeader.Size = int64(len(data))
+	if err := writer.WriteHeader(fileHeader); err != nil {
 		return nil, err
 	}
 	if _, err := writer.Write(data); err != nil {
@@ -242,6 +245,21 @@ func tarFile(filePath string, data []byte, mode int64) (io.Reader, error) {
 		return nil, err
 	}
 	return bytes.NewReader(buffer.Bytes()), nil
+}
+
+func hostTarHeader(name string, typeflag byte, mode int64) *tar.Header {
+	header := &tar.Header{
+		Name:     name,
+		Typeflag: typeflag,
+		Mode:     mode,
+	}
+	uid := os.Getuid()
+	gid := os.Getgid()
+	if uid >= 0 && gid >= 0 {
+		header.Uid = uid
+		header.Gid = gid
+	}
+	return header
 }
 
 func envList(env map[string]string) []string {
