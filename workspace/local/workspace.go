@@ -586,30 +586,32 @@ func (i skillsIndex) hasHash(hash string) bool {
 
 func (w *Workspace) restoreOrSeedMCPs(ctx context.Context) error {
 	path := filepath.Join(w.workdir, ".mcp")
-	data, err := os.ReadFile(path)
+	data, readErr := os.ReadFile(path)
 	switch {
-	case err == nil:
+	case readErr == nil:
 		var configs []asworkspace.MCPClientConfig
 		if len(strings.TrimSpace(string(data))) > 0 {
-			if err := json.Unmarshal(data, &configs); err != nil {
-				return err
+			decodeErr := json.Unmarshal(data, &configs)
+			if decodeErr != nil {
+				return decodeErr
 			}
 		}
 		restored := make([]asworkspace.MCPClient, 0, len(configs))
 		for _, config := range configs {
-			if err := ctx.Err(); err != nil {
-				return err
+			contextErr := ctx.Err()
+			if contextErr != nil {
+				return contextErr
 			}
-			client, err := w.mcpFactory(config)
-			if err != nil {
-				return err
+			client, factoryErr := w.mcpFactory(config)
+			if factoryErr != nil {
+				return factoryErr
 			}
 			restored = append(restored, client)
 		}
 		w.mcps = restored
 		return nil
-	case !os.IsNotExist(err):
-		return err
+	case !os.IsNotExist(readErr):
+		return readErr
 	}
 	return w.saveMCPFile()
 }
@@ -682,8 +684,9 @@ func defaultMCPFactory(config asworkspace.MCPClientConfig) (asworkspace.MCPClien
 }
 
 func (w *Workspace) reconcileSkillsIndex(skillsDir string) (skillsIndex, error) {
-	if err := os.MkdirAll(skillsDir, 0o700); err != nil {
-		return skillsIndex{}, err
+	mkdirErr := os.MkdirAll(skillsDir, 0o700)
+	if mkdirErr != nil {
+		return skillsIndex{}, mkdirErr
 	}
 	index, err := w.loadSkillsIndex(skillsDir)
 	if err != nil {
@@ -693,41 +696,10 @@ func (w *Workspace) reconcileSkillsIndex(skillsDir string) (skillsIndex, error) 
 	if err != nil {
 		return skillsIndex{}, err
 	}
-	changed := false
-	for dirName := range index.Skills {
-		if _, ok := actualDirs[dirName]; !ok {
-			delete(index.Skills, dirName)
-			changed = true
-		}
-	}
+	changed := removeMissingSkillEntries(&index, actualDirs)
 	existingNames := skillNameSet(index.Skills)
 	existingHashes := skillHashSet(index.Skills)
-	for dirName := range actualDirs {
-		if _, ok := index.Skills[dirName]; ok {
-			continue
-		}
-		dir := filepath.Join(skillsDir, dirName)
-		loaded, err := skill.LoadDir(context.Background(), dir)
-		if err != nil || loaded == nil {
-			continue
-		}
-		hash, err := skillHash(dir)
-		if err != nil {
-			continue
-		}
-		if _, exists := existingHashes[hash]; exists {
-			continue
-		}
-		name := loaded.Name
-		for suffix := 1; ; suffix++ {
-			if _, exists := existingNames[name]; !exists {
-				break
-			}
-			name = fmt.Sprintf("%s (%d)", loaded.Name, suffix)
-		}
-		index.Skills[dirName] = skillIndexEntry{Hash: hash, SkillName: name}
-		existingNames[name] = struct{}{}
-		existingHashes[hash] = struct{}{}
+	if addUnindexedSkills(skillsDir, &index, actualDirs, existingNames, existingHashes) {
 		changed = true
 	}
 	info, err := os.Stat(skillsDir)
@@ -745,6 +717,63 @@ func (w *Workspace) reconcileSkillsIndex(skillsDir string) (skillsIndex, error) 
 		}
 	}
 	return index, nil
+}
+
+func removeMissingSkillEntries(index *skillsIndex, actualDirs map[string]struct{}) bool {
+	changed := false
+	for dirName := range index.Skills {
+		if _, ok := actualDirs[dirName]; !ok {
+			delete(index.Skills, dirName)
+			changed = true
+		}
+	}
+	return changed
+}
+
+func addUnindexedSkills(
+	skillsDir string,
+	index *skillsIndex,
+	actualDirs map[string]struct{},
+	existingNames map[string]struct{},
+	existingHashes map[string]struct{},
+) bool {
+	changed := false
+	for dirName := range actualDirs {
+		if _, ok := index.Skills[dirName]; ok {
+			continue
+		}
+		entry, ok := skillIndexEntryForDir(skillsDir, dirName, existingNames, existingHashes)
+		if !ok {
+			continue
+		}
+		index.Skills[dirName] = entry
+		existingNames[entry.SkillName] = struct{}{}
+		existingHashes[entry.Hash] = struct{}{}
+		changed = true
+	}
+	return changed
+}
+
+func skillIndexEntryForDir(
+	skillsDir string,
+	dirName string,
+	existingNames map[string]struct{},
+	existingHashes map[string]struct{},
+) (skillIndexEntry, bool) {
+	dir := filepath.Join(skillsDir, dirName)
+	loaded, loadErr := skill.LoadDir(context.Background(), dir)
+	if loadErr != nil || loaded == nil {
+		return skillIndexEntry{}, false
+	}
+	hash, hashErr := skillHash(dir)
+	if hashErr != nil {
+		return skillIndexEntry{}, false
+	}
+	if _, exists := existingHashes[hash]; exists {
+		return skillIndexEntry{}, false
+	}
+	name := uniqueSkillNameFromSet(existingNames, loaded.Name)
+	return skillIndexEntry{Hash: hash, SkillName: name}, true
 }
 
 func (w *Workspace) loadSkillsIndex(skillsDir string) (skillsIndex, error) {
@@ -824,7 +853,10 @@ func skillHashSet(entries map[string]skillIndexEntry) map[string]struct{} {
 }
 
 func uniqueSkillName(entries map[string]skillIndexEntry, raw string) string {
-	names := skillNameSet(entries)
+	return uniqueSkillNameFromSet(skillNameSet(entries), raw)
+}
+
+func uniqueSkillNameFromSet(names map[string]struct{}, raw string) string {
 	name := raw
 	for suffix := 1; ; suffix++ {
 		if _, exists := names[name]; !exists {
@@ -860,26 +892,6 @@ func cloneStringMap(in map[string]string) map[string]string {
 	return out
 }
 
-func (w *Workspace) hasSkillHash(skillsDir, sourceHash string) (bool, error) {
-	entries, err := os.ReadDir(skillsDir)
-	if err != nil {
-		return false, err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		hash, err := skillHash(filepath.Join(skillsDir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		if hash == sourceHash {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func skillHash(dir string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {
@@ -903,16 +915,6 @@ func sanitizeDirName(name string) string {
 		return "skill"
 	}
 	return out
-}
-
-func uniqueDirName(parent, base string) string {
-	candidate := base
-	for index := 1; ; index++ {
-		if _, err := os.Stat(filepath.Join(parent, candidate)); os.IsNotExist(err) {
-			return candidate
-		}
-		candidate = fmt.Sprintf("%s_%d", base, index)
-	}
 }
 
 func uniqueFilePath(dir, name string) string {

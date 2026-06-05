@@ -60,21 +60,9 @@ func BuildAgentResources(ctx context.Context, workspace Workspace) (*AgentResour
 	if err != nil {
 		return nil, err
 	}
-	mcpTools := []Tool{}
-	for _, client := range mcps {
-		if client == nil {
-			continue
-		}
-		if client.IsStateful() && !client.IsConnected() {
-			if err := client.Connect(ctx); err != nil {
-				return nil, err
-			}
-		}
-		tools, err := client.ListTools(ctx)
-		if err != nil {
-			return nil, err
-		}
-		mcpTools = append(mcpTools, tools...)
+	mcpTools, err := listMCPTools(ctx, mcps)
+	if err != nil {
+		return nil, err
 	}
 	skills, err := workspace.ListSkills(ctx)
 	if err != nil {
@@ -104,6 +92,27 @@ func BuildAgentResources(ctx context.Context, workspace Workspace) (*AgentResour
 		Skills:       append([]skill.Skill(nil), skills...),
 		Offloader:    workspace,
 	}, nil
+}
+
+func listMCPTools(ctx context.Context, mcps []MCPClient) ([]Tool, error) {
+	mcpTools := []Tool{}
+	for _, client := range mcps {
+		if client == nil {
+			continue
+		}
+		if client.IsStateful() && !client.IsConnected() {
+			connectErr := client.Connect(ctx)
+			if connectErr != nil {
+				return nil, connectErr
+			}
+		}
+		tools, listErr := client.ListTools(ctx)
+		if listErr != nil {
+			return nil, listErr
+		}
+		mcpTools = append(mcpTools, tools...)
+	}
+	return mcpTools, nil
 }
 
 // FormatSkillInstructions returns the skill prompt fragment aligned with the Python implementation.

@@ -51,8 +51,9 @@ func TestWorkspacePersistsIndexesRestoresMCPAndReconcilesSkills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWorkspace returned error: %v", err)
 	}
-	if err := ws.Initialize(ctx); err != nil {
-		t.Fatalf("Initialize returned error: %v", err)
+	initErr := ws.Initialize(ctx)
+	if initErr != nil {
+		t.Fatalf("Initialize returned error: %v", initErr)
 	}
 	assertFileExists(t, filepath.Join(workdir, ".mcp"))
 	assertFileExists(t, filepath.Join(workdir, "skills", ".skills"))
@@ -73,8 +74,9 @@ func TestWorkspacePersistsIndexesRestoresMCPAndReconcilesSkills(t *testing.T) {
 	if !contains(skillNames(skills), "manual") {
 		t.Fatalf("manual skill should be reconciled into .skills index: %#v", skillNames(skills))
 	}
-	if err := ws.RemoveSkill(ctx, "manual"); err != nil {
-		t.Fatalf("RemoveSkill returned error: %v", err)
+	removeErr := ws.RemoveSkill(ctx, "manual")
+	if removeErr != nil {
+		t.Fatalf("RemoveSkill returned error: %v", removeErr)
 	}
 	skills, err = ws.ListSkills(ctx)
 	if err != nil {
@@ -88,8 +90,9 @@ func TestWorkspacePersistsIndexesRestoresMCPAndReconcilesSkills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWorkspace restored returned error: %v", err)
 	}
-	if err := restored.Initialize(ctx); err != nil {
-		t.Fatalf("Initialize restored returned error: %v", err)
+	restoreInitErr := restored.Initialize(ctx)
+	if restoreInitErr != nil {
+		t.Fatalf("Initialize restored returned error: %v", restoreInitErr)
 	}
 	mcps, err := restored.ListMCPs(ctx)
 	if err != nil {

@@ -83,13 +83,14 @@ func TestHTTPGatewayBootstrapsRegistersMCPExposesToolsAndCloses(t *testing.T) {
 	if bootstrapErr := client.Bootstrap(ctx); bootstrapErr != nil {
 		t.Fatalf("Bootstrap returned error: %v", bootstrapErr)
 	}
-	if err := client.AddMCP(ctx, workspace.MCPClientConfig{
+	addErr := client.AddMCP(ctx, workspace.MCPClientConfig{
 		Name:     "weather",
 		Type:     workspace.MCPClientTypeHTTP,
 		Stateful: false,
 		HTTP:     &workspace.MCPHTTPConfig{URL: "https://example.invalid/mcp"},
-	}); err != nil {
-		t.Fatalf("AddMCP returned error: %v", err)
+	})
+	if addErr != nil {
+		t.Fatalf("AddMCP returned error: %v", addErr)
 	}
 	mcps, err := client.ListMCPs(ctx)
 	if err != nil {
