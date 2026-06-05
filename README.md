@@ -127,6 +127,8 @@ Each example is an independent Go module with its own `go.mod`, English
 
 Start with the examples if you want the quickest path to a working agent.
 
+Tip: If you encounter dependency issues, please run `go mod tidy` before `go run .`.
+
 ## Documentation
 
 - English docs: [`docs/en/intro.md`](docs/en/intro.md)
