@@ -581,6 +581,7 @@ func (w *Workspace) containerSpec() containerSpec {
 		ID:               w.id,
 		Image:            w.image,
 		Name:             w.name,
+		User:             w.containerUser(),
 		Workdir:          w.containerWorkdir,
 		HostWorkdir:      w.hostWorkdir,
 		Env:              cloneStringMap(w.env),
@@ -593,6 +594,25 @@ func (w *Workspace) containerSpec() containerSpec {
 		RemoveOnClose:    !w.keepContainer,
 		ContainerCommand: []string{"sleep", "infinity"},
 	}
+}
+
+func (w *Workspace) containerUser() string {
+	if w == nil {
+		return ""
+	}
+	return hostWorkdirUser(w.hostWorkdir)
+}
+
+func hostWorkdirUser(hostWorkdir string) string {
+	if hostWorkdir == "" {
+		return ""
+	}
+	uid := os.Getuid()
+	gid := os.Getgid()
+	if uid < 0 || gid < 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d", uid, gid)
 }
 
 func (w *Workspace) prepareHostWorkdir() error {

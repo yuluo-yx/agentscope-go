@@ -15,9 +15,12 @@
 package docker
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,6 +209,77 @@ func TestWorkspacePersistsMCPsAndRoutesThemThroughGateway(t *testing.T) {
 	}
 	if !gateway.closed {
 		t.Fatalf("gateway Close should be called during workspace Close")
+	}
+}
+
+func TestWorkspaceUsesHostUserForBindMountedWorkdir(t *testing.T) {
+	t.Parallel()
+
+	uid := os.Getuid()
+	gid := os.Getgid()
+	if uid < 0 || gid < 0 {
+		t.Skip("host user IDs are unavailable on this platform")
+	}
+
+	runtime := &fakeRuntime{}
+	ws, err := NewWorkspace(WithHostWorkdir(t.TempDir()), withRuntime(runtime))
+	if err != nil {
+		t.Fatalf("NewWorkspace returned error: %v", err)
+	}
+	if err := ws.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize returned error: %v", err)
+	}
+
+	if got, want := runtime.createSpec.User, fmt.Sprintf("%d:%d", uid, gid); got != want {
+		t.Fatalf("container should run as host user to keep bind mount writable: got %q want %q", got, want)
+	}
+
+	bash := findTool(t, ws, "Bash")
+	runTool(t, bash, map[string]any{"command": "pwd"}, nil)
+	if len(runtime.runs) != 1 {
+		t.Fatalf("expected one runtime run, got %d", len(runtime.runs))
+	}
+	if got, want := runtime.runs[0].User, fmt.Sprintf("%d:%d", uid, gid); got != want {
+		t.Fatalf("exec should run as host user to keep bind mount writable: got %q want %q", got, want)
+	}
+}
+
+func TestTarFileUsesHostOwnershipWithoutTopLevelMountHeader(t *testing.T) {
+	t.Parallel()
+
+	uid := os.Getuid()
+	gid := os.Getgid()
+	if uid < 0 || gid < 0 {
+		t.Skip("host user IDs are unavailable on this platform")
+	}
+
+	archive, err := tarFile("/workspace/data/note.txt", []byte("hello"), 0o644)
+	if err != nil {
+		t.Fatalf("tarFile returned error: %v", err)
+	}
+	reader := tar.NewReader(archive)
+	headers := map[string]*tar.Header{}
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("tar reader returned error: %v", err)
+		}
+		headers[header.Name] = header
+	}
+	if _, exists := headers["workspace"]; exists {
+		t.Fatalf("tar archive should not rewrite the bind mount root header")
+	}
+	for _, name := range []string{"workspace/data", "workspace/data/note.txt"} {
+		header, exists := headers[name]
+		if !exists {
+			t.Fatalf("missing tar header %q; got %#v", name, headers)
+		}
+		if header.Uid != uid || header.Gid != gid {
+			t.Fatalf("tar header %q should use host ownership: got %d:%d want %d:%d", name, header.Uid, header.Gid, uid, gid)
+		}
 	}
 }
 
