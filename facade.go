@@ -97,6 +97,7 @@ const (
 var (
 	NewAgent              = asagent.NewAgent
 	WithToolkit           = asagent.WithToolkit
+	WithAgentResources    = asagent.WithAgentResources
 	WithAgentState        = asagent.WithAgentState
 	WithModelConfig       = asagent.WithModelConfig
 	WithContextConfig     = asagent.WithContextConfig

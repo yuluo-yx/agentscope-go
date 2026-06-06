@@ -19,7 +19,8 @@ func TestTextModelBatchesRequestsAndAggregatesUsage(t *testing.T) {
 	var requests []map[string]any
 	server := newDashScopeServer(t, "/api/v1/services/embeddings/text-embedding/text-embedding", http.StatusOK, func(body map[string]any) map[string]any {
 		requests = append(requests, body)
-		inputs := body["input"].([]any)
+		input := body["input"].(map[string]any)
+		inputs := input["texts"].([]any)
 		embeddings := make([]any, 0, len(inputs))
 		for i := range inputs {
 			embeddings = append(embeddings, map[string]any{"text_index": i, "embedding": []float64{float64(i), float64(i + 1)}})
@@ -45,15 +46,20 @@ func TestTextModelBatchesRequestsAndAggregatesUsage(t *testing.T) {
 		asembedding.NewTextInput("one"),
 		asembedding.NewTextInput("two"),
 		asembedding.NewTextInput("three"),
-	}})
+	}, Parameters: map[string]any{"output_type": "dense"}})
 	if err != nil {
 		t.Fatalf("Embed returned error: %v", err)
 	}
 	if len(requests) != 2 {
 		t.Fatalf("expected 2 batched requests, got %d", len(requests))
 	}
-	if requests[0]["model"] != "text-embedding-v4" || requests[0]["dimension"] != float64(2) {
+	parameters := requests[0]["parameters"].(map[string]any)
+	if requests[0]["model"] != "text-embedding-v4" || parameters["dimension"] != float64(2) || parameters["output_type"] != "dense" {
 		t.Fatalf("request body mismatch: %#v", requests[0])
+	}
+	firstInput := requests[0]["input"].(map[string]any)["texts"].([]any)
+	if len(firstInput) != 2 || firstInput[0] != "one" || firstInput[1] != "two" {
+		t.Fatalf("text input should be wrapped under input.texts: %#v", requests[0]["input"])
 	}
 	if len(resp.Embeddings) != 3 || resp.Usage == nil || resp.Usage.Tokens == nil || *resp.Usage.Tokens != 3 {
 		t.Fatalf("aggregated response mismatch: %#v", resp)
@@ -66,7 +72,8 @@ func TestMultiModalModelFormatsTextImageAndVideo(t *testing.T) {
 	requestCh := make(chan map[string]any, 3)
 	server := newDashScopeServer(t, "/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding", http.StatusOK, func(body map[string]any) map[string]any {
 		requestCh <- body
-		inputs := body["input"].([]any)
+		input := body["input"].(map[string]any)
+		inputs := input["contents"].([]any)
 		embeddings := make([]any, 0, len(inputs))
 		for i := range inputs {
 			embeddings = append(embeddings, map[string]any{"embedding": []float64{float64(i), float64(i + 1)}})
@@ -101,9 +108,9 @@ func TestMultiModalModelFormatsTextImageAndVideo(t *testing.T) {
 		t.Fatalf("response mismatch: %#v", resp)
 	}
 	bodies := []map[string]any{<-requestCh, <-requestCh, <-requestCh}
-	firstInput := bodies[0]["input"].([]any)
-	secondInput := bodies[1]["input"].([]any)
-	thirdInput := bodies[2]["input"].([]any)
+	firstInput := bodies[0]["input"].(map[string]any)["contents"].([]any)
+	secondInput := bodies[1]["input"].(map[string]any)["contents"].([]any)
+	thirdInput := bodies[2]["input"].(map[string]any)["contents"].([]any)
 	if firstInput[0].(map[string]any)["text"] != "hello" {
 		t.Fatalf("text input not formatted: %#v", firstInput[0])
 	}
