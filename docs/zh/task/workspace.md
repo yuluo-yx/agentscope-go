@@ -79,6 +79,17 @@ tools, err := ws.ListTools(ctx)
 
 当智能体需要使用 Workspace 支持的工具时，把这些工具注册到 Toolkit。
 
+Docker 与 Agent Sandbox 后端会保留和本地 Workspace 一致的模型可见
+`Bash`、`Read`、`Write`、`Edit`、`Glob`、`Grep` schema，但执行时会进入对应
+后端运行时：Docker 工具通过 Docker engine 作用于 workspace 容器，Agent
+Sandbox 工具通过 sandbox handle 执行。这些工具调用不得回落到宿主机执行。
+
+这与 Python Docker/E2B 通过 workspace 内 gateway 暴露工具的路径不同。当前
+AgentScope Go 将该差异记录为有意边界：内置 workspace 工具使用类型化 Go
+runtime adapter，MCP server 仍可通过 `workspace/gateway.Server` 和宿主侧
+gateway client 暴露。依赖 Docker 或 Agent Sandbox 的测试继续显式门控：
+`AGENTSCOPE_TEST_DOCKER=1` 与 `AGENTSCOPE_TEST_AGENT_SANDBOX=1`。
+
 ## Skills
 
 使用 `local.WithSkillPaths` 预置 Skill：

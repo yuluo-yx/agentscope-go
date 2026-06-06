@@ -14,6 +14,17 @@ agent, err := agent.NewAgent(
 )
 ```
 
+## Workspace 资源
+
+当智能体需要直接使用 Workspace 时，使用 `agent.WithWorkspace(ctx, ws)`。
+该 option 会初始化 Workspace，把 Workspace 指令和 Skill 指令追加到 system
+prompt，注册 Workspace 与 MCP 工具，并将 Workspace 作为上下文、工具结果和
+DataBlock 的 offloader。
+
+如果服务层已经调用 `workspace.BuildAgentResources` 生成资源对象，可以使用
+`agent.WithAgentResources(resources)` 装配同一组 system prompt 片段、toolkit
+和 offloader，避免调用方手动拆分资源对象。
+
 ## 模型配置
 
 `ModelConfig` 控制重试行为和可选的兜底模型：
