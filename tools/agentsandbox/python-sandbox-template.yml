@@ -1,0 +1,33 @@
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  name: ${SANDBOX_TEMPLATE_NAME}
+  namespace: ${SANDBOX_NAMESPACE}
+spec:
+  service: true
+  podTemplate:
+    spec:
+      containers:
+      - name: python-runtime
+        image: ${RUNTIME_IMAGE}
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8888
+        readinessProbe:
+          httpGet:
+            path: "/"
+            port: 8888
+          initialDelaySeconds: 0
+          periodSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: "/"
+            port: 8888
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+            ephemeral-storage: "128Mi"
+      restartPolicy: "OnFailure"
