@@ -42,6 +42,8 @@ docs/*.egg-info/
 
 # local caches
 .cache/
+__pycache__/
+*.pyc
 
 # Local tool environments
 .venv/
