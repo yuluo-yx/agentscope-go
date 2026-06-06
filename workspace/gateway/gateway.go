@@ -278,7 +278,7 @@ func (t *gatewayTool) IsStateInjected() bool {
 }
 
 func (t *gatewayTool) IsMCP() bool {
-	return true
+	return t.descriptor.MCPName != ""
 }
 
 func (t *gatewayTool) MCPName() string {
