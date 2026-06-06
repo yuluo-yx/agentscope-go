@@ -124,6 +124,7 @@ Each example is an independent Go module with its own `go.mod`, English
 | [`example/tool/task`](example/tool/task) | Wrap task-style work as tools. |
 | [`example/workspace/local`](example/workspace/local) | Provide local workspace files for AI-assisted tool workflows. |
 | [`example/workspace/docker`](example/workspace/docker) | Run workspace tools inside a Docker container and send the result through a ChatModel. |
+| [`example/workspace/agentsandbox`](example/workspace/agentsandbox) | Run workspace tools inside a Kubernetes Agent Sandbox runtime. |
 
 Start with the examples if you want the quickest path to a working agent.
 

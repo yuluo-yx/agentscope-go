@@ -8,6 +8,11 @@ INTEGRATION_PACKAGES := $(shell $(GO) list ./test/integration/... 2>/dev/null)
 E2E_PACKAGES := $(shell $(GO) list ./test/e2e/... 2>/dev/null)
 ARCHITECTURE_PACKAGES := $(shell $(GO) list ./test/architecture/... 2>/dev/null)
 DOCKER_TEST_IMAGE ?= ubuntu:latest
+AGENT_SANDBOX_VERSION ?= v0.4.6
+AGENT_SANDBOX_KIND_CLUSTER ?= agentscope-agent-sandbox
+AGENT_SANDBOX_RUNTIME_IMAGE ?= agentscope-agent-sandbox-runtime:$(AGENT_SANDBOX_VERSION)
+AGENTSCOPE_AGENT_SANDBOX_TEMPLATE ?= python-sandbox-template
+AGENTSCOPE_AGENT_SANDBOX_NAMESPACE ?= default
 
 .PHONY: download
 download: ## Download dependencies
@@ -80,6 +85,32 @@ test-e2e-docker: ## Run Docker-backed E2E and integration tests
 test-e2e-docker: docker-test-image
 	@$(LOG_TARGET)
 	AGENTSCOPE_E2E_DOCKER=1 AGENTSCOPE_TEST_DOCKER=1 AGENTSCOPE_DOCKER_IMAGE="$(DOCKER_TEST_IMAGE)" $(GO) test ./test/e2e/... ./test/integration/workspace/docker/... -v -race
+
+.PHONY: agent-sandbox-kind-setup
+agent-sandbox-kind-setup: ## Create a KinD cluster and install Agent Sandbox test resources
+	@$(LOG_TARGET)
+	AGENT_SANDBOX_VERSION="$(AGENT_SANDBOX_VERSION)" \
+	AGENT_SANDBOX_KIND_CLUSTER="$(AGENT_SANDBOX_KIND_CLUSTER)" \
+	AGENT_SANDBOX_RUNTIME_IMAGE="$(AGENT_SANDBOX_RUNTIME_IMAGE)" \
+	AGENTSCOPE_AGENT_SANDBOX_TEMPLATE="$(AGENTSCOPE_AGENT_SANDBOX_TEMPLATE)" \
+	AGENTSCOPE_AGENT_SANDBOX_NAMESPACE="$(AGENTSCOPE_AGENT_SANDBOX_NAMESPACE)" \
+	tools/agentsandbox/setup-kind.sh
+
+.PHONY: test-e2e-agent-sandbox
+test-e2e-agent-sandbox: ## Run Agent Sandbox-backed E2E and integration tests on KinD
+test-e2e-agent-sandbox: agent-sandbox-kind-setup
+	@$(LOG_TARGET)
+	AGENTSCOPE_TEST_AGENT_SANDBOX=1 \
+	AGENTSCOPE_E2E_AGENT_SANDBOX=1 \
+	AGENTSCOPE_AGENT_SANDBOX_TEMPLATE="$(AGENTSCOPE_AGENT_SANDBOX_TEMPLATE)" \
+	AGENTSCOPE_AGENT_SANDBOX_NAMESPACE="$(AGENTSCOPE_AGENT_SANDBOX_NAMESPACE)" \
+	$(GO) test ./test/integration/workspace/agentsandbox/... ./test/e2e/workspace/agentsandbox/... -v -race -timeout=20m || { \
+		status=$$?; \
+		AGENT_SANDBOX_KIND_CLUSTER="$(AGENT_SANDBOX_KIND_CLUSTER)" \
+		AGENTSCOPE_AGENT_SANDBOX_NAMESPACE="$(AGENTSCOPE_AGENT_SANDBOX_NAMESPACE)" \
+		tools/agentsandbox/dump-kind-diagnostics.sh; \
+		exit $$status; \
+	}
 
 .PHONY: ci
 ci: ## Run CI-aligned checks for formatting, linting, spelling, security, and tests
