@@ -79,6 +79,20 @@ tools, err := ws.ListTools(ctx)
 
 Register them in a Toolkit when the agent should use workspace-backed tools.
 
+Docker and Agent Sandbox backends intentionally keep the same model-visible
+`Bash`, `Read`, `Write`, `Edit`, `Glob`, and `Grep` schemas as the local
+workspace, but execute them through their backend runtimes. Docker tools call
+the Docker engine against the workspace container, and Agent Sandbox tools call
+the sandbox handle. These tool calls must not fall back to host execution.
+
+This differs from the Python Docker/E2B implementation, where workspace tools
+are exposed through an in-workspace gateway. In AgentScope Go this is an
+explicit boundary: built-in workspace tools use typed Go runtime adapters, while
+MCP servers can still be exposed through `workspace/gateway.Server` and the
+host-side gateway client. Tests that require Docker or Agent Sandbox remain
+opt-in through `AGENTSCOPE_TEST_DOCKER=1` and
+`AGENTSCOPE_TEST_AGENT_SANDBOX=1`.
+
 ## Skills
 
 Seed skills with `local.WithSkillPaths`:

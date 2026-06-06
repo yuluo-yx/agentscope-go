@@ -1,6 +1,6 @@
 # DashScope ChatModel 示例
 
-项目主页：[README-zh.md](../../../README-zh.md)。
+项目主页：[README-zh.md](../../../../README-zh.md)。
 
 英文文档：[README.md](README.md)。
 

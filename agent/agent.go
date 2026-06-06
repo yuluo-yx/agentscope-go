@@ -98,6 +98,23 @@ func WithWorkspace(ctx context.Context, workspace asworkspace.Workspace) AgentOp
 	}
 }
 
+// WithAgentResources wires prebuilt workspace resources into the Agent.
+func WithAgentResources(resources *asworkspace.AgentResources) AgentOption {
+	return func(agent *Agent) error {
+		if resources == nil {
+			return agenterrors.NewDeveloperError("agent resources are nil")
+		}
+		agent.systemPrompt = appendSystemPrompt(agent.systemPrompt, resources.SystemPrompt)
+		if resources.Toolkit != nil {
+			agent.toolkit = resources.Toolkit
+		}
+		if resources.Offloader != nil {
+			agent.offloader = resources.Offloader
+		}
+		return nil
+	}
+}
+
 // WithAgentState sets the initial Agent state.
 func WithAgentState(state *AgentState) AgentOption {
 	return func(agent *Agent) error {

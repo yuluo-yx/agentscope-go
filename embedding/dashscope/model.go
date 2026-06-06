@@ -172,12 +172,13 @@ func (m *TextModel) Embed(ctx context.Context, request asembedding.EmbeddingRequ
 	totalTokens := 0
 	for from := 0; from < len(texts); from += m.batchSizeLimit {
 		to := min(from+m.batchSizeLimit, len(texts))
+		parameters := map[string]any{"dimension": m.dimensions}
+		mergeExtraParameters(parameters, request.Parameters)
 		body := map[string]any{
-			"model":     m.model,
-			"input":     texts[from:to],
-			"dimension": m.dimensions,
+			"model":      m.model,
+			"input":      map[string]any{"texts": texts[from:to]},
+			"parameters": parameters,
 		}
-		mergeExtraParameters(body, request.Parameters)
 		res, err := m.call(ctx, textEmbeddingPath, body)
 		if err != nil {
 			return nil, err
@@ -279,9 +280,13 @@ func (m *MultiModalModel) Embed(ctx context.Context, request asembedding.Embeddi
 		to := min(from+m.batchSizeLimit, len(formatted))
 		body := map[string]any{
 			"model": m.model,
-			"input": formatted[from:to],
+			"input": map[string]any{"contents": formatted[from:to]},
 		}
-		mergeExtraParameters(body, request.Parameters)
+		if len(request.Parameters) > 0 {
+			parameters := map[string]any{}
+			mergeExtraParameters(parameters, request.Parameters)
+			body["parameters"] = parameters
+		}
 		res, err := callDashScope(ctx, m.httpClient, m.credential, multimodalEmbeddingPath, body)
 		if err != nil {
 			return nil, err

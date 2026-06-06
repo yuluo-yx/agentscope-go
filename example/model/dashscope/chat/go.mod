@@ -13,4 +13,4 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 )
 
-replace github.com/yuluo-yx/agentscope-go => ../../..
+replace github.com/yuluo-yx/agentscope-go => ./../../../..
