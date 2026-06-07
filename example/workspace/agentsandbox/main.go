@@ -11,6 +11,8 @@ import (
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
+	"github.com/yuluo-yx/agentscope-go/permission"
+	asstate "github.com/yuluo-yx/agentscope-go/state"
 	asw "github.com/yuluo-yx/agentscope-go/workspace/agentsandbox"
 )
 
@@ -63,6 +65,7 @@ func main() {
 	for _, t := range tools {
 		fmt.Println("tools: ", t.Name())
 	}
+	fmt.Println()
 
 	/**
 	output:
@@ -83,6 +86,14 @@ func main() {
 
 func chat(ctx context.Context, chatModel model.ChatModel, ws *asw.Workspace) {
 
+	// agent tool call state config.
+	agentState := asstate.NewAgentState()
+	agentState.PermissionContext = permission.NewContext(permission.ModeAcceptEdits)
+	agentState.PermissionContext.WorkingDirectories["sandbox-demo"] = permission.AdditionalWorkingDirectory{
+		Path:   "/home/user/demo",
+		Source: "agentsandbox demo",
+	}
+
 	// user prompt 输入
 	systemPrompt := strings.Join([]string{
 		"You are an AgentScope Go workspace demo agent.",
@@ -95,11 +106,11 @@ func chat(ctx context.Context, chatModel model.ChatModel, ws *asw.Workspace) {
 	user, err := message.NewUserMessage(
 		"user",
 		`请在 sandbox 里完成这个任务：
-  1. 创建 /home/user/demo/demo.md。
-  2. 写入一行内容：Hello, AgentScope Go.
-  3. 使用 Grep 搜索 "AgentScope" 来确认文件路径。
-  4. 使用 Read 读取 demo.md。
-  5. 最后告诉我文件路径和读取到的内容。`,
+1. 创建 /home/user/demo/demo.md。
+2. 写入一行内容：Hello, AgentScope Go.
+3. 使用 Grep 搜索 "AgentScope" 来确认文件路径。
+4. 使用 Read 读取 demo.md。
+5. 最后告诉我文件路径和读取到的内容。`,
 	)
 	if err != nil {
 		panic(err)
@@ -109,6 +120,7 @@ func chat(ctx context.Context, chatModel model.ChatModel, ws *asw.Workspace) {
 		"Workspace Demo Agent",
 		systemPrompt,
 		chatModel,
+		agent.WithAgentState(agentState),
 		agent.WithWorkspace(ctx, ws),
 		agent.WithReActConfig(agent.ReActConfig{
 			MaxIters:     10,
