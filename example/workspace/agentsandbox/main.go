@@ -82,6 +82,61 @@ func main() {
 
 	chatModel := newChatModel(true)
 	chat(ctx, chatModel, ws)
+
+	// 如果一切顺利，在 go run . 执行完成时，将看到类似输出
+	/**
+	好的，我来按步骤完成这个任务！
+
+	## 步骤 1 & 2：创建文件并写入内容
+
+	[tool-call] Write
+	{"content": "Hello, AgentScope Go.\n", "file_path": "/home/user/demo/demo.md"}
+	[tool-result-start] Write
+	The file /home/user/demo/demo.md has been written successfully inside the Agent Sandbox workspace (2 lines).
+	[tool-result-end] state=success
+	文件创建成功！接下来同时进行步骤 3（Grep 搜索）和步骤 4（Read 读取）：
+
+
+	[tool-call] Grep
+	{"path": "/home/user", "pattern": "AgentScope"}
+	[tool-call] Read
+	{"file_path": "/home/user/demo/demo.md"}
+	[tool-result-start] Grep
+
+	[tool-result-start] Read
+	/home/user/demo/demo.md:1:Hello, AgentScope Go.
+	[tool-result-end] state=success
+	     1  Hello, AgentScope Go.
+	[tool-result-end] state=success
+	## 任务完成 ✅
+
+	以下是最终结果：
+
+	| 项目 | 结果 |
+	|------|------|
+	| **文件路径** | `/home/user/demo/demo.md` |
+	| **文件内容** | `Hello, AgentScope Go.` |
+
+	### 各步骤执行摘要：
+
+	1. **创建文件** — 通过 Write 工具成功创建 `/home/user/demo/demo.md`（2 行，含末尾换行）。
+	2. **写入内容** — 内容 `Hello, AgentScope Go.` 已写入文件。
+	3. **Grep 搜索** — 搜索 `"AgentScope"` 匹配到 `/home/user/demo/demo.md` 第 1 行，确认文件路径正确。
+	4. **Read 读取** — 读取到第 1 行内容为 `Hello, AgentScope Go.`，与写入一致。
+
+	agent_final="好的，我来按步骤完成这个任务！\n\n## 步骤 1 & 2：创建文件并写入内容\n\n文件创建成功！接下来同时进行步骤 3（Grep 搜索）和步骤 4（Read 读取）：\n\n## 任务完成 ✅\n\n以下是最终结果：\n\n| 项目 | 结果 |\n|------|------|\n| **文件路径** | `/home/user/demo/demo.md` |\n| **文件内容** | `Hello, AgentScope Go.` |\n\n### 各步骤执行摘要：\n\n1. **创建文件** — 通过 Write 工具成功创建 `/home/user/demo/demo.md`（2 行，含末尾换行）。\n2. **写入内容** — 内容 `Hello, AgentScope Go.` 已写入文件。\n3. **Grep 搜索** — 搜索 `\"AgentScope\"` 匹配到 `/home/user/demo/demo.md` 第 1 行，确认文件路径正确。\n4. **Read 读取** — 读取到第 1 行内容为 `Hello, AgentScope Go.`，与写入一致。"
+
+	进入对应的 sandbox 集群，可以看到一个存活的 pod，
+
+	agent                  sandbox-claim-gpfpd                          1/1     Running     0          34s
+
+	cd 到对应位置可以看到一个文件和文件内容：
+
+	I have no name!@sandbox-claim-gpfpd:/home/user/demo$ cat demo.md
+	Hello, AgentScope Go.
+	I have no name!@sandbox-claim-gpfpd:/home/user/demo$ pwd
+	/home/user/demo
+	*/
 }
 
 func chat(ctx context.Context, chatModel model.ChatModel, ws *asw.Workspace) {
@@ -174,6 +229,8 @@ func agentSandboxOption(dir string) []asw.Option {
 		asw.WithNamespace("agent"),
 		// 设置宿主机 mirror 目录
 		asw.WithHostWorkdir(dir),
+		// agent 进程结束时，保留 pod，以查看。
+		asw.WithKeepSandbox(true),
 	}
 
 	// 只有显式设置 AGENTSCOPE_AGENT_SANDBOX_API_URL 时，才走 direct URL 模式。
