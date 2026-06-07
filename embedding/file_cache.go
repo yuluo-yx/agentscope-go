@@ -108,7 +108,8 @@ func (c *FileCache) Store(ctx context.Context, identifier any, embeddings []type
 	if err != nil {
 		return err
 	}
-	if _, statErr := os.Stat(path); statErr == nil && !options.Overwrite {
+	_, statErr := os.Stat(path)
+	if statErr == nil && !options.Overwrite {
 		return nil
 	} else if statErr != nil && !os.IsNotExist(statErr) {
 		return statErr
