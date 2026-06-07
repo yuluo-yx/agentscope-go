@@ -161,6 +161,11 @@ func ConvertEventToAGUI(event message.Event) (ConvertedEvent, error) {
 		payload.Delta = typed.Delta
 	case *message.ThinkingBlockDeltaEvent:
 		payload.Delta = typed.Delta
+	case *message.HintBlockEvent:
+		payload.Name = "hint_block"
+		if typed.Source != nil {
+			payload.Metadata["agentscope.hint_source"] = *typed.Source
+		}
 	case *message.ToolCallStartEvent:
 		payload.ToolCallID = typed.ToolCallID
 		payload.Name = typed.ToolCallName
@@ -179,6 +184,9 @@ func ConvertEventToAGUI(event message.Event) (ConvertedEvent, error) {
 		payload.ToolCallID = typed.ToolCallID
 	case *message.ToolResultEndEvent:
 		payload.ToolCallID = typed.ToolCallID
+	case *message.CustomEvent:
+		payload.Name = typed.Name
+		payload.Metadata["agentscope.custom_value"] = typed.Value
 	}
 	return ConvertedEvent{
 		Protocol: "ag-ui",
@@ -199,6 +207,7 @@ var aguiEventTypes = map[message.EventType]string{
 	message.ThinkingBlockStartType:       "THINKING_START",
 	message.ThinkingBlockDeltaType:       "THINKING_CONTENT",
 	message.ThinkingBlockEndType:         "THINKING_END",
+	message.HintBlockType:                "CUSTOM",
 	message.ToolCallStartType:            "TOOL_CALL_START",
 	message.ToolCallDeltaType:            "TOOL_CALL_ARGS",
 	message.ToolCallEndType:              "TOOL_CALL_END",
@@ -211,6 +220,7 @@ var aguiEventTypes = map[message.EventType]string{
 	message.UserConfirmResultType:        "USER_CONFIRM_RESULT",
 	message.ExternalExecutionResultType:  "EXTERNAL_EXECUTION_RESULT",
 	message.ExceedMaxItersType:           "RUN_ERROR",
+	message.CustomType:                   "CUSTOM",
 }
 
 func aguiType(event message.Event) string {

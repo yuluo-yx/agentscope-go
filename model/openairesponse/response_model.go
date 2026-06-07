@@ -415,7 +415,11 @@ func formatResponseContent(blocks message.ContentBlockList) ([]any, []any, error
 		case *message.TextBlock:
 			content = append(content, map[string]any{"type": "input_text", "text": typed.Text})
 		case *message.HintBlock:
-			content = append(content, map[string]any{"type": "input_text", "text": typed.Hint})
+			hintContent, err := hintResponseContent(typed)
+			if err != nil {
+				return nil, nil, err
+			}
+			content = append(content, hintContent...)
 		case *message.DataBlock:
 			part, err := responseDataPart(typed)
 			if err != nil {
@@ -439,6 +443,30 @@ func formatResponseContent(blocks message.ContentBlockList) ([]any, []any, error
 		}
 	}
 	return content, items, nil
+}
+
+func hintResponseContent(block *message.HintBlock) ([]any, error) {
+	if block.Blocks == nil {
+		return []any{map[string]any{"type": "input_text", "text": block.Hint}}, nil
+	}
+	content := make([]any, 0, len(block.Blocks))
+	for _, nested := range block.Blocks {
+		switch typed := nested.(type) {
+		case *message.TextBlock:
+			content = append(content, map[string]any{"type": "input_text", "text": typed.Text})
+		case *message.DataBlock:
+			part, err := responseDataPart(typed)
+			if err != nil {
+				return nil, err
+			}
+			if part != nil {
+				content = append(content, part)
+			}
+		default:
+			return nil, fmt.Errorf("openai responses: unsupported hint content block %T", nested)
+		}
+	}
+	return content, nil
 }
 
 func responseDataPart(block *message.DataBlock) (map[string]any, error) {

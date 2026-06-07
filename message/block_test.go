@@ -68,6 +68,63 @@ func TestContentBlockJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestHintBlockSupportsSourceAndMultimodalHint(t *testing.T) {
+	t.Parallel()
+
+	hint := message.NewHintBlock(message.ContentBlockList{
+		message.NewTextBlock("inspect this image", message.WithBlockID("hint-text-1")),
+		message.NewDataBlock(
+			message.NewBase64Source("YWJj", "image/png"),
+			message.WithDataBlockID("hint-data-1"),
+		),
+	}, message.WithHintBlockID("hint-1"), message.WithHintSource("scheduler"))
+
+	data, err := json.Marshal(hint)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+
+	var raw struct {
+		Type   string          `json:"type"`
+		ID     string          `json:"id"`
+		Source *string         `json:"source"`
+		Hint   json.RawMessage `json:"hint"`
+	}
+	if unmarshalErr := json.Unmarshal(data, &raw); unmarshalErr != nil {
+		t.Fatalf("Unmarshal raw returned error: %v", unmarshalErr)
+	}
+	if raw.Type != "hint" || raw.ID != "hint-1" || raw.Source == nil || *raw.Source != "scheduler" {
+		t.Fatalf("hint metadata not encoded: %s", data)
+	}
+	if len(raw.Hint) == 0 || raw.Hint[0] != '[' {
+		t.Fatalf("multimodal hint should encode as a block list, got %s", raw.Hint)
+	}
+
+	decoded, err := message.UnmarshalContentBlock(data)
+	if err != nil {
+		t.Fatalf("UnmarshalContentBlock returned error: %v", err)
+	}
+	got := decoded.(*message.HintBlock)
+	if got.Source == nil || *got.Source != "scheduler" {
+		t.Fatalf("hint source not preserved: %#v", got.Source)
+	}
+	if got.Hint != "" || len(got.Blocks) != 2 {
+		t.Fatalf("multimodal hint not decoded as blocks: %#v", got)
+	}
+	if text := got.Blocks.GetTextContent(""); text == nil || *text != "inspect this image" {
+		t.Fatalf("hint text block not preserved: %#v", got.Blocks)
+	}
+	if got.Blocks[1].(*message.DataBlock).Source.SourceType() != "base64" {
+		t.Fatalf("hint data block not preserved: %#v", got.Blocks[1])
+	}
+
+	cloned := got.Clone().(*message.HintBlock)
+	cloned.Blocks[0].(*message.TextBlock).Text = "mutated"
+	if got.Blocks[0].(*message.TextBlock).Text != "inspect this image" {
+		t.Fatalf("hint clone mutated original: %#v", got.Blocks[0])
+	}
+}
+
 func TestContentBlockListQueries(t *testing.T) {
 	t.Parallel()
 
@@ -156,7 +213,7 @@ func TestBlockConstructorsOptionsAndClone(t *testing.T) {
 
 	text := message.NewTextBlock("hello", message.WithBlockID("text-1"))
 	thinking := message.NewThinkingBlock("think", message.WithThinkingBlockID("think-1"))
-	hint := message.NewHintBlock("hint", message.WithHintBlockID("hint-1"))
+	hint := message.NewHintBlock("hint", message.WithHintBlockID("hint-1"), message.WithHintSource("team"))
 	data := message.NewDataBlock(
 		message.NewBase64Source("abc", "image/png"),
 		message.WithDataBlockID("data-1"),
@@ -184,6 +241,9 @@ func TestBlockConstructorsOptionsAndClone(t *testing.T) {
 	}
 	if successResult.State != message.ToolResultSuccess {
 		t.Fatalf("explicit tool result state should be preserved, got %q", successResult.State)
+	}
+	if hint.Source == nil || *hint.Source != "team" {
+		t.Fatalf("hint source not set: %#v", hint.Source)
 	}
 
 	clonedCall := call.Clone().(*message.ToolCallBlock)

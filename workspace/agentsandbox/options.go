@@ -26,10 +26,10 @@ import (
 
 var shellEnvNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// Option 配置 Agent Sandbox workspace。
+// Option configures an Agent Sandbox workspace.
 type Option func(*Workspace) error
 
-// WithWorkspaceID 设置稳定 workspace ID。
+// WithWorkspaceID sets a stable workspace ID.
 func WithWorkspaceID(id string) Option {
 	return func(workspace *Workspace) error {
 		workspace.id = strings.TrimSpace(id)
@@ -37,7 +37,7 @@ func WithWorkspaceID(id string) Option {
 	}
 }
 
-// WithTemplateName 设置 agent-sandbox SandboxTemplate 名称。
+// WithTemplateName sets the agent-sandbox SandboxTemplate name.
 func WithTemplateName(name string) Option {
 	return func(workspace *Workspace) error {
 		workspace.templateName = strings.TrimSpace(name)
@@ -45,7 +45,7 @@ func WithTemplateName(name string) Option {
 	}
 }
 
-// WithNamespace 设置 SandboxClaim 所在 Kubernetes namespace。
+// WithNamespace sets the Kubernetes namespace that contains the SandboxClaim.
 func WithNamespace(namespace string) Option {
 	return func(workspace *Workspace) error {
 		workspace.namespace = strings.TrimSpace(namespace)
@@ -53,7 +53,7 @@ func WithNamespace(namespace string) Option {
 	}
 }
 
-// WithContainerWorkdir 设置 sandbox 内工具执行工作目录。
+// WithContainerWorkdir sets the tool execution working directory inside the sandbox.
 func WithContainerWorkdir(workdir string) Option {
 	return func(workspace *Workspace) error {
 		workdir = strings.TrimSpace(workdir)
@@ -68,7 +68,7 @@ func WithContainerWorkdir(workdir string) Option {
 	}
 }
 
-// WithHostWorkdir 设置宿主 mirror 目录，用于 offload、skills 和 MCP 索引。
+// WithHostWorkdir sets the host mirror directory for offload, skills, and MCP indexes.
 func WithHostWorkdir(workdir string) Option {
 	return func(workspace *Workspace) error {
 		workdir = strings.TrimSpace(workdir)
@@ -84,7 +84,7 @@ func WithHostWorkdir(workdir string) Option {
 	}
 }
 
-// WithInstructions 设置 workspace system prompt 模板。
+// WithInstructions sets the workspace system prompt template.
 func WithInstructions(instructions string) Option {
 	return func(workspace *Workspace) error {
 		workspace.instructions = instructions
@@ -92,7 +92,7 @@ func WithInstructions(instructions string) Option {
 	}
 }
 
-// WithKeepSandbox 在 Close 时保留 SandboxClaim，只断开本地连接。
+// WithKeepSandbox keeps the SandboxClaim on Close and only disconnects locally.
 func WithKeepSandbox(keep bool) Option {
 	return func(workspace *Workspace) error {
 		workspace.keepSandbox = keep
@@ -100,7 +100,7 @@ func WithKeepSandbox(keep bool) Option {
 	}
 }
 
-// WithPortForward 使用 SDK 的 port-forward 连接模式。
+// WithPortForward uses the SDK port-forward connection mode.
 func WithPortForward() Option {
 	return func(workspace *Workspace) error {
 		workspace.mode = connectionModePortForward
@@ -111,7 +111,7 @@ func WithPortForward() Option {
 	}
 }
 
-// WithAPIURL 使用 sandbox-router direct URL 连接模式。
+// WithAPIURL uses the sandbox-router direct URL connection mode.
 func WithAPIURL(apiURL string) Option {
 	return func(workspace *Workspace) error {
 		apiURL = strings.TrimSpace(apiURL)
@@ -124,7 +124,7 @@ func WithAPIURL(apiURL string) Option {
 	}
 }
 
-// WithGateway 使用 Kubernetes Gateway API 连接模式。
+// WithGateway uses the Kubernetes Gateway API connection mode.
 func WithGateway(name, namespace string) Option {
 	return func(workspace *Workspace) error {
 		name = strings.TrimSpace(name)
@@ -142,7 +142,7 @@ func WithGateway(name, namespace string) Option {
 	}
 }
 
-// WithServerPort 设置 sandbox runtime 服务端口。
+// WithServerPort sets the sandbox runtime service port.
 func WithServerPort(port int) Option {
 	return func(workspace *Workspace) error {
 		if port < 0 {
@@ -153,7 +153,7 @@ func WithServerPort(port int) Option {
 	}
 }
 
-// WithEnv 设置 sandbox 工具命令环境变量。
+// WithEnv sets an environment variable for sandbox tool commands.
 func WithEnv(name, value string) Option {
 	return func(workspace *Workspace) error {
 		name = strings.TrimSpace(name)
@@ -168,7 +168,7 @@ func WithEnv(name, value string) Option {
 	}
 }
 
-// WithMCPs 设置 workspace 初始化时的 MCP clients。
+// WithMCPs sets the MCP clients registered during workspace initialization.
 func WithMCPs(mcps ...asworkspace.MCPClient) Option {
 	return func(workspace *Workspace) error {
 		workspace.defaultMCPs = append([]asworkspace.MCPClient(nil), mcps...)
@@ -176,7 +176,7 @@ func WithMCPs(mcps ...asworkspace.MCPClient) Option {
 	}
 }
 
-// WithRequestTimeout 设置单次 SDK 请求超时。
+// WithRequestTimeout sets the timeout for one SDK request.
 func WithRequestTimeout(timeout time.Duration) Option {
 	return func(workspace *Workspace) error {
 		if timeout <= 0 {
@@ -187,7 +187,7 @@ func WithRequestTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithOpenTimeout 设置 sandbox 创建和连接超时。
+// WithOpenTimeout sets the timeout for sandbox creation and connection.
 func WithOpenTimeout(timeout time.Duration) Option {
 	return func(workspace *Workspace) error {
 		if timeout <= 0 {
@@ -198,7 +198,7 @@ func WithOpenTimeout(timeout time.Duration) Option {
 	}
 }
 
-// WithMaxUploadSize 设置文件上传最大字节数。
+// WithMaxUploadSize sets the maximum file upload size in bytes.
 func WithMaxUploadSize(bytes int64) Option {
 	return func(workspace *Workspace) error {
 		if bytes < 0 {
@@ -209,7 +209,7 @@ func WithMaxUploadSize(bytes int64) Option {
 	}
 }
 
-// WithMaxDownloadSize 设置文件下载最大字节数。
+// WithMaxDownloadSize sets the maximum file download size in bytes.
 func WithMaxDownloadSize(bytes int64) Option {
 	return func(workspace *Workspace) error {
 		if bytes < 0 {

@@ -71,7 +71,11 @@ func splitContent(blocks message.ContentBlockList) ([]sdk.ChatCompletionContentP
 		case *message.TextBlock:
 			parts = append(parts, sdk.TextContentPart(typed.Text))
 		case *message.HintBlock:
-			parts = append(parts, sdk.TextContentPart(typed.Hint))
+			hintParts, err := hintContentParts(typed)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			parts = append(parts, hintParts...)
 		case *message.DataBlock:
 			part, err := dataBlockPart(typed)
 			if err != nil {
@@ -97,6 +101,30 @@ func splitContent(blocks message.ContentBlockList) ([]sdk.ChatCompletionContentP
 		}
 	}
 	return parts, toolCalls, toolResults, nil
+}
+
+func hintContentParts(block *message.HintBlock) ([]sdk.ChatCompletionContentPartUnionParam, error) {
+	if block.Blocks == nil {
+		return []sdk.ChatCompletionContentPartUnionParam{sdk.TextContentPart(block.Hint)}, nil
+	}
+	parts := make([]sdk.ChatCompletionContentPartUnionParam, 0, len(block.Blocks))
+	for _, nested := range block.Blocks {
+		switch typed := nested.(type) {
+		case *message.TextBlock:
+			parts = append(parts, sdk.TextContentPart(typed.Text))
+		case *message.DataBlock:
+			part, err := dataBlockPart(typed)
+			if err != nil {
+				return nil, err
+			}
+			if part != nil {
+				parts = append(parts, *part)
+			}
+		default:
+			return nil, fmt.Errorf("openai: unsupported hint content block %T", nested)
+		}
+	}
+	return parts, nil
 }
 
 func systemMessageParam(content, name string) sdk.ChatCompletionMessageParamUnion {

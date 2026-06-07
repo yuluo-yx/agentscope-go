@@ -96,6 +96,8 @@ func (m *Message) applyContentBlockEvent(event Event) bool {
 			block.Thinking += e.Delta
 		}
 	case *ThinkingBlockEndEvent:
+	case *HintBlockEvent:
+		m.Content = append(m.Content, hintBlockFromEvent(e))
 	default:
 		return false
 	}
@@ -137,6 +139,9 @@ func (m *Message) applyToolResultEvent(event Event) bool {
 	case *ToolResultEndEvent:
 		if block, ok := m.FindBlock("tool_result", e.ToolCallID).(*ToolResultBlock); ok {
 			block.State = e.State
+		}
+		if block, ok := m.FindBlock("tool_call", e.ToolCallID).(*ToolCallBlock); ok {
+			block.State = ToolCallFinished
 		}
 	default:
 		return false
@@ -232,4 +237,17 @@ func ensureToolResultBlocks(block *ToolResultBlock) {
 		block.Output.Blocks = append(block.Output.Blocks, NewTextBlock(block.Output.Raw))
 		block.Output.Raw = ""
 	}
+}
+
+func hintBlockFromEvent(event *HintBlockEvent) *HintBlock {
+	var block *HintBlock
+	if event.Blocks != nil {
+		block = NewHintBlock(event.Blocks, WithHintBlockID(event.BlockID))
+	} else {
+		block = NewHintBlock(event.Hint, WithHintBlockID(event.BlockID))
+	}
+	if event.Source != nil {
+		block.Source = cloneString(*event.Source)
+	}
+	return block
 }

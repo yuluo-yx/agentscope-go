@@ -14,7 +14,10 @@
 
 package message
 
-import "github.com/yuluo-yx/agentscope-go/permission"
+import (
+	"github.com/yuluo-yx/agentscope-go/permission"
+	"github.com/yuluo-yx/agentscope-go/utils"
+)
 
 type EventType string
 
@@ -32,6 +35,7 @@ const (
 	ThinkingBlockStartType       EventType = "THINKING_BLOCK_START"
 	ThinkingBlockDeltaType       EventType = "THINKING_BLOCK_DELTA"
 	ThinkingBlockEndType         EventType = "THINKING_BLOCK_END"
+	HintBlockType                EventType = "HINT_BLOCK"
 	ToolCallStartType            EventType = "TOOL_CALL_START"
 	ToolCallDeltaType            EventType = "TOOL_CALL_DELTA"
 	ToolCallEndType              EventType = "TOOL_CALL_END"
@@ -44,6 +48,7 @@ const (
 	RequireExternalExecutionType EventType = "REQUIRE_EXTERNAL_EXECUTION"
 	UserConfirmResultType        EventType = "USER_CONFIRM_RESULT"
 	ExternalExecutionResultType  EventType = "EXTERNAL_EXECUTION_RESULT"
+	CustomType                   EventType = "CUSTOM"
 )
 
 type Event interface {
@@ -66,9 +71,10 @@ func (eventMarker) event() {}
 
 type EventBase struct {
 	eventMarker
-	Type      EventType `json:"type"`
-	ID        string    `json:"id"`
-	CreatedAt string    `json:"created_at"`
+	Type      EventType      `json:"type"`
+	ID        string         `json:"id"`
+	CreatedAt string         `json:"created_at"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 func (e *EventBase) GetType() EventType { return e.Type }
@@ -155,6 +161,14 @@ type ThinkingBlockEndEvent struct {
 	BlockID string `json:"block_id"`
 }
 
+type HintBlockEvent struct {
+	ReplyEventBase
+	BlockID string           `json:"block_id"`
+	Source  *string          `json:"source,omitempty"`
+	Hint    string           `json:"-"`
+	Blocks  ContentBlockList `json:"-"`
+}
+
 type ToolCallStartEvent struct {
 	ReplyEventBase
 	ToolCallID   string `json:"tool_call_id"`
@@ -230,8 +244,22 @@ type ExternalExecutionResultEvent struct {
 	ExecutionResults []*ToolResultBlock `json:"execution_results"`
 }
 
+type CustomEvent struct {
+	EventBase
+	Name  string         `json:"name"`
+	Value map[string]any `json:"value"`
+}
+
+func (e *CustomEvent) ReplyID() string { return "" }
+
+type HintBlockEventOption func(*HintBlockEvent)
+
+func WithHintBlockEventSource(source string) HintBlockEventOption {
+	return func(e *HintBlockEvent) { e.Source = cloneString(source) }
+}
+
 func newEventBase(typ EventType) EventBase {
-	return EventBase{Type: typ, ID: newID(), CreatedAt: nowISO()}
+	return EventBase{Type: typ, ID: newID(), CreatedAt: nowISO(), Metadata: map[string]any{}}
 }
 
 func newReplyEventBase(typ EventType, replyID string) ReplyEventBase {
@@ -290,6 +318,20 @@ func NewThinkingBlockEndEvent(replyID, blockID string) *ThinkingBlockEndEvent {
 	return &ThinkingBlockEndEvent{ReplyEventBase: newReplyEventBase(ThinkingBlockEndType, replyID), BlockID: blockID}
 }
 
+func NewHintBlockEvent(replyID, blockID string, hint any, opts ...HintBlockEventOption) *HintBlockEvent {
+	text, blocks := normalizeHintContent(hint)
+	event := &HintBlockEvent{
+		ReplyEventBase: newReplyEventBase(HintBlockType, replyID),
+		BlockID:        blockID,
+		Hint:           text,
+		Blocks:         blocks,
+	}
+	for _, opt := range opts {
+		opt(event)
+	}
+	return event
+}
+
 func NewToolCallStartEvent(replyID, toolCallID, toolCallName string) *ToolCallStartEvent {
 	return &ToolCallStartEvent{ReplyEventBase: newReplyEventBase(ToolCallStartType, replyID), ToolCallID: toolCallID, ToolCallName: toolCallName}
 }
@@ -336,4 +378,15 @@ func NewUserConfirmResultEvent(replyID string, results []ConfirmResult) *UserCon
 
 func NewExternalExecutionResultEvent(replyID string, results []*ToolResultBlock) *ExternalExecutionResultEvent {
 	return &ExternalExecutionResultEvent{ReplyEventBase: newReplyEventBase(ExternalExecutionResultType, replyID), ExecutionResults: results}
+}
+
+func NewCustomEvent(name string, value map[string]any) *CustomEvent {
+	if value == nil {
+		value = map[string]any{}
+	}
+	return &CustomEvent{
+		EventBase: newEventBase(CustomType),
+		Name:      name,
+		Value:     utils.CloneAnyMap(value),
+	}
 }

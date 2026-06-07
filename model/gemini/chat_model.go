@@ -325,7 +325,11 @@ func formatContentParts(blocks message.ContentBlockList) ([]*genai.Part, error) 
 		case *message.TextBlock:
 			parts = append(parts, genai.NewPartFromText(typed.Text))
 		case *message.HintBlock:
-			parts = append(parts, genai.NewPartFromText(typed.Hint))
+			hintParts, err := hintContentParts(typed)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, hintParts...)
 		case *message.DataBlock:
 			part, err := dataPart(typed)
 			if err != nil {
@@ -346,6 +350,30 @@ func formatContentParts(blocks message.ContentBlockList) ([]*genai.Part, error) 
 			continue
 		default:
 			return nil, fmt.Errorf("gemini: unsupported content block %T", block)
+		}
+	}
+	return parts, nil
+}
+
+func hintContentParts(block *message.HintBlock) ([]*genai.Part, error) {
+	if block.Blocks == nil {
+		return []*genai.Part{genai.NewPartFromText(block.Hint)}, nil
+	}
+	parts := make([]*genai.Part, 0, len(block.Blocks))
+	for _, nested := range block.Blocks {
+		switch typed := nested.(type) {
+		case *message.TextBlock:
+			parts = append(parts, genai.NewPartFromText(typed.Text))
+		case *message.DataBlock:
+			part, err := dataPart(typed)
+			if err != nil {
+				return nil, err
+			}
+			if part != nil {
+				parts = append(parts, part)
+			}
+		default:
+			return nil, fmt.Errorf("gemini: unsupported hint content block %T", nested)
 		}
 	}
 	return parts, nil

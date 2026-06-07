@@ -15,6 +15,7 @@
 package message
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -101,6 +102,47 @@ func (b *ThinkingBlock) UnmarshalJSON(data []byte) error {
 	deleteKnown(raw, "type", "thinking", "id")
 	*b = ThinkingBlock(value)
 	b.Extra = raw
+	return nil
+}
+
+func (b HintBlock) MarshalJSON() ([]byte, error) {
+	var hint any = b.Hint
+	if b.Blocks != nil {
+		hint = b.Blocks
+	}
+	type wire struct {
+		Type   string  `json:"type"`
+		Hint   any     `json:"hint"`
+		ID     string  `json:"id"`
+		Source *string `json:"source,omitempty"`
+	}
+	return json.Marshal(wire{
+		Type:   b.Type,
+		Hint:   hint,
+		ID:     b.ID,
+		Source: b.Source,
+	})
+}
+
+func (b *HintBlock) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Type   string          `json:"type"`
+		Hint   json.RawMessage `json:"hint"`
+		ID     string          `json:"id"`
+		Source *string         `json:"source"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	hint, blocks, err := decodeHintContent(raw.Hint)
+	if err != nil {
+		return err
+	}
+	b.Type = raw.Type
+	b.Hint = hint
+	b.Blocks = blocks
+	b.ID = raw.ID
+	b.Source = raw.Source
 	return nil
 }
 
@@ -211,4 +253,23 @@ func deleteKnown(values map[string]any, keys ...string) {
 	for _, key := range keys {
 		delete(values, key)
 	}
+}
+
+func decodeHintContent(data json.RawMessage) (string, ContentBlockList, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return "", nil, nil
+	}
+	if trimmed[0] == '[' {
+		var blocks ContentBlockList
+		if err := json.Unmarshal(trimmed, &blocks); err != nil {
+			return "", nil, err
+		}
+		return "", blocks, nil
+	}
+	var hint string
+	if err := json.Unmarshal(trimmed, &hint); err != nil {
+		return "", nil, err
+	}
+	return hint, nil, nil
 }
