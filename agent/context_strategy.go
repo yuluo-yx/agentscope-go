@@ -222,22 +222,24 @@ func executeSummary(ctx context.Context, input *ContextStrategyInput, toCompress
 	}
 	input.State.Summary.Text = summaryText
 	input.State.Summary.Blocks = nil
+	cleanUnreservedReadCache(input.State, toReserve)
 	input.State.Context = toReserve
 	return nil
 }
 
 func (a *Agent) newContextStrategyInput() *ContextStrategyInput {
+	toolProvider := a.effectiveToolProvider()
 	return &ContextStrategyInput{
 		Agent:        a,
 		State:        a.state,
 		Model:        a.model,
-		ToolProvider: a.toolkit,
+		ToolProvider: toolProvider,
 		Offloader:    a.offloader,
 		Config:       a.contextConfig,
 		activeGroups: a.activeGroups(),
 		systemPrompt: a.buildSystemPrompt,
 		toolSchemas: func() ([]ToolSchema, error) {
-			return a.toolkit.ToolSchemas(a.activeGroups()...)
+			return toolProvider.ToolSchemas(a.activeGroups()...)
 		},
 	}
 }
@@ -273,7 +275,88 @@ func splitContextForSummary(ctx context.Context, model ChatModel, contextMessage
 		}
 		break
 	}
+	if unresolvedStart := firstUnresolvedToolMessageIndex(contextMessages); unresolvedStart >= 0 && reserveStart > unresolvedStart {
+		reserveStart = unresolvedStart
+	}
 	return cloneMessages(contextMessages[:reserveStart]), cloneMessages(contextMessages[reserveStart:]), nil
+}
+
+func firstUnresolvedToolMessageIndex(messages []*message.Message) int {
+	for index, msg := range messages {
+		if hasUnresolvedToolWork(msg) {
+			return index
+		}
+	}
+	return -1
+}
+
+func hasUnresolvedToolWork(msg *message.Message) bool {
+	if msg == nil {
+		return false
+	}
+	resultIDs := map[string]message.ToolResultState{}
+	for _, block := range msg.GetContentBlocks("tool_result") {
+		result, ok := block.(*message.ToolResultBlock)
+		if ok {
+			resultIDs[result.ID] = result.State
+		}
+	}
+	for _, block := range msg.GetContentBlocks("tool_call") {
+		toolCall, ok := block.(*message.ToolCallBlock)
+		if !ok {
+			continue
+		}
+		if toolCall.State == message.ToolCallFinished {
+			continue
+		}
+		resultState, hasResult := resultIDs[toolCall.ID]
+		if !hasResult || resultState == message.ToolResultRunning || resultState == message.ToolResultInterrupted {
+			return true
+		}
+	}
+	for _, state := range resultIDs {
+		if state == message.ToolResultRunning || state == message.ToolResultInterrupted {
+			return true
+		}
+	}
+	return false
+}
+
+func cleanUnreservedReadCache(state *AgentState, reserved []*message.Message) {
+	if state == nil || state.ToolContext == nil {
+		return
+	}
+	state.ToolContext.CleanFileCache(readFilePathsFromMessages(reserved)...)
+}
+
+func readFilePathsFromMessages(messages []*message.Message) []string {
+	seen := map[string]struct{}{}
+	var paths []string
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		for _, block := range msg.GetContentBlocks("tool_call") {
+			toolCall, ok := block.(*message.ToolCallBlock)
+			if !ok || toolCall.Name != "Read" {
+				continue
+			}
+			input := map[string]any{}
+			if err := json.Unmarshal([]byte(toolCall.Input), &input); err != nil {
+				continue
+			}
+			filePath, ok := input["file_path"].(string)
+			if !ok || filePath == "" {
+				continue
+			}
+			if _, exists := seen[filePath]; exists {
+				continue
+			}
+			seen[filePath] = struct{}{}
+			paths = append(paths, filePath)
+		}
+	}
+	return paths
 }
 
 func buildSummaryRequest(ctx context.Context, input *ContextStrategyInput, toCompress []*message.Message) (CallRequest, error) {

@@ -124,6 +124,27 @@ func (c *ToolContext) CacheFile(filePath string, lines []string) error {
 	return nil
 }
 
+// CleanFileCache drops read caches whose paths are not in reservedFilePaths.
+// Passing no reserved paths clears the read cache.
+func (c *ToolContext) CleanFileCache(reservedFilePaths ...string) {
+	if c == nil {
+		return
+	}
+	reserved := make(map[string]struct{}, len(reservedFilePaths))
+	for _, path := range reservedFilePaths {
+		if path != "" {
+			reserved[path] = struct{}{}
+		}
+	}
+	filtered := c.ReadFileCache[:0]
+	for _, entry := range c.ReadFileCache {
+		if _, ok := reserved[entry.FilePath]; ok {
+			filtered = append(filtered, entry)
+		}
+	}
+	c.ReadFileCache = filtered
+}
+
 // Clone returns a deep copy of the tool context.
 func (c *ToolContext) Clone() *ToolContext {
 	if c == nil {

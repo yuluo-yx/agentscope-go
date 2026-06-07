@@ -15,6 +15,7 @@
 package message
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/yuluo-yx/agentscope-go/permission"
@@ -144,9 +145,11 @@ type ThinkingBlock struct {
 }
 
 type HintBlock struct {
-	Type string `json:"type"`
-	Hint string `json:"hint"`
-	ID   string `json:"id"`
+	Type   string           `json:"type"`
+	Hint   string           `json:"-"`
+	Blocks ContentBlockList `json:"-"`
+	ID     string           `json:"id"`
+	Source *string          `json:"source,omitempty"`
 }
 
 type ToolCallState string
@@ -245,6 +248,10 @@ func WithHintBlockID(id string) HintBlockOption {
 	return func(b *HintBlock) { b.ID = id }
 }
 
+func WithHintSource(source string) HintBlockOption {
+	return func(b *HintBlock) { b.Source = cloneString(source) }
+}
+
 func WithDataBlockID(id string) DataBlockOption {
 	return func(b *DataBlock) { b.ID = id }
 }
@@ -297,8 +304,9 @@ func NewThinkingBlock(thinking string, opts ...ThinkingBlockOption) *ThinkingBlo
 	return block
 }
 
-func NewHintBlock(hint string, opts ...HintBlockOption) *HintBlock {
-	block := &HintBlock{Type: "hint", Hint: hint, ID: newID()}
+func NewHintBlock(hint any, opts ...HintBlockOption) *HintBlock {
+	text, blocks := normalizeHintContent(hint)
+	block := &HintBlock{Type: "hint", Hint: text, Blocks: blocks, ID: newID()}
 	for _, opt := range opts {
 		opt(block)
 	}
@@ -384,6 +392,10 @@ func (b *ThinkingBlock) Clone() ContentBlock {
 
 func (b *HintBlock) Clone() ContentBlock {
 	cp := *b
+	cp.Blocks = b.Blocks.Clone()
+	if b.Source != nil {
+		cp.Source = cloneString(*b.Source)
+	}
 	return &cp
 }
 
@@ -426,6 +438,30 @@ func (s *Base64Source) Clone() DataSource {
 func (s *URLSource) Clone() DataSource {
 	cp := *s
 	return &cp
+}
+
+func cloneString(value string) *string {
+	cp := value
+	return &cp
+}
+
+func normalizeHintContent(hint any) (string, ContentBlockList) {
+	switch typed := hint.(type) {
+	case nil:
+		return "", nil
+	case string:
+		return typed, nil
+	case ContentBlockList:
+		return "", typed.Clone()
+	case []ContentBlock:
+		return "", ContentBlockList(typed).Clone()
+	case *TextBlock:
+		return "", ContentBlockList{typed.Clone()}
+	case *DataBlock:
+		return "", ContentBlockList{typed.Clone()}
+	default:
+		return fmt.Sprint(typed), nil
+	}
 }
 
 func (o ToolResultOutput) Clone() ToolResultOutput {

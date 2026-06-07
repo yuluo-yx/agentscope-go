@@ -1,3 +1,17 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package dashscope
 
 import (
@@ -172,12 +186,13 @@ func (m *TextModel) Embed(ctx context.Context, request asembedding.EmbeddingRequ
 	totalTokens := 0
 	for from := 0; from < len(texts); from += m.batchSizeLimit {
 		to := min(from+m.batchSizeLimit, len(texts))
+		parameters := map[string]any{"dimension": m.dimensions}
+		mergeExtraParameters(parameters, request.Parameters)
 		body := map[string]any{
-			"model":     m.model,
-			"input":     texts[from:to],
-			"dimension": m.dimensions,
+			"model":      m.model,
+			"input":      map[string]any{"texts": texts[from:to]},
+			"parameters": parameters,
 		}
-		mergeExtraParameters(body, request.Parameters)
 		res, err := m.call(ctx, textEmbeddingPath, body)
 		if err != nil {
 			return nil, err
@@ -279,9 +294,13 @@ func (m *MultiModalModel) Embed(ctx context.Context, request asembedding.Embeddi
 		to := min(from+m.batchSizeLimit, len(formatted))
 		body := map[string]any{
 			"model": m.model,
-			"input": formatted[from:to],
+			"input": map[string]any{"contents": formatted[from:to]},
 		}
-		mergeExtraParameters(body, request.Parameters)
+		if len(request.Parameters) > 0 {
+			parameters := map[string]any{}
+			mergeExtraParameters(parameters, request.Parameters)
+			body["parameters"] = parameters
+		}
 		res, err := callDashScope(ctx, m.httpClient, m.credential, multimodalEmbeddingPath, body)
 		if err != nil {
 			return nil, err
@@ -454,7 +473,7 @@ func callDashScope(ctx context.Context, client *http.Client, credential Credenti
 	return &parsedResponse{embeddings: embeddings, tokens: tokens}, nil
 }
 
-func mergeExtraParameters(body map[string]any, parameters map[string]any) {
+func mergeExtraParameters(body, parameters map[string]any) {
 	for key, value := range parameters {
 		if _, exists := body[key]; exists {
 			continue
@@ -486,5 +505,7 @@ func storeCache(ctx context.Context, cache asembedding.EmbeddingCache, key strin
 	return cache.Store(ctx, key, embeddings, asembedding.StoreOptions{Overwrite: true})
 }
 
-var _ asembedding.EmbeddingModel = (*TextModel)(nil)
-var _ asembedding.EmbeddingModel = (*MultiModalModel)(nil)
+var (
+	_ asembedding.EmbeddingModel = (*TextModel)(nil)
+	_ asembedding.EmbeddingModel = (*MultiModalModel)(nil)
+)

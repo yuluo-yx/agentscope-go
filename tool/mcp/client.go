@@ -32,13 +32,27 @@ import (
 type ClientOption func(*clientOptions)
 
 type clientOptions struct {
-	stateful         bool
-	enabledTools     []string
-	enabledSet       bool
-	disabledTools    []string
-	executionTimeout time.Duration
-	clientInfo       gomcp.Implementation
+	stateful               bool
+	enabledTools           []string
+	enabledSet             bool
+	disabledTools          []string
+	executionTimeout       time.Duration
+	clientInfo             gomcp.Implementation
+	toolListChangedHandler ToolListChangedHandler
+	continuousListening    bool
+	oauthConfig            *OAuthConfig
 }
+
+// ToolListChangedEvent describes a server notification that invalidated the
+// cached MCP tool list.
+type ToolListChangedEvent struct {
+	ClientName   string
+	Notification gomcp.JSONRPCNotification
+}
+
+// ToolListChangedHandler is called after a tools/list_changed notification is
+// observed and the local raw tool cache has been cleared.
+type ToolListChangedHandler func(ToolListChangedEvent)
 
 // WithStateful controls whether the MCP connection is persistent.
 func WithStateful(stateful bool) ClientOption {
@@ -76,6 +90,15 @@ func WithClientInfo(name, version string) ClientOption {
 	}
 }
 
+// WithToolListChangedHandler registers a callback for MCP tool list changed
+// notifications. The client clears its cached raw tool list before invoking the
+// handler.
+func WithToolListChangedHandler(handler ToolListChangedHandler) ClientOption {
+	return func(options *clientOptions) {
+		options.toolListChangedHandler = handler
+	}
+}
+
 // Client manages an MCP connection and exposes MCP tools as AgentScope tools.
 type Client struct {
 	name             string
@@ -85,6 +108,7 @@ type Client struct {
 	disabledTools    map[string]struct{}
 	executionTimeout time.Duration
 	clientInfo       gomcp.Implementation
+	toolListChanged  ToolListChangedHandler
 	factory          clientFactory
 	config           asworkspace.MCPClientConfig
 
@@ -320,6 +344,7 @@ func newClient(name string, options clientOptions, config asworkspace.MCPClientC
 		disabledTools:    disabled,
 		executionTimeout: options.executionTimeout,
 		clientInfo:       options.clientInfo,
+		toolListChanged:  options.toolListChangedHandler,
 		factory:          factory,
 		config:           config,
 	}, nil
@@ -364,6 +389,7 @@ func (c *Client) withEphemeralClient(ctx context.Context, fn func(*goclient.Clie
 }
 
 func (c *Client) startAndInitialize(ctx context.Context, client *goclient.Client) error {
+	client.OnNotification(c.handleNotification)
 	if err := client.Start(ctx); err != nil {
 		return err
 	}
@@ -375,6 +401,34 @@ func (c *Client) startAndInitialize(ctx context.Context, client *goclient.Client
 		return err
 	}
 	return nil
+}
+
+func (c *Client) handleNotification(notification gomcp.JSONRPCNotification) {
+	if notification.Method != string(gomcp.MethodNotificationToolsListChanged) {
+		return
+	}
+	event := ToolListChangedEvent{
+		ClientName:   c.name,
+		Notification: notification,
+	}
+	if c.mu.TryLock() {
+		c.cachedTools = nil
+		c.mu.Unlock()
+		c.notifyToolListChanged(event)
+		return
+	}
+	go func() {
+		c.mu.Lock()
+		c.cachedTools = nil
+		c.mu.Unlock()
+		c.notifyToolListChanged(event)
+	}()
+}
+
+func (c *Client) notifyToolListChanged(event ToolListChangedEvent) {
+	if c.toolListChanged != nil {
+		c.toolListChanged(event)
+	}
 }
 
 func (c *Client) filterTools(tools []gomcp.Tool) []gomcp.Tool {

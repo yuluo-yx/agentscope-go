@@ -116,6 +116,63 @@ func TestAgentWithWorkspaceWiresResourcesAndOffloaderLifecycle(t *testing.T) {
 	}
 }
 
+func TestAgentWithAgentResourcesUsesPrebuiltWorkspaceAssembly(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	resourceTool, err := tool.NewFunctionTool(
+		"ResourceTool",
+		"Returns a resource response.",
+		map[string]any{"type": "object"},
+		func(context.Context, map[string]any, *state.AgentState) (message.ContentBlockList, error) {
+			return message.ContentBlockList{message.NewTextBlock("resource ok")}, nil
+		},
+		tool.WithFunctionReadOnly(true),
+	)
+	if err != nil {
+		t.Fatalf("NewFunctionTool returned error: %v", err)
+	}
+	ws := &agentWorkspace{
+		instructions: "<workspace>Use prebuilt resources.</workspace>",
+		tools:        []workspace.Tool{resourceTool},
+	}
+	resources, err := workspace.BuildAgentResources(ctx, ws)
+	if err != nil {
+		t.Fatalf("BuildAgentResources returned error: %v", err)
+	}
+	model := &scriptedChatModel{responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(message.ContentBlockList{
+			message.NewToolCallBlock("call-resource", "ResourceTool", `{}`),
+		}, true),
+		modelpkg.NewChatResponse(message.ContentBlockList{message.NewTextBlock("done")}, true),
+	}}
+	agent, err := agentpkg.NewAgent(
+		"Friday",
+		"Base prompt.",
+		model,
+		agentpkg.WithAgentResources(resources),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent returned error: %v", err)
+	}
+	user, err := message.NewUserMessage("user", "Run prebuilt resources")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	if _, err := agent.Reply(ctx, user); err != nil {
+		t.Fatalf("Reply returned error: %v", err)
+	}
+	systemText := model.requests[0].Messages[0].Content.GetTextContent("")
+	if systemText == nil ||
+		!strings.Contains(*systemText, "Base prompt.") ||
+		!strings.Contains(*systemText, "Use prebuilt resources") {
+		t.Fatalf("system prompt should include prebuilt resources: %v", systemText)
+	}
+	if got := requestToolNames(model.requests[0]); strings.Join(got, ",") != "ResourceTool" {
+		t.Fatalf("prebuilt toolkit should expose resource tool: %#v", got)
+	}
+}
+
 type agentWorkspace struct {
 	instructions         string
 	tools                []workspace.Tool
