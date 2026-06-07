@@ -277,6 +277,16 @@ func parseCompletion(resp *sdk.ChatCompletion, elapsed time.Duration) *asmodel.C
 		if msg.Content != "" {
 			content = append(content, message.NewTextBlock(msg.Content))
 		}
+		if msg.Audio.JSON.Data.Valid() && msg.Audio.Data != "" {
+			content = append(content, message.NewDataBlock(
+				message.NewBase64Source(msg.Audio.Data, "audio/wav"),
+				message.WithDataBlockID(msg.Audio.ID),
+				message.WithDataBlockName("audio"),
+			))
+			if msg.Audio.Transcript != "" && msg.Audio.Transcript != msg.Content {
+				content = append(content, message.NewTextBlock(msg.Audio.Transcript))
+			}
+		}
 		for _, call := range msg.ToolCalls {
 			content = append(content, message.NewToolCallBlock(call.ID, call.Function.Name, call.Function.Arguments))
 		}
