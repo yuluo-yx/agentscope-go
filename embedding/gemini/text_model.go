@@ -1,3 +1,17 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package gemini
 
 import (
@@ -5,13 +19,17 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/genai"
+
 	asembedding "github.com/yuluo-yx/agentscope-go/embedding"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/types"
-	"google.golang.org/genai"
 )
 
-const providerName = "gemini"
+const (
+	providerName = "gemini"
+	maxInt32     = int(^uint32(0) >> 1)
+)
 
 // Credential configures the Gemini API key.
 type Credential struct {
@@ -82,6 +100,9 @@ func NewTextModel(credential Credential, model string, opts ...TextModelOption) 
 	if options.dimensions <= 0 {
 		return nil, fmt.Errorf("%w: dimensions must be positive", asembedding.ErrInvalidEmbeddingDimension)
 	}
+	if options.dimensions > maxInt32 {
+		return nil, fmt.Errorf("%w: dimensions exceed int32 range", asembedding.ErrInvalidEmbeddingDimension)
+	}
 	client := options.client
 	if client == nil {
 		sdkClient, err := genai.NewClient(context.Background(), &genai.ClientConfig{
@@ -133,8 +154,9 @@ func (m *TextModel) Embed(ctx context.Context, request asembedding.EmbeddingRequ
 		return nil, err
 	}
 	cacheKey := asembedding.CacheIdentifier(providerName, m.model, m.dimensions, request)
-	if cached, ok, err := retrieveCache(ctx, m.cache, cacheKey); err != nil {
-		return nil, err
+	cached, ok, cacheErr := retrieveCache(ctx, m.cache, cacheKey)
+	if cacheErr != nil {
+		return nil, cacheErr
 	} else if ok {
 		return cached, nil
 	}
@@ -143,6 +165,7 @@ func (m *TextModel) Embed(ctx context.Context, request asembedding.EmbeddingRequ
 	for _, text := range texts {
 		contents = append(contents, genai.NewContentFromText(text, genai.RoleUser))
 	}
+	// #nosec G115 -- dimensions are validated to fit int32 in NewTextModel.
 	dimensions := int32(m.dimensions)
 	config := &genai.EmbedContentConfig{OutputDimensionality: &dimensions}
 	applyParameters(config, request.Parameters)

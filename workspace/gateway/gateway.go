@@ -203,7 +203,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 		}
 		reader = bytes.NewReader(data)
 	}
-	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
+	requestURL := c.baseURL + path
+	// #nosec G704 -- baseURL is provided by the trusted workspace bootstrap code.
+	request, err := http.NewRequestWithContext(ctx, method, requestURL, reader)
 	if err != nil {
 		return err
 	}
@@ -218,6 +220,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 	if c.bearerToken != "" {
 		request.Header.Set("Authorization", "Bearer "+c.bearerToken)
 	}
+	// #nosec G704 -- request target is constrained by the configured gateway base URL.
 	response, err := c.httpClient.Do(request)
 	if err != nil {
 		return err
