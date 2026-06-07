@@ -1,3 +1,17 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package openai
 
 import (
@@ -144,15 +158,16 @@ func (m *TextModel) Embed(ctx context.Context, request asembedding.EmbeddingRequ
 		return nil, err
 	}
 	cacheKey := asembedding.CacheIdentifier(providerName, m.model, m.dimensions, request)
-	if cached, ok, err := retrieveCache(ctx, m.cache, cacheKey); err != nil {
-		return nil, err
+	cached, ok, cacheErr := retrieveCache(ctx, m.cache, cacheKey)
+	if cacheErr != nil {
+		return nil, cacheErr
 	} else if ok {
 		return cached, nil
 	}
 
 	params := sdk.EmbeddingNewParams{
 		Input:          sdk.EmbeddingNewParamsInputUnion{OfArrayOfStrings: texts},
-		Model:          sdk.EmbeddingModel(m.model),
+		Model:          m.model,
 		Dimensions:     sdk.Int(int64(m.dimensions)),
 		EncodingFormat: sdk.EmbeddingNewParamsEncodingFormatFloat,
 	}

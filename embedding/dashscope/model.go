@@ -1,3 +1,17 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package dashscope
 
 import (
@@ -459,7 +473,7 @@ func callDashScope(ctx context.Context, client *http.Client, credential Credenti
 	return &parsedResponse{embeddings: embeddings, tokens: tokens}, nil
 }
 
-func mergeExtraParameters(body map[string]any, parameters map[string]any) {
+func mergeExtraParameters(body, parameters map[string]any) {
 	for key, value := range parameters {
 		if _, exists := body[key]; exists {
 			continue
@@ -491,5 +505,7 @@ func storeCache(ctx context.Context, cache asembedding.EmbeddingCache, key strin
 	return cache.Store(ctx, key, embeddings, asembedding.StoreOptions{Overwrite: true})
 }
 
-var _ asembedding.EmbeddingModel = (*TextModel)(nil)
-var _ asembedding.EmbeddingModel = (*MultiModalModel)(nil)
+var (
+	_ asembedding.EmbeddingModel = (*TextModel)(nil)
+	_ asembedding.EmbeddingModel = (*MultiModalModel)(nil)
+)
