@@ -17,6 +17,7 @@ package dashscope
 
 import (
 	"context"
+	"embed"
 	"fmt"
 
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
@@ -29,6 +30,9 @@ const (
 	defaultContextSize = 131072
 )
 
+//go:embed models/*.yaml
+var modelFS embed.FS
+
 type (
 	// Credential configures DashScope authentication and endpoint settings.
 	Credential = openai.Credential
@@ -40,9 +44,75 @@ type (
 	ChatModelOption = openai.ChatModelOption
 )
 
+// CompatibilityBoundary describes which DashScope features are exposed by this provider.
+type CompatibilityBoundary struct {
+	Provider                 string
+	API                      string
+	Endpoint                 string
+	CompatibleCapabilities   asmodel.ModelCapabilities
+	NativeOnlyCapabilities   []string
+	NativeOnlyModelFamilies  []string
+	UnsupportedViaCompatible []asmodel.ModelCapability
+}
+
 // ChatModel delegates DashScope's OpenAI-compatible API to the shared OpenAI adapter.
 type ChatModel struct {
 	inner *openai.ChatModel
+}
+
+// CompatibilityBoundary returns the explicit boundary between DashScope
+// OpenAI-compatible chat support and native DashScope APIs that need dedicated providers.
+func CompatibilityBoundaryInfo() CompatibilityBoundary {
+	return CompatibilityBoundary{
+		Provider: "dashscope",
+		API:      "openai_compatible_chat_completions",
+		Endpoint: defaultBaseURL,
+		CompatibleCapabilities: asmodel.ModelCapabilities{
+			asmodel.ModelCapabilityText:             true,
+			asmodel.ModelCapabilityTools:            true,
+			asmodel.ModelCapabilityImage:            true,
+			asmodel.ModelCapabilityAudio:            true,
+			asmodel.ModelCapabilityStructuredOutput: false,
+			asmodel.ModelCapabilityEmbedding:        false,
+			asmodel.ModelCapabilityGeneration:       true,
+			asmodel.ModelCapabilityVideo:            false,
+		},
+		NativeOnlyCapabilities: []string{
+			"text_embedding",
+			"multimodal_embedding",
+			"native_multimodal_generation",
+			"video_input",
+		},
+		NativeOnlyModelFamilies: []string{
+			"text-embedding-*",
+			"multimodal-embedding-*",
+			"qwen-omni-*",
+			"qwen-vl-*",
+		},
+		UnsupportedViaCompatible: []asmodel.ModelCapability{
+			asmodel.ModelCapabilityVideo,
+			asmodel.ModelCapabilityEmbedding,
+			asmodel.ModelCapabilityStructuredOutput,
+		},
+	}
+}
+
+// ListModels returns embedded DashScope model cards for the OpenAI-compatible path.
+func ListModels() ([]asmodel.ModelCard, error) {
+	return asmodel.LoadModelCardsFSWithDefaults(modelFS, "models", asmodel.NewModelCardDefaults(providerName, asmodel.ModelCapabilities{
+		asmodel.ModelCapabilityTools:            true,
+		asmodel.ModelCapabilityStructuredOutput: false,
+		asmodel.ModelCapabilityEmbedding:        false,
+		asmodel.ModelCapabilityGeneration:       true,
+	}, map[string]any{
+		"api": "openai_compatible_chat_completions",
+		"native_only_capabilities": []any{
+			"text_embedding",
+			"multimodal_embedding",
+			"native_multimodal_generation",
+			"video_input",
+		},
+	}))
 }
 
 // NewCredential creates DashScope credentials.

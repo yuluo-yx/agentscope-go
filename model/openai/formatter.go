@@ -21,6 +21,7 @@ import (
 	sdk "github.com/openai/openai-go"
 
 	"github.com/yuluo-yx/agentscope-go/message"
+	asmodel "github.com/yuluo-yx/agentscope-go/model"
 )
 
 func formatMessages(messages []*message.Message) ([]sdk.ChatCompletionMessageParamUnion, error) {
@@ -144,6 +145,9 @@ func dataBlockPart(block *message.DataBlock) (*sdk.ChatCompletionContentPartUnio
 	}
 	switch source := block.Source.(type) {
 	case *message.Base64Source:
+		if strings.HasPrefix(source.MediaType, "video/") {
+			return nil, &asmodel.CapabilityError{Model: "openai_chat", Capability: asmodel.ModelCapabilityVideo}
+		}
 		if strings.HasPrefix(source.MediaType, "audio/") {
 			format := strings.TrimPrefix(source.MediaType, "audio/")
 			part := sdk.InputAudioContentPart(sdk.ChatCompletionContentPartInputAudioInputAudioParam{
@@ -152,11 +156,20 @@ func dataBlockPart(block *message.DataBlock) (*sdk.ChatCompletionContentPartUnio
 			})
 			return &part, nil
 		}
+		if !strings.HasPrefix(source.MediaType, "image/") {
+			return nil, &asmodel.CapabilityError{Model: "openai_chat", Capability: asmodel.ModelCapabilityGeneration}
+		}
 		part := sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{
 			URL: fmt.Sprintf("data:%s;base64,%s", source.MediaType, source.Data),
 		})
 		return &part, nil
 	case *message.URLSource:
+		if strings.HasPrefix(source.MediaType, "video/") {
+			return nil, &asmodel.CapabilityError{Model: "openai_chat", Capability: asmodel.ModelCapabilityVideo}
+		}
+		if !strings.HasPrefix(source.MediaType, "image/") {
+			return nil, &asmodel.CapabilityError{Model: "openai_chat", Capability: asmodel.ModelCapabilityGeneration}
+		}
 		part := sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{URL: source.URL})
 		return &part, nil
 	default:
