@@ -227,17 +227,18 @@ func executeSummary(ctx context.Context, input *ContextStrategyInput, toCompress
 }
 
 func (a *Agent) newContextStrategyInput() *ContextStrategyInput {
+	toolProvider := a.effectiveToolProvider()
 	return &ContextStrategyInput{
 		Agent:        a,
 		State:        a.state,
 		Model:        a.model,
-		ToolProvider: a.toolkit,
+		ToolProvider: toolProvider,
 		Offloader:    a.offloader,
 		Config:       a.contextConfig,
 		activeGroups: a.activeGroups(),
 		systemPrompt: a.buildSystemPrompt,
 		toolSchemas: func() ([]ToolSchema, error) {
-			return a.toolkit.ToolSchemas(a.activeGroups()...)
+			return toolProvider.ToolSchemas(a.activeGroups()...)
 		},
 	}
 }

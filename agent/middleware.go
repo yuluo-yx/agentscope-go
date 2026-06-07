@@ -41,6 +41,9 @@ type ToolHandler func(context.Context) (<-chan ToolChunk, error)
 // ModelCallHandler represents the next streaming model call handler.
 type ModelCallHandler func(context.Context) (<-chan ChatResponse, error)
 
+// CompressContextHandler represents the next context compression handler.
+type CompressContextHandler func(context.Context) error
+
 // ReplyHook intercepts the full reply flow.
 type ReplyHook func(context.Context, AgentAccessor, HookInput, EventHandler) (<-chan message.Event, error)
 
@@ -52,6 +55,9 @@ type ActingHook func(context.Context, AgentAccessor, HookInput, ToolHandler) (<-
 
 // ModelCallHook intercepts the raw streaming model call.
 type ModelCallHook func(context.Context, AgentAccessor, HookInput, ModelCallHandler) (<-chan ChatResponse, error)
+
+// CompressContextHook intercepts one context compression pass.
+type CompressContextHook func(context.Context, AgentAccessor, HookInput, CompressContextHandler) error
 
 // SystemPromptHook transforms the system prompt in registration order.
 type SystemPromptHook func(context.Context, AgentAccessor, string) (string, error)
@@ -90,10 +96,25 @@ type ModelCallMiddleware interface {
 	OnModelCall(context.Context, AgentAccessor, HookInput, ModelCallHandler) (<-chan ChatResponse, error)
 }
 
+// CompressContextMiddleware is implemented by middleware that intercepts context compression.
+type CompressContextMiddleware interface {
+	// OnCompressContext wraps one Agent context compression pass.
+	// Implementations should call next(ctx) unless they intentionally replace compression behavior.
+	OnCompressContext(context.Context, AgentAccessor, HookInput, CompressContextHandler) error
+}
+
 // SystemPromptMiddleware is implemented by middleware that transforms system prompts.
 type SystemPromptMiddleware interface {
 	// OnSystemPrompt receives the current system prompt and returns the prompt passed to the next hook or model request.
 	OnSystemPrompt(context.Context, AgentAccessor, string) (string, error)
+}
+
+// ToolMiddleware is implemented by middleware that contributes static tools to the Agent.
+// Tools are collected while WithMiddlewares is applied and then participate in the same
+// schema, permission, and execution path as the Agent toolkit.
+type ToolMiddleware interface {
+	// ListTools returns tools exposed by this middleware.
+	ListTools(context.Context, AgentAccessor) ([]Tool, error)
 }
 
 // ApplySystemPromptHooks applies system-prompt hooks in registration order.

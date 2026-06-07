@@ -27,6 +27,14 @@ func (a *Agent) CompressContext(ctx context.Context) error {
 	if a == nil || a.state == nil {
 		return nil
 	}
+	input := HookInput{
+		"context_config": a.contextConfig,
+		"state":          a.state,
+	}
+	return a.applyCompressContextHooks(ctx, input, a.compressContext)
+}
+
+func (a *Agent) compressContext(ctx context.Context) error {
 	strategies := a.contextStrategies
 	if strategies == nil {
 		strategies = DefaultContextStrategies()
