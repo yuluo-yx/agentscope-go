@@ -40,6 +40,7 @@ func TestApplyEventAccumulatesStreamingMessage(t *testing.T) {
 		message.NewThinkingBlockStartEvent("reply-1", "think-1"),
 		message.NewThinkingBlockDeltaEvent("reply-1", "think-1", "Let me think"),
 		message.NewThinkingBlockEndEvent("reply-1", "think-1"),
+		message.NewHintBlockEvent("reply-1", "hint-1", "scheduler hint", message.WithHintBlockEventSource("scheduler")),
 		message.NewToolCallStartEvent("reply-1", "call-1", "Search"),
 		message.NewToolCallDeltaEvent("reply-1", "call-1", `{"query":"AgentScope"}`),
 		message.NewToolCallEndEvent("reply-1", "call-1"),
@@ -78,8 +79,16 @@ func TestApplyEventAccumulatesStreamingMessage(t *testing.T) {
 	if got := msg.GetTextContent(""); got == nil || *got != "Hello World" {
 		t.Fatalf("unexpected text content: %#v", got)
 	}
+	hints := msg.GetContentBlocks("hint")
+	if len(hints) != 1 {
+		t.Fatalf("expected one hint block, got %#v", hints)
+	}
+	hint := hints[0].(*message.HintBlock)
+	if hint.Hint != "scheduler hint" || hint.Source == nil || *hint.Source != "scheduler" {
+		t.Fatalf("unexpected hint block: %#v", hint)
+	}
 	toolCalls := msg.GetContentBlocks("tool_call")
-	if len(toolCalls) != 2 || toolCalls[0].(*message.ToolCallBlock).State != message.ToolCallAllowed {
+	if len(toolCalls) != 2 || toolCalls[0].(*message.ToolCallBlock).State != message.ToolCallFinished {
 		t.Fatalf("unexpected tool call state: %#v", toolCalls)
 	}
 	if toolCalls[1].(*message.ToolCallBlock).State != message.ToolCallSubmitted {
@@ -157,6 +166,86 @@ func TestApplyEventConvertsRawToolResultOutput(t *testing.T) {
 	}
 }
 
+func TestHintBlockEventSupportsMultimodalHint(t *testing.T) {
+	t.Parallel()
+
+	msg, err := message.NewMessage("assistant", message.RoleAssistant, nil, message.WithMessageID("reply-1"))
+	if err != nil {
+		t.Fatalf("NewMessage returned error: %v", err)
+	}
+	event := message.NewHintBlockEvent("reply-1", "hint-1", message.ContentBlockList{
+		message.NewTextBlock("review this"),
+		message.NewDataBlock(message.NewURLSource("https://example.com/hint.png", "image/png")),
+	}, message.WithHintBlockEventSource("background-task"))
+
+	data, err := message.MarshalEvent(event)
+	if err != nil {
+		t.Fatalf("MarshalEvent returned error: %v", err)
+	}
+	decoded, err := message.UnmarshalEvent(data)
+	if err != nil {
+		t.Fatalf("UnmarshalEvent returned error: %v", err)
+	}
+	gotEvent, ok := decoded.(*message.HintBlockEvent)
+	if !ok {
+		t.Fatalf("unexpected event type: %T", decoded)
+	}
+	if gotEvent.Source == nil || *gotEvent.Source != "background-task" || len(gotEvent.Blocks) != 2 {
+		t.Fatalf("hint event did not preserve multimodal content: %#v", gotEvent)
+	}
+
+	if err := msg.ApplyEvent(gotEvent); err != nil {
+		t.Fatalf("ApplyEvent returned error: %v", err)
+	}
+	hints := msg.GetContentBlocks("hint")
+	if len(hints) != 1 {
+		t.Fatalf("expected one hint block, got %#v", hints)
+	}
+	hint := hints[0].(*message.HintBlock)
+	if hint.Source == nil || *hint.Source != "background-task" || len(hint.Blocks) != 2 {
+		t.Fatalf("hint block not applied: %#v", hint)
+	}
+	if text := hint.Blocks.GetTextContent(""); text == nil || *text != "review this" {
+		t.Fatalf("hint text content not applied: %#v", hint.Blocks)
+	}
+}
+
+func TestCustomEventJSONRoundTripDoesNotRequireReplyID(t *testing.T) {
+	t.Parallel()
+
+	event := message.NewCustomEvent("team_updated", map[string]any{
+		"team_id": "team-1",
+		"count":   2,
+	})
+	data, err := message.MarshalEvent(event)
+	if err != nil {
+		t.Fatalf("MarshalEvent returned error: %v", err)
+	}
+	if strings.Contains(string(data), "reply_id") {
+		t.Fatalf("custom event should not encode reply_id: %s", data)
+	}
+
+	decoded, err := message.UnmarshalEvent(data)
+	if err != nil {
+		t.Fatalf("UnmarshalEvent returned error: %v", err)
+	}
+	got, ok := decoded.(*message.CustomEvent)
+	if !ok {
+		t.Fatalf("unexpected event type: %T", decoded)
+	}
+	if got.ReplyID() != "" || got.Name != "team_updated" || got.Value["team_id"] != "team-1" {
+		t.Fatalf("custom event not preserved: %#v", got)
+	}
+
+	msg, err := message.NewMessage("assistant", message.RoleAssistant, nil, message.WithMessageID("reply-1"))
+	if err != nil {
+		t.Fatalf("NewMessage returned error: %v", err)
+	}
+	if err := msg.ApplyEvent(got); err != nil {
+		t.Fatalf("custom event for another/no reply should be ignored: %v", err)
+	}
+}
+
 func TestUnmarshalEventRejectsUnknownType(t *testing.T) {
 	t.Parallel()
 
@@ -183,6 +272,7 @@ func TestAllEventTypesJSONRoundTrip(t *testing.T) {
 		message.NewThinkingBlockStartEvent("reply-1", "think-1"),
 		message.NewThinkingBlockDeltaEvent("reply-1", "think-1", "a"),
 		message.NewThinkingBlockEndEvent("reply-1", "think-1"),
+		message.NewHintBlockEvent("reply-1", "hint-1", "wake up"),
 		message.NewToolCallStartEvent("reply-1", "call-1", "Bash"),
 		message.NewToolCallDeltaEvent("reply-1", "call-1", "{}"),
 		message.NewToolCallEndEvent("reply-1", "call-1"),
@@ -197,6 +287,7 @@ func TestAllEventTypesJSONRoundTrip(t *testing.T) {
 		message.NewExternalExecutionResultEvent("reply-1", []*message.ToolResultBlock{
 			message.NewToolResultBlock("call-1", "Bash", message.ToolResultOutput{Raw: "ok"}, message.ToolResultSuccess),
 		}),
+		message.NewCustomEvent("state_updated", map[string]any{"state": "ready"}),
 	}
 
 	for _, event := range events {
@@ -214,7 +305,11 @@ func TestAllEventTypesJSONRoundTrip(t *testing.T) {
 			if decoded.GetType() != event.GetType() {
 				t.Fatalf("type mismatch: want %s, got %s", event.GetType(), decoded.GetType())
 			}
-			if decoded.GetID() == "" || decoded.ReplyID() != "reply-1" {
+			wantReplyID := "reply-1"
+			if event.GetType() == message.CustomType {
+				wantReplyID = ""
+			}
+			if decoded.GetID() == "" || decoded.ReplyID() != wantReplyID {
 				t.Fatalf("decoded event lost base fields: %#v", decoded)
 			}
 		})

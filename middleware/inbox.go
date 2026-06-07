@@ -25,6 +25,8 @@ import (
 type InboxItem struct {
 	// Hint is converted to a HintBlock when Blocks is empty.
 	Hint string
+	// Source identifies the sender or subsystem that produced Hint.
+	Source string
 	// Blocks are appended to the current assistant message. Non-hint blocks are allowed so
 	// applications can carry structured reminders while still preserving ReAct content order.
 	Blocks message.ContentBlockList
@@ -82,7 +84,11 @@ func inboxBlocks(items []InboxItem) message.ContentBlockList {
 			continue
 		}
 		if item.Hint != "" {
-			blocks = append(blocks, message.NewHintBlock(item.Hint))
+			opts := []message.HintBlockOption{}
+			if item.Source != "" {
+				opts = append(opts, message.WithHintSource(item.Source))
+			}
+			blocks = append(blocks, message.NewHintBlock(item.Hint, opts...))
 		}
 	}
 	return blocks

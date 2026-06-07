@@ -1,0 +1,140 @@
+[
+  {
+    "id": "evt-text-start",
+    "created_at": "2026-06-07T00:00:00",
+    "metadata": {},
+    "type": "TEXT_BLOCK_START",
+    "reply_id": "reply-1",
+    "block_id": "text-1"
+  },
+  {
+    "id": "evt-text-delta",
+    "created_at": "2026-06-07T00:00:01",
+    "metadata": {
+      "provider": "python"
+    },
+    "type": "TEXT_BLOCK_DELTA",
+    "reply_id": "reply-1",
+    "block_id": "text-1",
+    "delta": "hello"
+  },
+  {
+    "id": "evt-text-end",
+    "created_at": "2026-06-07T00:00:02",
+    "metadata": {},
+    "type": "TEXT_BLOCK_END",
+    "reply_id": "reply-1",
+    "block_id": "text-1"
+  },
+  {
+    "id": "evt-tool-call-start",
+    "created_at": "2026-06-07T00:00:03",
+    "metadata": {},
+    "type": "TOOL_CALL_START",
+    "reply_id": "reply-1",
+    "tool_call_id": "call-1",
+    "tool_call_name": "Search"
+  },
+  {
+    "id": "evt-tool-call-delta",
+    "created_at": "2026-06-07T00:00:04",
+    "metadata": {},
+    "type": "TOOL_CALL_DELTA",
+    "reply_id": "reply-1",
+    "tool_call_id": "call-1",
+    "delta": "{\"query\":\"AgentScope\"}"
+  },
+  {
+    "id": "evt-tool-call-end",
+    "created_at": "2026-06-07T00:00:05",
+    "metadata": {},
+    "type": "TOOL_CALL_END",
+    "reply_id": "reply-1",
+    "tool_call_id": "call-1"
+  },
+  {
+    "id": "evt-hint",
+    "created_at": "2026-06-07T00:00:06",
+    "metadata": {
+      "wake": true
+    },
+    "type": "HINT_BLOCK",
+    "reply_id": "reply-1",
+    "block_id": "hint-1",
+    "source": "scheduler",
+    "hint": [
+      {
+        "type": "text",
+        "text": "inspect this image",
+        "id": "hint-text-1"
+      },
+      {
+        "type": "data",
+        "id": "hint-data-1",
+        "source": {
+          "type": "url",
+          "url": "https://example.com/hint.png",
+          "media_type": "image/png"
+        },
+        "name": "hint.png"
+      }
+    ]
+  },
+  {
+    "id": "evt-usage",
+    "created_at": "2026-06-07T00:00:07",
+    "metadata": {},
+    "type": "MODEL_CALL_END",
+    "reply_id": "reply-1",
+    "input_tokens": 10,
+    "output_tokens": 4
+  },
+  {
+    "id": "evt-tool-result-start",
+    "created_at": "2026-06-07T00:00:08",
+    "metadata": {},
+    "type": "TOOL_RESULT_START",
+    "reply_id": "reply-1",
+    "tool_call_id": "call-1",
+    "tool_call_name": "Search"
+  },
+  {
+    "id": "evt-tool-result-text",
+    "created_at": "2026-06-07T00:00:09",
+    "metadata": {},
+    "type": "TOOL_RESULT_TEXT_DELTA",
+    "reply_id": "reply-1",
+    "tool_call_id": "call-1",
+    "delta": "not found"
+  },
+  {
+    "id": "evt-tool-result-end",
+    "created_at": "2026-06-07T00:00:10",
+    "metadata": {},
+    "type": "TOOL_RESULT_END",
+    "reply_id": "reply-1",
+    "tool_call_id": "call-1",
+    "state": "error"
+  },
+  {
+    "id": "evt-error",
+    "created_at": "2026-06-07T00:00:11",
+    "metadata": {},
+    "type": "EXCEED_MAX_ITERS",
+    "reply_id": "reply-1",
+    "name": "assistant"
+  },
+  {
+    "id": "evt-custom",
+    "created_at": "2026-06-07T00:00:12",
+    "metadata": {
+      "scope": "team"
+    },
+    "type": "CUSTOM",
+    "name": "team_updated",
+    "value": {
+      "team_id": "team-1",
+      "members": 2
+    }
+  }
+]

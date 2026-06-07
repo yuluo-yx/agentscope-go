@@ -55,7 +55,7 @@ func TestInboxMiddlewareInjectsHintsBeforeReasoning(t *testing.T) {
 		t.Fatalf("NewAssistantMessage returned error: %v", err)
 	}
 	state.Context = append(state.Context, assistant)
-	source := &recordingInboxSource{items: []middleware.InboxItem{{Hint: "external update"}}}
+	source := &recordingInboxSource{items: []middleware.InboxItem{{Hint: "external update", Source: "scheduler"}}}
 	mw := middleware.NewInboxMiddleware(source)
 	agent := fakeAgent{name: "Friday", state: state}
 
@@ -63,6 +63,9 @@ func TestInboxMiddlewareInjectsHintsBeforeReasoning(t *testing.T) {
 		hints := assistant.GetContentBlocks("hint")
 		if len(hints) != 1 || hints[0].(*message.HintBlock).Hint != "external update" {
 			t.Fatalf("inbox hint was not injected: %#v", assistant.Content)
+		}
+		if source := hints[0].(*message.HintBlock).Source; source == nil || *source != "scheduler" {
+			t.Fatalf("inbox hint source was not preserved: %#v", hints[0])
 		}
 		out := make(chan message.Event)
 		close(out)

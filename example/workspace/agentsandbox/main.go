@@ -1,217 +1,196 @@
-// Copyright The AgentScope Go Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package main
 
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
+	"github.com/yuluo-yx/agentscope-go/agent"
 	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
-	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
-	agentsandboxworkspace "github.com/yuluo-yx/agentscope-go/workspace/agentsandbox"
+	asw "github.com/yuluo-yx/agentscope-go/workspace/agentsandbox"
 )
 
 func main() {
-	ctx := context.Background()
-	root := mustTempDir("agentscope-agent-sandbox-workspace-example-*")
-	defer func() { _ = os.RemoveAll(root) }()
 
-	hostWorkdir := filepath.Join(root, "workspace")
-	ws := mustWorkspace(agentsandboxworkspace.NewWorkspace(workspaceOptions(hostWorkdir)...))
-	if err := ws.Initialize(ctx); err != nil {
-		panic(fmt.Sprintf("initialize Agent Sandbox workspace failed: %v", err))
+	ctx := context.Background()
+
+	// 创建一个临时的 workspace 目录
+	rootDir, err := os.MkdirTemp("", "agentscope-agent-sandbox-workspace-example-*")
+	if err != nil {
+		panic(err)
 	}
 	defer func() {
-		if err := ws.Close(context.Background()); err != nil {
+		_ = os.RemoveAll(rootDir)
+	}()
+
+	// hostWorkdir 是宿主机 mirror 目录，用来存放 offload、skills 和 MCP 索引。
+	hostWorkdir := filepath.Join(rootDir, "workspace")
+	ws, err := asw.NewWorkspace(agentSandboxOption(hostWorkdir)...)
+	if err != nil {
+		panic(err)
+	}
+
+	// 初始化 workspace
+	// agent.WithWorkspace 在检测到 ws 未初始化之后，会自动调用初始化。
+	err = ws.Initialize(ctx)
+	if err != nil {
+		panic(err)
+	}
+	// 探活
+	alive := ws.IsAlive()
+	if !alive {
+		panic("agent sandbox is alive")
+	}
+	fmt.Printf("agent sandbox is alive: %v. \n", alive)
+
+	// defer 释放资源
+	defer func() {
+		if err := ws.Close(ctx); err != nil {
 			panic(err)
 		}
 	}()
 
-	tools := mustTools(ws.ListTools(ctx))
-	state := asstate.NewAgentState()
-	briefPath := envOrDefault("AGENTSCOPE_AGENT_SANDBOX_EXAMPLE_FILE", "/home/user/data/brief.md")
-	writeResponse := runTool(ctx, findTool(tools, "Write"), map[string]any{
-		"file_path": briefPath,
-		"content":   fmt.Sprintf("# Agent Sandbox workspace brief\nAgentScope Go can run workspace tools inside an Agent Sandbox runtime. random check: %f\n", rand.Float32()),
-	}, state)
-	readResponse := runTool(ctx, findTool(tools, "Read"), map[string]any{
-		"file_path": briefPath,
-		"limit":     20,
-	}, state)
-	readText := textContent(readResponse.Content)
-
-	cfg := modelconfig.DashScope("qwen3.7-max")
-	maxTokens := int64(256)
-	temperature := 0.2
-	chat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
-		dashscope.WithStream(false),
-		dashscope.WithChatParameters(dashscope.ChatParameters{MaxTokens: &maxTokens, Temperature: &temperature}),
-	))
-	user := mustMessage(message.NewUserMessage("user", "The Agent Sandbox workspace Read tool returned, tips: print random float to check:\n"+readText))
-	request := asmodel.CallRequest{Messages: []*message.Message{user}}
-	tokens, err := chat.CountTokens(request)
+	// 列举下 workspace 中的工具
+	// 在实际使用 agent 时，通过 WithWorkspace 会自动注册。
+	tools, err := ws.ListTools(ctx)
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Printf(
-		"agent_sandbox_workspace_alive=%t template=%s namespace=%s tools=%s write=%s read_has_brief=%t chat_model=%s estimated_tokens=%d\n",
-		ws.IsAlive(),
-		envOrDefault("AGENTSCOPE_AGENT_SANDBOX_TEMPLATE", "python-sandbox-template"),
-		envOrDefault("AGENTSCOPE_AGENT_SANDBOX_NAMESPACE", "default"),
-		toolNames(tools),
-		writeResponse.State,
-		strings.Contains(readText, "Agent Sandbox workspace brief"),
-		chat.Name(),
-		tokens,
-	)
-	if !cfg.Live {
-		fmt.Println("dashscope_live=skipped")
-		return
+	for _, t := range tools {
+		fmt.Println("tools: ", t.Name())
 	}
 
-	response, err := chat.Call(ctx, request)
-	if err != nil {
-		panic(err)
-	}
-	responseText := ""
-	if text := response.GetTextContent(); text != nil {
-		responseText = *text
-	}
-	fmt.Printf("dashscope_live=ok response=%q\n", shorten(responseText, 120))
+	/**
+	output:
+		agent sandbox is alive: true.
+		tools:  Bash
+		tools:  Edit
+		tools:  Glob
+		tools:  Grep
+		tools:  Read
+		tools:  Write
+	*/
+
+	// 调用 Bash tools 创建一个文件 然后用 Write 并写入内容，用 Edit 编辑，最后使用 Read 读取文件内容。
+
+	chatModel := newChatModel(true)
+	chat(ctx, chatModel, ws)
 }
 
-func workspaceOptions(hostWorkdir string) []agentsandboxworkspace.Option {
-	opts := []agentsandboxworkspace.Option{
-		agentsandboxworkspace.WithTemplateName(envOrDefault("AGENTSCOPE_AGENT_SANDBOX_TEMPLATE", "python-sandbox-template")),
-		agentsandboxworkspace.WithNamespace(envOrDefault("AGENTSCOPE_AGENT_SANDBOX_NAMESPACE", "default")),
-		agentsandboxworkspace.WithHostWorkdir(hostWorkdir),
+func chat(ctx context.Context, chatModel model.ChatModel, ws *asw.Workspace) {
+
+	// user prompt 输入
+	systemPrompt := strings.Join([]string{
+		"You are an AgentScope Go workspace demo agent.",
+		"You can use workspace tools to create, write, edit, grep, and read files inside the sandbox.",
+		"When the user asks you to create or inspect a file, use the available tools instead of only explaining.",
+		"Use Bash only for shell operations, Write for writing file content, Edit for targeted edits, Grep for searching, and Read for reading files.",
+		"After finishing tool calls, answer with the final file path and a short summary.",
+	}, "\n")
+
+	user, err := message.NewUserMessage(
+		"user",
+		`请在 sandbox 里完成这个任务：
+  1. 创建 /home/user/demo/demo.md。
+  2. 写入一行内容：Hello, AgentScope Go.
+  3. 使用 Grep 搜索 "AgentScope" 来确认文件路径。
+  4. 使用 Read 读取 demo.md。
+  5. 最后告诉我文件路径和读取到的内容。`,
+	)
+	if err != nil {
+		panic(err)
 	}
+
+	demoAgent, err := agent.NewAgent(
+		"Workspace Demo Agent",
+		systemPrompt,
+		chatModel,
+		agent.WithWorkspace(ctx, ws),
+		agent.WithReActConfig(agent.ReActConfig{
+			MaxIters:     10,
+			StopOnReject: true,
+		}),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	var finalText strings.Builder
+
+	// stream call
+	err = demoAgent.ReplyStream(ctx, user, func(event message.Event) error {
+		switch e := event.(type) {
+		case *message.ToolCallStartEvent:
+			fmt.Printf("\n[tool-call] %s\n", e.ToolCallName)
+		case *message.ToolCallDeltaEvent:
+			fmt.Print(e.Delta)
+		case *message.ToolResultStartEvent:
+			fmt.Printf("\n[tool-result-start] %s\n", e.ToolCallName)
+		case *message.ToolResultTextDeltaEvent:
+			fmt.Print(e.Delta)
+		case *message.ToolResultEndEvent:
+			fmt.Printf("\n[tool-result-end] state=%s\n", e.State)
+		case *message.TextBlockDeltaEvent:
+			finalText.WriteString(e.Delta)
+			fmt.Print(e.Delta)
+		case *message.ExceedMaxItersEvent:
+			fmt.Printf("\n[agent] exceed max iters: %s\n", e.Name)
+		case *message.RequireUserConfirmEvent:
+			fmt.Printf("\n[agent] requires user confirmation for %d tool call(s)\n", len(e.ToolCalls))
+		}
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// final output:
+	fmt.Printf("\n\nagent_final=%q\n", finalText.String())
+}
+
+// 设置 sandbox 连接参数
+func agentSandboxOption(dir string) []asw.Option {
+
+	opts := []asw.Option{
+		// 设置模版名称，下面用到的 python-sandbox-template 是集群里已经有的一个 sandboxTemplate 的 crd 名字，可以自己创建
+		asw.WithTemplateName("python-sandbox-template"),
+		// 设置 ns
+		asw.WithNamespace("agent"),
+		// 设置宿主机 mirror 目录
+		asw.WithHostWorkdir(dir),
+	}
+
+	// 只有显式设置 AGENTSCOPE_AGENT_SANDBOX_API_URL 时，才走 direct URL 模式。
 	if apiURL := strings.TrimSpace(os.Getenv("AGENTSCOPE_AGENT_SANDBOX_API_URL")); apiURL != "" {
-		return append(opts, agentsandboxworkspace.WithAPIURL(apiURL))
+		opts = append(opts, asw.WithAPIURL(apiURL))
 	}
+
+	// 只有显式设置 AGENTSCOPE_AGENT_SANDBOX_GATEWAY_NAME 时，才走 Gateway 模式。
+	// WithGateway 需要两个参数：gateway name 和 gateway namespace。
 	if gateway := strings.TrimSpace(os.Getenv("AGENTSCOPE_AGENT_SANDBOX_GATEWAY_NAME")); gateway != "" {
-		return append(opts, agentsandboxworkspace.WithGateway(
+		opts = append(opts, asw.WithGateway(
 			gateway,
-			envOrDefault("AGENTSCOPE_AGENT_SANDBOX_GATEWAY_NAMESPACE", "default"),
+			"agent",
 		))
 	}
+
 	return opts
 }
 
-func findTool(tools []asworkspace.Tool, name string) asworkspace.Tool {
-	for _, current := range tools {
-		if current.Name() == name {
-			return current
-		}
-	}
-	panic("missing workspace tool: " + name)
-}
+func newChatModel(stream bool) model.ChatModel {
 
-func runTool(ctx context.Context, current asworkspace.Tool, input map[string]any, state *asstate.AgentState) *tool.ToolResponse {
-	chunks, err := current.Execute(ctx, input, state)
+	dashscopeModel, err := dashscope.NewChatModel(
+		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		"qwen3.7-max",
+		dashscope.WithStream(stream),
+	)
 	if err != nil {
 		panic(err)
 	}
-	response := tool.NewToolResponse()
-	for chunk := range chunks {
-		if err := response.AppendChunk(&chunk); err != nil {
-			panic(err)
-		}
-	}
-	return response
-}
 
-func toolNames(tools []asworkspace.Tool) string {
-	names := make([]string, 0, len(tools))
-	for _, current := range tools {
-		names = append(names, current.Name())
-	}
-	return strings.Join(names, ",")
-}
-
-func textContent(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
-}
-
-func envOrDefault(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
-func shorten(text string, limit int) string {
-	text = strings.TrimSpace(text)
-	runes := []rune(text)
-	if len(runes) <= limit {
-		return text
-	}
-	return string(runes[:limit]) + "..."
-}
-
-func mustTempDir(pattern string) string {
-	dir, err := os.MkdirTemp("", pattern)
-	if err != nil {
-		panic(err)
-	}
-	return dir
-}
-
-func mustWorkspace(ws *agentsandboxworkspace.Workspace, err error) *agentsandboxworkspace.Workspace {
-	if err != nil {
-		panic(err)
-	}
-	return ws
-}
-
-func mustTools(tools []asworkspace.Tool, err error) []asworkspace.Tool {
-	if err != nil {
-		panic(err)
-	}
-	return tools
-}
-
-func mustModel(model asmodel.ChatModel, err error) asmodel.ChatModel {
-	if err != nil {
-		panic(err)
-	}
-	return model
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
+	return dashscopeModel
 }
