@@ -29,6 +29,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/model/openai"
 	"github.com/yuluo-yx/agentscope-go/model/openairesponse"
 	"github.com/yuluo-yx/agentscope-go/model/xai"
+	"github.com/yuluo-yx/agentscope-go/model/zhipu"
 )
 
 func TestEveryProviderExposesCompleteModelMetadata(t *testing.T) {
@@ -47,6 +48,7 @@ func TestEveryProviderExposesCompleteModelMetadata(t *testing.T) {
 		{name: "openai", list: openai.ListModels},
 		{name: "openai_response", list: openairesponse.ListModels},
 		{name: "xai", list: xai.ListModels},
+		{name: "zhipu", list: zhipu.ListModels},
 	}
 	for _, provider := range providers {
 		t.Run(provider.name, func(t *testing.T) {

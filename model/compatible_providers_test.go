@@ -30,6 +30,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/model/deepseek"
 	"github.com/yuluo-yx/agentscope-go/model/moonshot"
 	"github.com/yuluo-yx/agentscope-go/model/xai"
+	"github.com/yuluo-yx/agentscope-go/model/zhipu"
 )
 
 func TestOpenAICompatibleProviderPackagesUseProviderDefaults(t *testing.T) {
@@ -75,6 +76,14 @@ func TestOpenAICompatibleProviderPackagesUseProviderDefaults(t *testing.T) {
 			},
 			want:    "xai:grok-3",
 			request: "grok-3",
+		},
+		{
+			name: "zhipu",
+			new: func(baseURL string) (asmodel.ChatModel, error) {
+				return zhipu.NewChatModel(zhipu.NewCredential("test-key", zhipu.WithBaseURL(baseURL)), "glm-4.5-flash", zhipu.WithStream(false))
+			},
+			want:    "zhipu:glm-4.5-flash",
+			request: "glm-4.5-flash",
 		},
 	}
 
