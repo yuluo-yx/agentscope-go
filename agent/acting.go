@@ -74,7 +74,8 @@ func (a *Agent) prepareToolCall(ctx context.Context, assistant *message.Message,
 	if toolCall == nil {
 		return nil, false, nil
 	}
-	tool, ok := a.toolkit.FindTool(toolCall.Name, a.activeGroups()...)
+	toolProvider := a.effectiveToolProvider()
+	tool, ok := toolProvider.FindTool(toolCall.Name, a.activeGroups()...)
 	if !ok {
 		return nil, false, a.emitToolError(assistant, toolCall, fmt.Sprintf("tool %s not found", toolCall.Name), message.ToolResultError, emit)
 	}
@@ -153,7 +154,7 @@ func (r *toolBatchRunner) flushBeforeIfNeeded(toolCall *message.ToolCallBlock) e
 	if len(r.batch) == 0 {
 		return nil
 	}
-	tool, ok := r.agent.toolkit.FindTool(toolCall.Name, r.agent.activeGroups()...)
+	tool, ok := r.agent.effectiveToolProvider().FindTool(toolCall.Name, r.agent.activeGroups()...)
 	if ok && !tool.IsExternalTool() && tool.IsConcurrencySafe() {
 		return nil
 	}
@@ -176,7 +177,7 @@ func (r *toolBatchRunner) flush() error {
 
 func (a *Agent) executeLocalTool(ctx context.Context, assistant *message.Message, toolCall *message.ToolCallBlock, emit func(message.Event) error) error {
 	chunks, err := a.applyActingHooks(ctx, HookInput{"tool_call": toolCall}, func(ctx context.Context) (<-chan ToolChunk, error) {
-		return a.toolkit.CallTool(ctx, toolCall, a.state)
+		return a.effectiveToolProvider().CallTool(ctx, toolCall, a.state)
 	})
 	if err != nil {
 		if emitErr := a.emitToolExecutionError(assistant, toolCall, err.Error(), message.ToolResultError, emit); emitErr != nil {
@@ -242,7 +243,7 @@ func (a *Agent) executeLocalToolBatch(ctx context.Context, assistant *message.Me
 
 func (a *Agent) collectLocalToolChunks(ctx context.Context, toolCall *message.ToolCallBlock) ([]ToolChunk, error) {
 	chunks, err := a.applyActingHooks(ctx, HookInput{"tool_call": toolCall}, func(ctx context.Context) (<-chan ToolChunk, error) {
-		return a.toolkit.CallTool(ctx, toolCall, a.state)
+		return a.effectiveToolProvider().CallTool(ctx, toolCall, a.state)
 	})
 	if err != nil {
 		return nil, err

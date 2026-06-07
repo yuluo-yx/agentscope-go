@@ -145,6 +145,31 @@ func (m *TracingMiddleware) OnActing(
 	return wrapToolChunks(chunks, span), nil
 }
 
+// OnCompressContext records one span around context compression.
+func (m *TracingMiddleware) OnCompressContext(
+	ctx context.Context,
+	agent agentpkg.AgentAccessor,
+	input agentpkg.HookInput,
+	next agentpkg.CompressContextHandler,
+) error {
+	if m == nil || m.tracer == nil {
+		return next(ctx)
+	}
+	_ = input
+	ctx, span := m.tracer.StartSpan(ctx, "compress_context "+agent.AgentName(), map[string]any{
+		"gen_ai.operation.name":  "compress_context",
+		"gen_ai.agent.name":      agent.AgentName(),
+		"gen_ai.conversation.id": sessionID(agent),
+	})
+	err := next(ctx)
+	if err != nil {
+		recordAndEnd(span, err)
+		return err
+	}
+	span.End()
+	return nil
+}
+
 func wrapEvents(events <-chan message.Event, span TraceSpan) <-chan message.Event {
 	if events == nil {
 		recordAndEnd(span, fmt.Errorf("agentscope/middleware: nil event stream"))

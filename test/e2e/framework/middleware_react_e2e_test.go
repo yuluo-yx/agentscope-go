@@ -28,6 +28,7 @@ import (
 	modelpkg "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/permission"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
+	"github.com/yuluo-yx/agentscope-go/tool"
 	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
 )
 
@@ -39,7 +40,29 @@ func TestFrameworkMiddlewareWorkspaceModelToolReActE2E(t *testing.T) {
 	ws, err := wslocal.NewWorkspace(workdir, wslocal.WithWorkspaceID("middleware-react-e2e"))
 	requireNoErr(t, err, "NewWorkspace returned error")
 	recorder := &recordingTracer{}
+	middlewareEcho, err := tool.NewFunctionTool(
+		"MiddlewareEcho",
+		"Echo a middleware-provided value.",
+		map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"value": map[string]any{"type": "string"}},
+			"required":   []string{"value"},
+		},
+		func(_ context.Context, input map[string]any, _ *asstate.AgentState) (message.ContentBlockList, error) {
+			return message.ContentBlockList{message.NewTextBlock("middleware:" + input["value"].(string))}, nil
+		},
+		tool.WithFunctionPermissionFunc(func(context.Context, map[string]any, *permission.Context) (*permission.Decision, error) {
+			return &permission.Decision{Behavior: permission.BehaviorAllow, Message: "allowed in e2e"}, nil
+		}),
+	)
+	requireNoErr(t, err, "NewFunctionTool returned error")
 	model := &scriptedChatModel{responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewToolCallBlock("middleware-call", "MiddlewareEcho", jsonInput(t, map[string]any{
+				"value": "ready",
+			}))},
+			true,
+		),
 		modelpkg.NewChatResponse(
 			message.ContentBlockList{message.NewToolCallBlock("write-call", "Write", jsonInput(t, map[string]any{
 				"file_path": filepath.Join(workdir, "notes.txt"),
@@ -68,6 +91,7 @@ func TestFrameworkMiddlewareWorkspaceModelToolReActE2E(t *testing.T) {
 		agentpkg.WithMiddlewares(
 			requestResponseMetadataMiddleware{},
 			middleware.NewTracingMiddleware(recorder),
+			middlewareToolList{tools: []agentpkg.Tool{middlewareEcho}},
 		),
 	)
 	requireNoErr(t, err, "NewAgent returned error")
@@ -90,6 +114,13 @@ func TestFrameworkMiddlewareWorkspaceModelToolReActE2E(t *testing.T) {
 			t.Fatalf("model request %d lost middleware metadata: %#v", index, request.Metadata)
 		}
 	}
+	if !hasToolSchema(model.requests[0].Tools, "MiddlewareEcho") {
+		t.Fatalf("middleware tool schema was not visible to model: %#v", model.requests[0].Tools)
+	}
+	middlewareResult := onlyToolResultFromRequest(t, model.requests[1])
+	if text := middlewareResult.Output.Blocks.GetTextContent(""); middlewareResult.Name != "MiddlewareEcho" || text == nil || *text != "middleware:ready" {
+		t.Fatalf("middleware tool result should remain visible to ReAct: %#v text=%#v", middlewareResult, text)
+	}
 	result := lastToolResultFromLastModelRequest(t, model)
 	if text := result.Output.Blocks.GetTextContent(""); result.Name != "Read" || text == nil || !strings.Contains(*text, "middleware workspace note") {
 		t.Fatalf("read tool result should remain visible to ReAct: %#v text=%#v", result, text)
@@ -97,8 +128,43 @@ func TestFrameworkMiddlewareWorkspaceModelToolReActE2E(t *testing.T) {
 	names := recorder.SpanNames()
 	assertSpanRecorded(t, names, "invoke_agent Friday")
 	assertSpanRecorded(t, names, "chat scripted-framework-e2e")
+	assertSpanRecorded(t, names, "execute_tool MiddlewareEcho")
 	assertSpanRecorded(t, names, "execute_tool Write")
 	assertSpanRecorded(t, names, "execute_tool Read")
+}
+
+type middlewareToolList struct {
+	tools []agentpkg.Tool
+}
+
+func (m middlewareToolList) MiddlewareName() string {
+	return "middleware-tool-list"
+}
+
+func (m middlewareToolList) ListTools(context.Context, agentpkg.AgentAccessor) ([]agentpkg.Tool, error) {
+	return append([]agentpkg.Tool(nil), m.tools...), nil
+}
+
+func hasToolSchema(schemas []modelpkg.ToolSchema, name string) bool {
+	for _, schema := range schemas {
+		if schema.Function.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func onlyToolResultFromRequest(t *testing.T, request modelpkg.CallRequest) *message.ToolResultBlock {
+	t.Helper()
+	if len(request.Messages) == 0 {
+		t.Fatal("model request has no messages")
+	}
+	last := request.Messages[len(request.Messages)-1]
+	results := last.GetContentBlocks("tool_result")
+	if len(results) != 1 {
+		t.Fatalf("expected one tool result, got %#v", last.Content)
+	}
+	return results[0].(*message.ToolResultBlock)
 }
 
 type requestResponseMetadataMiddleware struct{}

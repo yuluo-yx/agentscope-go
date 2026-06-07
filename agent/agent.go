@@ -23,6 +23,7 @@ import (
 	agenterrors "github.com/yuluo-yx/agentscope-go/errors"
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/permission"
+	astool "github.com/yuluo-yx/agentscope-go/tool"
 	"github.com/yuluo-yx/agentscope-go/utils"
 	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
 )
@@ -43,23 +44,26 @@ type AgentOption func(*Agent) error
 
 // Agent runs ReAct reasoning, permission checks, and tool calls.
 type Agent struct {
-	name         string
-	systemPrompt string
-	model        ChatModel
-	toolkit      ToolProvider
-	state        *AgentState
-	offloader    asworkspace.Offloader
+	name              string
+	systemPrompt      string
+	model             ChatModel
+	toolkit           ToolProvider
+	middlewareTools   []Tool
+	middlewareToolkit ToolProvider
+	state             *AgentState
+	offloader         asworkspace.Offloader
 
 	modelConfig       ModelConfig
 	contextConfig     ContextConfig
 	reactConfig       ReActConfig
 	contextStrategies []ContextStrategy
 
-	replyHooks        []ReplyHook
-	reasoningHooks    []ReasoningHook
-	actingHooks       []ActingHook
-	modelCallHooks    []ModelCallHook
-	systemPromptHooks []SystemPromptHook
+	replyHooks           []ReplyHook
+	reasoningHooks       []ReasoningHook
+	actingHooks          []ActingHook
+	modelCallHooks       []ModelCallHook
+	compressContextHooks []CompressContextHook
+	systemPromptHooks    []SystemPromptHook
 }
 
 // WithToolkit sets the toolkit used by the Agent.
@@ -179,7 +183,9 @@ func WithMiddlewares(middlewares ...Middleware) AgentOption {
 			if middleware == nil {
 				return agenterrors.NewDeveloperError("agent middleware is nil")
 			}
-			agent.registerMiddleware(middleware)
+			if err := agent.registerMiddleware(context.Background(), middleware); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -451,7 +457,7 @@ func (a *Agent) lastMessage() *message.Message {
 	return a.state.Context[len(a.state.Context)-1]
 }
 
-func (a *Agent) registerMiddleware(middleware Middleware) {
+func (a *Agent) registerMiddleware(ctx context.Context, middleware Middleware) error {
 	if typed, ok := middleware.(ReplyMiddleware); ok {
 		a.replyHooks = append(a.replyHooks, typed.OnReply)
 	}
@@ -464,9 +470,33 @@ func (a *Agent) registerMiddleware(middleware Middleware) {
 	if typed, ok := middleware.(ModelCallMiddleware); ok {
 		a.modelCallHooks = append(a.modelCallHooks, typed.OnModelCall)
 	}
+	if typed, ok := middleware.(CompressContextMiddleware); ok {
+		a.compressContextHooks = append(a.compressContextHooks, typed.OnCompressContext)
+	}
 	if typed, ok := middleware.(SystemPromptMiddleware); ok {
 		a.systemPromptHooks = append(a.systemPromptHooks, typed.OnSystemPrompt)
 	}
+	if typed, ok := middleware.(ToolMiddleware); ok {
+		tools, err := typed.ListTools(ctx, a)
+		if err != nil {
+			return agenterrors.NewDeveloperError(
+				fmt.Sprintf("agent middleware %q failed to list tools", middleware.MiddlewareName()),
+				agenterrors.WithErrorCause(err),
+			)
+		}
+		if len(tools) > 0 {
+			a.middlewareTools = append(a.middlewareTools, tools...)
+			kit, err := astool.NewToolkit(a.middlewareTools...)
+			if err != nil {
+				return agenterrors.NewDeveloperError(
+					fmt.Sprintf("agent middleware %q provided invalid tools", middleware.MiddlewareName()),
+					agenterrors.WithErrorCause(err),
+				)
+			}
+			a.middlewareToolkit = kit
+		}
+	}
+	return nil
 }
 
 type emptyToolProvider struct{}

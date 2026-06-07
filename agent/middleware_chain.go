@@ -67,3 +67,15 @@ func (a *Agent) applyModelCallHooks(ctx context.Context, input HookInput, final 
 	}
 	return handler(ctx)
 }
+
+func (a *Agent) applyCompressContextHooks(ctx context.Context, input HookInput, final CompressContextHandler) error {
+	handler := final
+	for i := len(a.compressContextHooks) - 1; i >= 0; i-- {
+		hook := a.compressContextHooks[i]
+		next := handler
+		handler = func(ctx context.Context) error {
+			return hook(ctx, a, input, next)
+		}
+	}
+	return handler(ctx)
+}
