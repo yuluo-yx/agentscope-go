@@ -89,8 +89,18 @@ func NewHTTPClient(baseURL string, opts ...Option) (*Client, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("workspace/gateway: base URL is empty")
 	}
-	if _, err := url.ParseRequestURI(baseURL); err != nil {
+	parsed, err := url.ParseRequestURI(baseURL)
+	if err != nil {
 		return nil, err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("workspace/gateway: unsupported base URL scheme %q", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return nil, fmt.Errorf("workspace/gateway: base URL host is empty")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return nil, fmt.Errorf("workspace/gateway: base URL must not include user info, query, or fragment")
 	}
 	client := &Client{
 		baseURL:    baseURL,
@@ -193,6 +203,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 	if c == nil {
 		return fmt.Errorf("workspace/gateway: nil client")
 	}
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return fmt.Errorf("workspace/gateway: invalid internal path %q", path)
+	}
 	var reader *bytes.Reader
 	if body == nil {
 		reader = bytes.NewReader(nil)
@@ -203,9 +216,8 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 		}
 		reader = bytes.NewReader(data)
 	}
-	requestURL := c.baseURL + path
-	// #nosec G704 -- baseURL is provided by the trusted workspace bootstrap code.
-	request, err := http.NewRequestWithContext(ctx, method, requestURL, reader)
+	// #nosec G704 -- baseURL is validated by NewHTTPClient and path is an internal route assembled by this package.
+	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
 		return err
 	}
@@ -220,7 +232,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 	if c.bearerToken != "" {
 		request.Header.Set("Authorization", "Bearer "+c.bearerToken)
 	}
-	// #nosec G704 -- request target is constrained by the configured gateway base URL.
+	// #nosec G704 -- request was constructed from the validated gateway base URL and an internal route above.
 	response, err := c.httpClient.Do(request)
 	if err != nil {
 		return err

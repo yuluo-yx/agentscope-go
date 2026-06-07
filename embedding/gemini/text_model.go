@@ -17,6 +17,7 @@ package gemini
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"google.golang.org/genai"
@@ -26,10 +27,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/types"
 )
 
-const (
-	providerName = "gemini"
-	maxInt32     = int(^uint32(0) >> 1)
-)
+const providerName = "gemini"
 
 // Credential configures the Gemini API key.
 type Credential struct {
@@ -100,8 +98,8 @@ func NewTextModel(credential Credential, model string, opts ...TextModelOption) 
 	if options.dimensions <= 0 {
 		return nil, fmt.Errorf("%w: dimensions must be positive", asembedding.ErrInvalidEmbeddingDimension)
 	}
-	if options.dimensions > maxInt32 {
-		return nil, fmt.Errorf("%w: dimensions exceed int32 range", asembedding.ErrInvalidEmbeddingDimension)
+	if options.dimensions > math.MaxInt32 {
+		return nil, fmt.Errorf("%w: dimensions must fit int32", asembedding.ErrInvalidEmbeddingDimension)
 	}
 	client := options.client
 	if client == nil {
@@ -165,8 +163,7 @@ func (m *TextModel) Embed(ctx context.Context, request asembedding.EmbeddingRequ
 	for _, text := range texts {
 		contents = append(contents, genai.NewContentFromText(text, genai.RoleUser))
 	}
-	// #nosec G115 -- dimensions are validated to fit int32 in NewTextModel.
-	dimensions := int32(m.dimensions)
+	dimensions := int32(m.dimensions) // #nosec G115 -- NewTextModel rejects values outside the int32 SDK range.
 	config := &genai.EmbedContentConfig{OutputDimensionality: &dimensions}
 	applyParameters(config, request.Parameters)
 	start := time.Now()

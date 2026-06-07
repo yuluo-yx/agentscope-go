@@ -29,9 +29,9 @@ func TestFileCacheStoreRetrieveOverwriteRemoveAndClear(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	cache, cacheErr := asembedding.NewFileCache(t.TempDir())
-	if cacheErr != nil {
-		t.Fatalf("NewFileCache returned error: %v", cacheErr)
+	cache, newErr := asembedding.NewFileCache(t.TempDir())
+	if newErr != nil {
+		t.Fatalf("NewFileCache returned error: %v", newErr)
 	}
 
 	identifier := map[string]any{"provider": "mock", "input": []string{"hello"}}
@@ -99,13 +99,13 @@ func TestFileCacheMaintainsMaxFileNumberAndSize(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	cache, cacheErr := asembedding.NewFileCache(
+	cache, newErr := asembedding.NewFileCache(
 		t.TempDir(),
 		asembedding.WithMaxFileNumber(2),
 		asembedding.WithMaxCacheSizeBytes(512),
 	)
-	if cacheErr != nil {
-		t.Fatalf("NewFileCache returned error: %v", cacheErr)
+	if newErr != nil {
+		t.Fatalf("NewFileCache returned error: %v", newErr)
 	}
 
 	for _, id := range []string{"one", "two", "three"} {

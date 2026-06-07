@@ -76,6 +76,20 @@ func TestTextModelMapsSDKError(t *testing.T) {
 	}
 }
 
+func TestTextModelRejectsDimensionsOutsideSDKRange(t *testing.T) {
+	t.Parallel()
+
+	_, err := gemini.NewTextModel(
+		gemini.NewCredential("test-key"),
+		"gemini-embedding-001",
+		gemini.WithDimensions(math.MaxInt32+1),
+		gemini.WithClient(&fakeEmbedContentClient{}),
+	)
+	if !errors.Is(err, asembedding.ErrInvalidEmbeddingDimension) {
+		t.Fatalf("NewTextModel should reject dimensions outside int32 range, got %v", err)
+	}
+}
+
 type fakeEmbedContentClient struct {
 	model    string
 	contents []*genai.Content
