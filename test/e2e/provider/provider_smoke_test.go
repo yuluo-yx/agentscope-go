@@ -23,9 +23,13 @@ import (
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
+	"github.com/yuluo-yx/agentscope-go/model/deepseek"
 	"github.com/yuluo-yx/agentscope-go/model/gemini"
+	"github.com/yuluo-yx/agentscope-go/model/moonshot"
 	"github.com/yuluo-yx/agentscope-go/model/openai"
 	"github.com/yuluo-yx/agentscope-go/model/openairesponse"
+	"github.com/yuluo-yx/agentscope-go/model/xai"
+	"github.com/yuluo-yx/agentscope-go/model/zhipu"
 )
 
 func TestOpenAIChatSmoke(t *testing.T) {
@@ -64,12 +68,60 @@ func TestDashScopeSmoke(t *testing.T) {
 	assertSmokeResponse(t, model)
 }
 
+func TestDeepSeekSmoke(t *testing.T) {
+	requireEnvEnabled(t, "AGENTSCOPE_TEST_DEEPSEEK")
+	apiKey := requireAnyEnv(t, "DEEPSEEK_API_KEY")
+	modelName := envOr("AGENTSCOPE_TEST_DEEPSEEK_MODEL", "deepseek-chat")
+
+	model, err := deepseek.NewChatModel(deepseek.NewCredential(apiKey), modelName, deepseek.WithMaxRetries(1), deepseek.WithStream(false))
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	assertSmokeResponse(t, model)
+}
+
 func TestGeminiSmoke(t *testing.T) {
 	requireEnvEnabled(t, "AGENTSCOPE_TEST_GEMINI")
 	apiKey := requireAnyEnv(t, "GEMINI_API_KEY", "GOOGLE_API_KEY")
 	modelName := envOr("AGENTSCOPE_TEST_GEMINI_MODEL", "gemini-2.5-flash")
 
 	model, err := gemini.NewChatModel(gemini.NewCredential(apiKey), modelName)
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	assertSmokeResponse(t, model)
+}
+
+func TestMoonshotSmoke(t *testing.T) {
+	requireEnvEnabled(t, "AGENTSCOPE_TEST_MOONSHOT")
+	apiKey := requireAnyEnv(t, "MOONSHOT_API_KEY", "KIMI_API_KEY")
+	modelName := envOr("AGENTSCOPE_TEST_MOONSHOT_MODEL", "moonshot-v1-8k")
+
+	model, err := moonshot.NewChatModel(moonshot.NewCredential(apiKey), modelName, moonshot.WithMaxRetries(1), moonshot.WithStream(false))
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	assertSmokeResponse(t, model)
+}
+
+func TestXAISmoke(t *testing.T) {
+	requireEnvEnabled(t, "AGENTSCOPE_TEST_XAI")
+	apiKey := requireAnyEnv(t, "XAI_API_KEY")
+	modelName := envOr("AGENTSCOPE_TEST_XAI_MODEL", "grok-3")
+
+	model, err := xai.NewChatModel(xai.NewCredential(apiKey), modelName, xai.WithMaxRetries(1), xai.WithStream(false))
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	assertSmokeResponse(t, model)
+}
+
+func TestZhipuSmoke(t *testing.T) {
+	requireEnvEnabled(t, "AGENTSCOPE_TEST_ZHIPU")
+	apiKey := requireAnyEnv(t, "ZHIPU_API_KEY", "ZHIPUAI_API_KEY", "BIGMODEL_API_KEY")
+	modelName := envOr("AGENTSCOPE_TEST_ZHIPU_MODEL", "glm-4.5-flash")
+
+	model, err := zhipu.NewChatModel(zhipu.NewCredential(apiKey), modelName, zhipu.WithMaxRetries(1), zhipu.WithStream(false))
 	if err != nil {
 		t.Fatalf("NewChatModel returned error: %v", err)
 	}

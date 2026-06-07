@@ -1,0 +1,16 @@
+name: glm-4.5-flash
+label: GLM 4.5 Flash
+status: active
+
+input_types:
+  - text/plain
+
+output_types:
+  - text/plain
+
+context_size: 131072
+output_size: 98304
+
+parameter_overrides:
+  max_tokens:
+    maximum: 98304
