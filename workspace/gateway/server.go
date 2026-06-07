@@ -635,6 +635,9 @@ func defaultServerMCPFactory(config workspace.MCPClientConfig) (workspace.MCPCli
 		if config.HTTP == nil {
 			return nil, fmt.Errorf("workspace/gateway: HTTP MCP %q missing config", config.Name)
 		}
+		if config.HTTP.ContinuousListening {
+			opts = append(opts, toolmcp.WithStreamableHTTPContinuousListening())
+		}
 		return toolmcp.NewHTTPClient(config.Name, toolmcp.HTTPConfig{
 			URL:       config.HTTP.URL,
 			Headers:   cloneStringMap(config.HTTP.Headers),
