@@ -43,6 +43,11 @@ const (
 	HTTPTransportStreamable HTTPTransport = "streamable_http"
 )
 
+// OAuthConfig configures OAuth for HTTP MCP transports. It is a runtime-only
+// option because token stores and HTTP clients cannot be serialized into
+// workspace .mcp indexes.
+type OAuthConfig = goclient.OAuthConfig
+
 // StdioConfig describes a subprocess-backed MCP server.
 type StdioConfig struct {
 	Command              string            `json:"command"`
@@ -58,6 +63,25 @@ type HTTPConfig struct {
 	Headers   map[string]string `json:"headers,omitempty"`
 	Timeout   time.Duration     `json:"timeout,omitempty"`
 	Transport HTTPTransport     `json:"transport,omitempty"`
+}
+
+// WithStreamableHTTPContinuousListening enables streamable HTTP's standalone
+// notification listener. It has no effect for stdio, in-process, or SSE
+// transports.
+func WithStreamableHTTPContinuousListening() ClientOption {
+	return func(options *clientOptions) {
+		options.continuousListening = true
+	}
+}
+
+// WithOAuthConfig enables OAuth support for HTTP MCP transports. OAuth settings
+// are not persisted by MCPClientConfig; callers that restore clients from .mcp
+// need to re-apply this option in their factory.
+func WithOAuthConfig(config OAuthConfig) ClientOption {
+	return func(options *clientOptions) {
+		config.Scopes = append([]string(nil), config.Scopes...)
+		options.oauthConfig = &config
+	}
 }
 
 type clientFactory func(context.Context) (*goclient.Client, error)
@@ -111,7 +135,7 @@ func NewHTTPClient(name string, config HTTPConfig, opts ...ClientOption) (*Clien
 		Name:             strings.TrimSpace(name),
 		Type:             asworkspace.MCPClientTypeHTTP,
 		Stateful:         options.stateful,
-		HTTP:             &asworkspace.MCPHTTPConfig{URL: config.URL, Headers: cloneStringMap(config.Headers), Timeout: config.Timeout, Transport: string(config.Transport)},
+		HTTP:             &asworkspace.MCPHTTPConfig{URL: config.URL, Headers: cloneStringMap(config.Headers), Timeout: config.Timeout, Transport: string(config.Transport), ContinuousListening: options.continuousListening},
 		EnabledTools:     append([]string(nil), options.enabledTools...),
 		DisabledTools:    append([]string(nil), options.disabledTools...),
 		ExecutionTimeout: options.executionTimeout,
@@ -126,6 +150,9 @@ func NewHTTPClient(name string, config HTTPConfig, opts ...ClientOption) (*Clien
 			if config.Timeout > 0 {
 				sseOptions = append(sseOptions, gotransport.WithHTTPClient(&http.Client{Timeout: config.Timeout}))
 			}
+			if options.oauthConfig != nil {
+				return goclient.NewOAuthSSEClient(config.URL, *options.oauthConfig, sseOptions...)
+			}
 			return goclient.NewSSEMCPClient(config.URL, sseOptions...)
 		default:
 			httpOptions := []gotransport.StreamableHTTPCOption{}
@@ -134,6 +161,12 @@ func NewHTTPClient(name string, config HTTPConfig, opts ...ClientOption) (*Clien
 			}
 			if config.Timeout > 0 {
 				httpOptions = append(httpOptions, gotransport.WithHTTPTimeout(config.Timeout))
+			}
+			if options.continuousListening {
+				httpOptions = append(httpOptions, gotransport.WithContinuousListening())
+			}
+			if options.oauthConfig != nil {
+				return goclient.NewOAuthStreamableHttpClient(config.URL, *options.oauthConfig, httpOptions...)
 			}
 			return goclient.NewStreamableHttpClient(config.URL, httpOptions...)
 		}

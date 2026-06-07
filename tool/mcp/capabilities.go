@@ -48,12 +48,12 @@ func CapabilityBoundaries() map[Feature]FeatureBoundary {
 		FeatureOAuthAuth: {
 			Feature: FeatureOAuthAuth,
 			Status:  FeatureStatusPartial,
-			Detail:  "OAuth/Auth is represented by static HTTP headers and gateway bearer tokens; interactive OAuth flows are not implemented.",
+			Detail:  "OAuth/Auth supports static HTTP headers, gateway bearer tokens, and runtime OAuthConfig passthrough for HTTP MCP transports; OAuth token stores are not serialized into workspace .mcp indexes.",
 		},
 		FeatureToolListChangedNotification: {
 			Feature: FeatureToolListChangedNotification,
-			Status:  FeatureStatusUnsupported,
-			Detail:  "The client does not subscribe to tool list changed notifications; callers should refresh by calling ListTools explicitly.",
+			Status:  FeatureStatusPartial,
+			Detail:  "The client observes tools/list_changed notifications, clears cached raw tools, and can invoke a callback; streamable HTTP global notifications require continuous listening and already-built eager toolkits must still be refreshed explicitly.",
 		},
 		FeatureDeferredLoading: {
 			Feature: FeatureDeferredLoading,

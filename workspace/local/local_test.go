@@ -42,6 +42,7 @@ func TestWorkspacePersistsIndexesRestoresMCPAndReconcilesSkills(t *testing.T) {
 		toolmcp.HTTPConfig{URL: "https://example.invalid/mcp"},
 		toolmcp.WithStateful(false),
 		toolmcp.WithEnabledTools("forecast"),
+		toolmcp.WithStreamableHTTPContinuousListening(),
 	)
 	if err != nil {
 		t.Fatalf("NewHTTPClient returned error: %v", err)
@@ -100,6 +101,17 @@ func TestWorkspacePersistsIndexesRestoresMCPAndReconcilesSkills(t *testing.T) {
 	}
 	if len(mcps) != 1 || mcps[0].Name() != "weather" {
 		t.Fatalf("restored .mcp should recreate weather MCP client: %#v", mcps)
+	}
+	provider, ok := mcps[0].(workspace.MCPConfigProvider)
+	if !ok {
+		t.Fatalf("restored MCP should expose persisted config")
+	}
+	config, err := provider.MCPClientConfig()
+	if err != nil {
+		t.Fatalf("MCPClientConfig returned error: %v", err)
+	}
+	if config.HTTP == nil || !config.HTTP.ContinuousListening {
+		t.Fatalf("restored HTTP MCP should preserve continuous listening: %#v", config.HTTP)
 	}
 }
 

@@ -21,7 +21,7 @@ func main() {
 	}
 	embeddingResponse, err := textModel.Embed(ctx, embedding.EmbeddingRequest{
 		Inputs: []embedding.EmbeddingInput{
-			embedding.EmbeddingInput{
+			{
 				Type: embedding.ModalityText,
 				Text: "hi, AgentScope Go!",
 			},
@@ -42,7 +42,7 @@ func main() {
 	}
 	imageResponse, err := multiModalModel.Embed(ctx, embedding.EmbeddingRequest{
 		Inputs: []embedding.EmbeddingInput{
-			embedding.EmbeddingInput{
+			{
 				Type: embedding.ModalityImage,
 				Source: &embedding.EmbeddingSource{
 					Type: embedding.SourceURL,
@@ -61,7 +61,7 @@ func main() {
 	fmt.Println("\nVideo embedding: ------------------------------------")
 	videoResponse, err := multiModalModel.Embed(ctx, embedding.EmbeddingRequest{
 		Inputs: []embedding.EmbeddingInput{
-			embedding.EmbeddingInput{
+			{
 				Type: embedding.ModalityVideo,
 				Source: &embedding.EmbeddingSource{
 					Type: embedding.SourceURL,

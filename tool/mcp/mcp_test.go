@@ -18,6 +18,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	gomcp "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -116,12 +117,51 @@ func TestClientValidationMatchesPythonMCPConstraints(t *testing.T) {
 	}
 }
 
+func TestToolListChangedNotificationClearsCachedTools(t *testing.T) {
+	t.Parallel()
+
+	events := make(chan ToolListChangedEvent, 1)
+	client := newConnectedTestClient(t, WithToolListChangedHandler(func(event ToolListChangedEvent) {
+		events <- event
+	}))
+	if _, err := client.GetTool(context.Background(), "lookup_profile"); err != nil {
+		t.Fatalf("GetTool returned error: %v", err)
+	}
+	client.mu.Lock()
+	if client.cachedTools == nil {
+		t.Fatalf("GetTool should populate cached raw tools")
+	}
+	client.mu.Unlock()
+
+	client.handleNotification(gomcp.JSONRPCNotification{
+		Notification: gomcp.Notification{Method: string(gomcp.MethodNotificationToolsListChanged)},
+	})
+
+	select {
+	case event := <-events:
+		if event.ClientName != "people" {
+			t.Fatalf("unexpected event client name: %q", event.ClientName)
+		}
+		if event.Notification.Method != string(gomcp.MethodNotificationToolsListChanged) {
+			t.Fatalf("unexpected event method: %q", event.Notification.Method)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for tool list changed callback")
+	}
+	client.mu.Lock()
+	cached := client.cachedTools
+	client.mu.Unlock()
+	if cached != nil {
+		t.Fatalf("tool list changed notification should clear cached tools")
+	}
+}
+
 func TestCapabilityBoundariesMatchPythonMCPImplementation(t *testing.T) {
 	t.Parallel()
 
 	boundaries := CapabilityBoundaries()
-	assertFeatureBoundary(t, boundaries, FeatureOAuthAuth, FeatureStatusPartial, "static HTTP headers")
-	assertFeatureBoundary(t, boundaries, FeatureToolListChangedNotification, FeatureStatusUnsupported, "does not subscribe")
+	assertFeatureBoundary(t, boundaries, FeatureOAuthAuth, FeatureStatusPartial, "runtime OAuthConfig")
+	assertFeatureBoundary(t, boundaries, FeatureToolListChangedNotification, FeatureStatusPartial, "clears cached raw tools")
 	assertFeatureBoundary(t, boundaries, FeatureDeferredLoading, FeatureStatusUnsupported, "explicit ListTools")
 	assertFeatureBoundary(t, boundaries, FeatureTaskAugmentedTools, FeatureStatusUnsupported, "normal CallTool")
 }

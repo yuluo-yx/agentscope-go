@@ -71,10 +71,11 @@ type MCPStdioConfig struct {
 
 // MCPHTTPConfig is the persisted workspace config for an HTTP MCP server.
 type MCPHTTPConfig struct {
-	URL       string            `json:"url"`
-	Headers   map[string]string `json:"headers,omitempty"`
-	Timeout   time.Duration     `json:"timeout,omitempty"`
-	Transport string            `json:"transport,omitempty"`
+	URL                 string            `json:"url"`
+	Headers             map[string]string `json:"headers,omitempty"`
+	Timeout             time.Duration     `json:"timeout,omitempty"`
+	Transport           string            `json:"transport,omitempty"`
+	ContinuousListening bool              `json:"continuous_listening,omitempty"`
 }
 
 // MCPClientConfig is the stable JSON config written to workspace indexes and sent to gateways.
