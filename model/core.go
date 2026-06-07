@@ -292,6 +292,13 @@ func approximateBlockTokens(block message.ContentBlock) int {
 	case *message.ThinkingBlock:
 		return approximateBytes(len([]byte(typed.Thinking)))
 	case *message.HintBlock:
+		if typed.Blocks != nil {
+			total := 0
+			for _, block := range typed.Blocks {
+				total += approximateBlockTokens(block)
+			}
+			return total
+		}
 		return approximateBytes(len([]byte(typed.Hint)))
 	case *message.ToolCallBlock:
 		return approximateBytes(len([]byte(typed.Name)) + len([]byte(typed.Input)))

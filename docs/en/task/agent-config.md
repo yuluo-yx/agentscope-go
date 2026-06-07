@@ -14,6 +14,18 @@ agent, err := agent.NewAgent(
 )
 ```
 
+## Workspace Resources
+
+Use `agent.WithWorkspace(ctx, ws)` when an Agent should consume a workspace
+directly. The option initializes the workspace, appends workspace instructions
+and skill instructions to the system prompt, registers workspace and MCP tools,
+and uses the workspace as the context/tool-result/data-block offloader.
+
+When a service layer has already called `workspace.BuildAgentResources`, pass
+the result with `agent.WithAgentResources(resources)` to wire the same system
+prompt fragment, toolkit, and offloader without manually splitting the resource
+object.
+
 ## Model Configuration
 
 `ModelConfig` controls retry behavior and the optional fallback model:

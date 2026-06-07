@@ -37,6 +37,7 @@ var eventFactories = map[EventType]func() Event{
 	ThinkingBlockStartType:       func() Event { return &ThinkingBlockStartEvent{} },
 	ThinkingBlockDeltaType:       func() Event { return &ThinkingBlockDeltaEvent{} },
 	ThinkingBlockEndType:         func() Event { return &ThinkingBlockEndEvent{} },
+	HintBlockType:                func() Event { return &HintBlockEvent{} },
 	ToolCallStartType:            func() Event { return &ToolCallStartEvent{} },
 	ToolCallDeltaType:            func() Event { return &ToolCallDeltaEvent{} },
 	ToolCallEndType:              func() Event { return &ToolCallEndEvent{} },
@@ -49,6 +50,7 @@ var eventFactories = map[EventType]func() Event{
 	RequireExternalExecutionType: func() Event { return &RequireExternalExecutionEvent{} },
 	UserConfirmResultType:        func() Event { return &UserConfirmResultEvent{} },
 	ExternalExecutionResultType:  func() Event { return &ExternalExecutionResultEvent{} },
+	CustomType:                   func() Event { return &CustomEvent{} },
 }
 
 func UnmarshalEvent(data []byte) (Event, error) {
@@ -65,4 +67,81 @@ func UnmarshalEvent(data []byte) (Event, error) {
 	}
 	event := factory()
 	return event, json.Unmarshal(data, event)
+}
+
+func (e HintBlockEvent) MarshalJSON() ([]byte, error) {
+	var hint any = e.Hint
+	if e.Blocks != nil {
+		hint = e.Blocks
+	}
+	type wire struct {
+		Type      EventType      `json:"type"`
+		ID        string         `json:"id"`
+		CreatedAt string         `json:"created_at"`
+		Metadata  map[string]any `json:"metadata,omitempty"`
+		ReplyID   string         `json:"reply_id"`
+		BlockID   string         `json:"block_id"`
+		Source    *string        `json:"source,omitempty"`
+		Hint      any            `json:"hint"`
+	}
+	return json.Marshal(wire{
+		Type:      e.Type,
+		ID:        e.ID,
+		CreatedAt: e.CreatedAt,
+		Metadata:  e.Metadata,
+		ReplyID:   e.ReplyIDValue,
+		BlockID:   e.BlockID,
+		Source:    e.Source,
+		Hint:      hint,
+	})
+}
+
+func (e *HintBlockEvent) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Type      EventType       `json:"type"`
+		ID        string          `json:"id"`
+		CreatedAt string          `json:"created_at"`
+		Metadata  map[string]any  `json:"metadata"`
+		ReplyID   string          `json:"reply_id"`
+		BlockID   string          `json:"block_id"`
+		Source    *string         `json:"source"`
+		Hint      json.RawMessage `json:"hint"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	hint, blocks, err := decodeHintContent(raw.Hint)
+	if err != nil {
+		return err
+	}
+	e.ReplyEventBase = ReplyEventBase{
+		EventBase: EventBase{
+			Type:      raw.Type,
+			ID:        raw.ID,
+			CreatedAt: raw.CreatedAt,
+			Metadata:  raw.Metadata,
+		},
+		ReplyIDValue: raw.ReplyID,
+	}
+	e.BlockID = raw.BlockID
+	e.Source = raw.Source
+	e.Hint = hint
+	e.Blocks = blocks
+	return nil
+}
+
+func (e *CustomEvent) UnmarshalJSON(data []byte) error {
+	type alias CustomEvent
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*e = CustomEvent(value)
+	if e.Value == nil {
+		e.Value = map[string]any{}
+	}
+	if e.Metadata == nil {
+		e.Metadata = map[string]any{}
+	}
+	return nil
 }

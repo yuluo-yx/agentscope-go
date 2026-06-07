@@ -1,3 +1,17 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package gemini_test
 
 import (
@@ -6,10 +20,11 @@ import (
 	"math"
 	"testing"
 
+	"google.golang.org/genai"
+
 	asembedding "github.com/yuluo-yx/agentscope-go/embedding"
 	"github.com/yuluo-yx/agentscope-go/embedding/gemini"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"google.golang.org/genai"
 )
 
 func TestTextModelUsesInjectedSDKClient(t *testing.T) {
@@ -58,6 +73,20 @@ func TestTextModelMapsSDKError(t *testing.T) {
 	var providerErr *asmodel.ProviderError
 	if !errors.As(err, &providerErr) || providerErr.Provider != "gemini" {
 		t.Fatalf("error should expose Gemini ProviderError, got %T %v", err, err)
+	}
+}
+
+func TestTextModelRejectsDimensionsOutsideSDKRange(t *testing.T) {
+	t.Parallel()
+
+	_, err := gemini.NewTextModel(
+		gemini.NewCredential("test-key"),
+		"gemini-embedding-001",
+		gemini.WithDimensions(math.MaxInt32+1),
+		gemini.WithClient(&fakeEmbedContentClient{}),
+	)
+	if !errors.Is(err, asembedding.ErrInvalidEmbeddingDimension) {
+		t.Fatalf("NewTextModel should reject dimensions outside int32 range, got %v", err)
 	}
 }
 

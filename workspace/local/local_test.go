@@ -42,6 +42,7 @@ func TestWorkspacePersistsIndexesRestoresMCPAndReconcilesSkills(t *testing.T) {
 		toolmcp.HTTPConfig{URL: "https://example.invalid/mcp"},
 		toolmcp.WithStateful(false),
 		toolmcp.WithEnabledTools("forecast"),
+		toolmcp.WithStreamableHTTPContinuousListening(),
 	)
 	if err != nil {
 		t.Fatalf("NewHTTPClient returned error: %v", err)
@@ -101,6 +102,17 @@ func TestWorkspacePersistsIndexesRestoresMCPAndReconcilesSkills(t *testing.T) {
 	if len(mcps) != 1 || mcps[0].Name() != "weather" {
 		t.Fatalf("restored .mcp should recreate weather MCP client: %#v", mcps)
 	}
+	provider, ok := mcps[0].(workspace.MCPConfigProvider)
+	if !ok {
+		t.Fatalf("restored MCP should expose persisted config")
+	}
+	config, err := provider.MCPClientConfig()
+	if err != nil {
+		t.Fatalf("MCPClientConfig returned error: %v", err)
+	}
+	if config.HTTP == nil || !config.HTTP.ContinuousListening {
+		t.Fatalf("restored HTTP MCP should preserve continuous listening: %#v", config.HTTP)
+	}
 }
 
 func TestWorkspaceOffloadsDataBlockMediaTypes(t *testing.T) {
@@ -155,6 +167,71 @@ func TestWorkspaceOffloadsDataBlockMediaTypes(t *testing.T) {
 				t.Fatalf("offloaded data mismatch: %q", string(data))
 			}
 		})
+	}
+}
+
+func TestWorkspaceResetClearsRuntimeIndexesAndRecreatesLayout(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	workdir := filepath.Join(t.TempDir(), "workspace")
+	skillDir := filepath.Join(t.TempDir(), "skill")
+	writeWorkspaceSkill(t, skillDir, "cleanup", "Cleanup skill", "Cleanup body.\n")
+	mcpClient, mcpErr := toolmcp.NewHTTPClient(
+		"cleanup",
+		toolmcp.HTTPConfig{URL: "https://example.invalid/cleanup"},
+		toolmcp.WithStateful(false),
+	)
+	if mcpErr != nil {
+		t.Fatalf("NewHTTPClient returned error: %v", mcpErr)
+	}
+	ws, workspaceErr := local.NewWorkspace(workdir, local.WithSkillPaths(skillDir), local.WithMCPs(mcpClient))
+	if workspaceErr != nil {
+		t.Fatalf("NewWorkspace returned error: %v", workspaceErr)
+	}
+	if err := ws.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize returned error: %v", err)
+	}
+	if _, err := ws.OffloadDataBlock(ctx, message.NewDataBlock(message.NewBase64Source("Y2xlYW51cA==", "text/plain"))); err != nil {
+		t.Fatalf("OffloadDataBlock returned error: %v", err)
+	}
+	assertFileExists(t, filepath.Join(workdir, ".mcp"))
+	assertFileExists(t, filepath.Join(workdir, "skills", ".skills"))
+
+	if err := ws.Reset(ctx); err != nil {
+		t.Fatalf("Reset returned error: %v", err)
+	}
+	if ws.IsAlive() {
+		t.Fatalf("workspace should not be alive after Reset")
+	}
+	for _, path := range []string{
+		filepath.Join(workdir, ".mcp"),
+		filepath.Join(workdir, "skills", ".skills"),
+		filepath.Join(workdir, "data"),
+		filepath.Join(workdir, "skills"),
+		filepath.Join(workdir, "sessions"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("%s should be removed by Reset, stat err=%v", path, err)
+		}
+	}
+
+	if err := ws.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize after Reset returned error: %v", err)
+	}
+	for _, dir := range []string{"data", "skills", "sessions"} {
+		info, err := os.Stat(filepath.Join(workdir, dir))
+		if err != nil || !info.IsDir() {
+			t.Fatalf("%s should be recreated as a directory, info=%#v err=%v", dir, info, err)
+		}
+	}
+	assertFileExists(t, filepath.Join(workdir, ".mcp"))
+	mcps, err := ws.ListMCPs(ctx)
+	if err != nil {
+		t.Fatalf("ListMCPs returned error: %v", err)
+	}
+	if len(mcps) != 0 {
+		t.Fatalf("Reset should clear in-memory MCPs, got %#v", mcps)
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 	sdk "github.com/openai/openai-go"
 
 	"github.com/yuluo-yx/agentscope-go/message"
+	asmodel "github.com/yuluo-yx/agentscope-go/model"
 )
 
 func formatMessages(messages []*message.Message) ([]sdk.ChatCompletionMessageParamUnion, error) {
@@ -70,7 +71,11 @@ func splitContent(blocks message.ContentBlockList) ([]sdk.ChatCompletionContentP
 		case *message.TextBlock:
 			parts = append(parts, sdk.TextContentPart(typed.Text))
 		case *message.HintBlock:
-			parts = append(parts, sdk.TextContentPart(typed.Hint))
+			hintParts, err := hintContentParts(typed)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			parts = append(parts, hintParts...)
 		case *message.DataBlock:
 			part, err := dataBlockPart(typed)
 			if err != nil {
@@ -96,6 +101,30 @@ func splitContent(blocks message.ContentBlockList) ([]sdk.ChatCompletionContentP
 		}
 	}
 	return parts, toolCalls, toolResults, nil
+}
+
+func hintContentParts(block *message.HintBlock) ([]sdk.ChatCompletionContentPartUnionParam, error) {
+	if block.Blocks == nil {
+		return []sdk.ChatCompletionContentPartUnionParam{sdk.TextContentPart(block.Hint)}, nil
+	}
+	parts := make([]sdk.ChatCompletionContentPartUnionParam, 0, len(block.Blocks))
+	for _, nested := range block.Blocks {
+		switch typed := nested.(type) {
+		case *message.TextBlock:
+			parts = append(parts, sdk.TextContentPart(typed.Text))
+		case *message.DataBlock:
+			part, err := dataBlockPart(typed)
+			if err != nil {
+				return nil, err
+			}
+			if part != nil {
+				parts = append(parts, *part)
+			}
+		default:
+			return nil, fmt.Errorf("openai: unsupported hint content block %T", nested)
+		}
+	}
+	return parts, nil
 }
 
 func systemMessageParam(content, name string) sdk.ChatCompletionMessageParamUnion {
@@ -144,6 +173,9 @@ func dataBlockPart(block *message.DataBlock) (*sdk.ChatCompletionContentPartUnio
 	}
 	switch source := block.Source.(type) {
 	case *message.Base64Source:
+		if strings.HasPrefix(source.MediaType, "video/") {
+			return nil, &asmodel.CapabilityError{Model: "openai_chat", Capability: asmodel.ModelCapabilityVideo}
+		}
 		if strings.HasPrefix(source.MediaType, "audio/") {
 			format := strings.TrimPrefix(source.MediaType, "audio/")
 			part := sdk.InputAudioContentPart(sdk.ChatCompletionContentPartInputAudioInputAudioParam{
@@ -152,11 +184,20 @@ func dataBlockPart(block *message.DataBlock) (*sdk.ChatCompletionContentPartUnio
 			})
 			return &part, nil
 		}
+		if !strings.HasPrefix(source.MediaType, "image/") {
+			return nil, &asmodel.CapabilityError{Model: "openai_chat", Capability: asmodel.ModelCapabilityGeneration}
+		}
 		part := sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{
 			URL: fmt.Sprintf("data:%s;base64,%s", source.MediaType, source.Data),
 		})
 		return &part, nil
 	case *message.URLSource:
+		if strings.HasPrefix(source.MediaType, "video/") {
+			return nil, &asmodel.CapabilityError{Model: "openai_chat", Capability: asmodel.ModelCapabilityVideo}
+		}
+		if !strings.HasPrefix(source.MediaType, "image/") {
+			return nil, &asmodel.CapabilityError{Model: "openai_chat", Capability: asmodel.ModelCapabilityGeneration}
+		}
 		part := sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{URL: source.URL})
 		return &part, nil
 	default:

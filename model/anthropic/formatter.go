@@ -68,7 +68,11 @@ func formatContentBlocks(blocks message.ContentBlockList) ([]sdk.ContentBlockPar
 		case *message.TextBlock:
 			content = append(content, sdk.NewTextBlock(typed.Text))
 		case *message.HintBlock:
-			content = append(content, sdk.NewTextBlock(typed.Hint))
+			hintBlocks, err := hintContentBlocks(typed)
+			if err != nil {
+				return nil, nil, err
+			}
+			content = append(content, hintBlocks...)
 		case *message.ThinkingBlock:
 			part, err := thinkingBlockParam(typed)
 			if err != nil {
@@ -96,6 +100,30 @@ func formatContentBlocks(blocks message.ContentBlockList) ([]sdk.ContentBlockPar
 		}
 	}
 	return content, toolResults, nil
+}
+
+func hintContentBlocks(block *message.HintBlock) ([]sdk.ContentBlockParamUnion, error) {
+	if block.Blocks == nil {
+		return []sdk.ContentBlockParamUnion{sdk.NewTextBlock(block.Hint)}, nil
+	}
+	content := make([]sdk.ContentBlockParamUnion, 0, len(block.Blocks))
+	for _, nested := range block.Blocks {
+		switch typed := nested.(type) {
+		case *message.TextBlock:
+			content = append(content, sdk.NewTextBlock(typed.Text))
+		case *message.DataBlock:
+			part, err := dataBlockParam(typed)
+			if err != nil {
+				return nil, err
+			}
+			if part != nil {
+				content = append(content, *part)
+			}
+		default:
+			return nil, fmt.Errorf("anthropic: unsupported hint content block %T", nested)
+		}
+	}
+	return content, nil
 }
 
 func systemBlocks(blocks []sdk.ContentBlockParamUnion) []sdk.TextBlockParam {

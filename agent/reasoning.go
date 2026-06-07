@@ -121,7 +121,7 @@ func (a *Agent) prepareModelInput(ctx context.Context) (CallRequest, error) {
 			messages = append(messages, msg.Clone())
 		}
 	}
-	tools, err := a.toolkit.ToolSchemas(a.activeGroups()...)
+	tools, err := a.effectiveToolProvider().ToolSchemas(a.activeGroups()...)
 	if err != nil {
 		return CallRequest{}, err
 	}

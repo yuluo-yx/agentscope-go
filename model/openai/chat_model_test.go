@@ -462,6 +462,96 @@ func TestChatModelFormatsMultimodalUserContentAndOptions(t *testing.T) {
 	}
 }
 
+func TestChatModelParsesAudioOutputAndRejectsVideoInput(t *testing.T) {
+	t.Parallel()
+
+	server := newChatCompletionServer(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		writeJSON(t, w, map[string]any{
+			"id":      "chatcmpl-audio",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   "gpt-4o-audio-preview",
+			"choices": []any{map[string]any{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": "",
+					"audio": map[string]any{
+						"id":         "audio-1",
+						"data":       "UklGRg==",
+						"expires_at": time.Now().Add(time.Hour).Unix(),
+						"transcript": "spoken answer",
+					},
+				},
+				"finish_reason": "stop",
+			}},
+		})
+	})
+	defer server.Close()
+
+	model, err := asopenai.NewChatModel(
+		asopenai.NewCredential("test-key", asopenai.WithBaseURL(server.URL)),
+		"gpt-4o-audio-preview",
+		asopenai.WithStream(false),
+	)
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "speak")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	resp, err := model.Call(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}})
+	if err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+	if len(resp.Content) != 2 {
+		t.Fatalf("expected audio data plus transcript, got %#v", resp.Content)
+	}
+	audio := resp.Content[0].(*message.DataBlock)
+	source := audio.Source.(*message.Base64Source)
+	if audio.ID != "audio-1" || source.Data != "UklGRg==" || source.MediaType != "audio/wav" {
+		t.Fatalf("audio output not parsed: %#v source=%#v", audio, source)
+	}
+	if text := resp.Content[1].(*message.TextBlock).Text; text != "spoken answer" {
+		t.Fatalf("audio transcript not preserved: %q", text)
+	}
+
+	videoMsg, err := message.NewUserMessage("Tony", []message.ContentBlock{
+		message.NewDataBlock(message.NewBase64Source("AAAA", "video/mp4")),
+	})
+	if err != nil {
+		t.Fatalf("NewUserMessage video returned error: %v", err)
+	}
+	_, err = model.Call(context.Background(), asmodel.CallRequest{Messages: []*message.Message{videoMsg}})
+	var capabilityErr *asmodel.CapabilityError
+	if !errors.As(err, &capabilityErr) || capabilityErr.Capability != asmodel.ModelCapabilityVideo {
+		t.Fatalf("video should be rejected with CapabilityError, got %T %v", err, err)
+	}
+}
+
+func TestOpenAIListModelsIncludesChatMetadataOnly(t *testing.T) {
+	t.Parallel()
+
+	cards, err := asopenai.ListModels()
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	seen := map[string]asmodel.ModelCard{}
+	for _, card := range cards {
+		seen[card.Name] = card
+	}
+	chat := seen["gpt-4o-mini"]
+	if chat.Name == "" || !chat.Supports(asmodel.ModelCapabilityImage) || chat.Supports(asmodel.ModelCapabilityAudio) || chat.Supports(asmodel.ModelCapabilityVideo) {
+		t.Fatalf("chat metadata capability mismatch: %#v", chat)
+	}
+	for _, card := range cards {
+		if card.Extra["api"] == "responses" {
+			t.Fatalf("OpenAI Chat metadata should not include Responses API cards: %#v", card)
+		}
+	}
+}
+
 func TestChatModelFormatsToolResultBlocksAndToolChoiceModes(t *testing.T) {
 	t.Parallel()
 

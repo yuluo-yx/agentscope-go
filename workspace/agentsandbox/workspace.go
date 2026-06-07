@@ -42,7 +42,7 @@ Layout:
 - sessions/ for offloaded context and tool results
 </workspace>`
 
-// Workspace 是基于 Kubernetes Agent Sandbox 的 workspace。
+// Workspace is a Kubernetes Agent Sandbox-backed workspace.
 type Workspace struct {
 	id               string
 	templateName     string
@@ -71,12 +71,12 @@ type Workspace struct {
 
 var _ asworkspace.Workspace = (*Workspace)(nil)
 
-// New 是 NewWorkspace 的简写。
+// New is a shorthand for NewWorkspace.
 func New(opts ...Option) (*Workspace, error) {
 	return NewWorkspace(opts...)
 }
 
-// NewWorkspace 创建 Agent Sandbox-backed workspace。
+// NewWorkspace creates an Agent Sandbox-backed workspace.
 func NewWorkspace(opts ...Option) (*Workspace, error) {
 	workspace := &Workspace{
 		id:               utils.NewID(),
@@ -124,7 +124,7 @@ func NewWorkspace(opts ...Option) (*Workspace, error) {
 	return workspace, nil
 }
 
-// WorkspaceID 返回 workspace 标识。
+// WorkspaceID returns the workspace identifier.
 func (w *Workspace) WorkspaceID() string {
 	if w == nil {
 		return ""
@@ -132,12 +132,12 @@ func (w *Workspace) WorkspaceID() string {
 	return w.id
 }
 
-// IsAlive 返回 sandbox 是否已初始化且未关闭。
+// IsAlive reports whether the sandbox has been initialized and not closed.
 func (w *Workspace) IsAlive() bool {
 	return w != nil && w.alive
 }
 
-// Initialize 创建或连接 Agent Sandbox。
+// Initialize creates or connects to an Agent Sandbox.
 func (w *Workspace) Initialize(ctx context.Context) error {
 	if w == nil {
 		return fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -178,7 +178,7 @@ func (w *Workspace) Initialize(ctx context.Context) error {
 	return w.saveMCPFile()
 }
 
-// Close 删除 SandboxClaim，或在 keepSandbox 模式下只断开连接。
+// Close deletes the SandboxClaim, or only disconnects locally when keepSandbox is enabled.
 func (w *Workspace) Close(ctx context.Context) error {
 	if w == nil {
 		return nil
@@ -206,7 +206,7 @@ func (w *Workspace) Close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// Reset 清理运行态并在下次 Initialize 时创建新 sandbox。
+// Reset clears runtime state and creates a new sandbox on the next Initialize call.
 func (w *Workspace) Reset(ctx context.Context) error {
 	if w == nil {
 		return nil
@@ -227,7 +227,7 @@ func (w *Workspace) Reset(ctx context.Context) error {
 	return nil
 }
 
-// GetInstructions 返回 workspace system prompt 片段。
+// GetInstructions returns the workspace system prompt fragment.
 func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if w == nil {
 		return "", fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -238,7 +238,7 @@ func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	return strings.ReplaceAll(w.instructions, "{workdir}", w.containerWorkdir), nil
 }
 
-// ListTools 返回 Agent Sandbox-backed tools。
+// ListTools returns Agent Sandbox-backed tools.
 func (w *Workspace) ListTools(ctx context.Context) ([]tool.Tool, error) {
 	if w == nil {
 		return nil, fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -256,7 +256,7 @@ func (w *Workspace) ListTools(ctx context.Context) ([]tool.Tool, error) {
 	}, nil
 }
 
-// ListMCPs 返回已注册 MCP clients。
+// ListMCPs returns the registered MCP clients.
 func (w *Workspace) ListMCPs(ctx context.Context) ([]asworkspace.MCPClient, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -267,7 +267,7 @@ func (w *Workspace) ListMCPs(ctx context.Context) ([]asworkspace.MCPClient, erro
 	return append([]asworkspace.MCPClient(nil), w.mcps...), nil
 }
 
-// ListSkills 返回宿主 mirror 中的 skills。
+// ListSkills returns skills from the host mirror.
 func (w *Workspace) ListSkills(ctx context.Context) ([]skill.Skill, error) {
 	if w == nil {
 		return nil, fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -281,7 +281,7 @@ func (w *Workspace) ListSkills(ctx context.Context) ([]skill.Skill, error) {
 	return skill.NewLocalLoader(filepath.Join(w.hostWorkdir, "skills"), skill.WithScanSubdirs(true)).ListSkills(ctx)
 }
 
-// OffloadContext 将上下文写入宿主 mirror。
+// OffloadContext writes context into the host mirror.
 func (w *Workspace) OffloadContext(ctx context.Context, sessionID string, messages []*message.Message) (string, error) {
 	if w == nil {
 		return "", fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -296,7 +296,7 @@ func (w *Workspace) OffloadContext(ctx context.Context, sessionID string, messag
 	return local.OffloadContext(ctx, sessionID, messages)
 }
 
-// OffloadToolResult 将工具结果写入宿主 mirror。
+// OffloadToolResult writes a tool result into the host mirror.
 func (w *Workspace) OffloadToolResult(ctx context.Context, sessionID string, result *message.ToolResultBlock) (string, error) {
 	if w == nil {
 		return "", fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -311,7 +311,7 @@ func (w *Workspace) OffloadToolResult(ctx context.Context, sessionID string, res
 	return local.OffloadToolResult(ctx, sessionID, result)
 }
 
-// OffloadDataBlock 将 DataBlock 写入宿主 mirror。
+// OffloadDataBlock writes a DataBlock into the host mirror.
 func (w *Workspace) OffloadDataBlock(ctx context.Context, block *message.DataBlock) (*message.DataBlock, error) {
 	if w == nil {
 		return nil, fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -326,7 +326,7 @@ func (w *Workspace) OffloadDataBlock(ctx context.Context, block *message.DataBlo
 	return local.OffloadDataBlock(ctx, block)
 }
 
-// AddMCP 注册 MCP client。
+// AddMCP registers an MCP client.
 func (w *Workspace) AddMCP(ctx context.Context, mcp asworkspace.MCPClient) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -344,7 +344,7 @@ func (w *Workspace) AddMCP(ctx context.Context, mcp asworkspace.MCPClient) error
 	return w.saveMCPFile()
 }
 
-// RemoveMCP 按名称移除 MCP client。
+// RemoveMCP removes an MCP client by name.
 func (w *Workspace) RemoveMCP(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -364,7 +364,7 @@ func (w *Workspace) RemoveMCP(ctx context.Context, name string) error {
 	return w.saveMCPFile()
 }
 
-// AddSkill 将 skill 复制到宿主 mirror。
+// AddSkill copies a skill into the host mirror.
 func (w *Workspace) AddSkill(ctx context.Context, sourceDir string) error {
 	if w == nil {
 		return fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -379,7 +379,7 @@ func (w *Workspace) AddSkill(ctx context.Context, sourceDir string) error {
 	return local.AddSkill(ctx, sourceDir)
 }
 
-// RemoveSkill 从宿主 mirror 移除 skill。
+// RemoveSkill removes a skill from the host mirror.
 func (w *Workspace) RemoveSkill(ctx context.Context, name string) error {
 	if w == nil {
 		return nil
