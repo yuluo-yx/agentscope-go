@@ -10,11 +10,13 @@ This example shows how to construct the implemented ChatModel providers:
 - Anthropic.
 - DeepSeek.
 - DashScope.
+- Gemini.
 - Moonshot.
 - xAI.
+- Zhipu AI.
 - Ollama.
 
-It only constructs models and runs local token estimation. It does not make live network calls.
+It only constructs models and runs local token estimation for each provider. It does not make live network calls.
 
 ## Prerequisites
 
@@ -34,5 +36,5 @@ go run .
 Output includes:
 
 ```text
-providers=7
+providers=9
 ```

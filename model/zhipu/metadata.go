@@ -20,6 +20,8 @@ import (
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 )
 
+const providerName = "zhipu"
+
 //go:embed models/*.yaml
 var modelFS embed.FS
 
