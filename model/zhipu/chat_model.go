@@ -187,12 +187,12 @@ func (m *ChatModel) Stream(ctx context.Context, request asmodel.CallRequest) (<-
 	if err != nil {
 		return nil, err
 	}
-	resp, err := m.post(ctx, body)
+	resp, err := m.post(ctx, body) //nolint:bodyclose // closed explicitly in error path and streaming goroutine
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		defer resp.Body.Close()
+		resp.Body.Close()
 		return nil, normalizeHTTPError(resp)
 	}
 	out := make(chan asmodel.ChatResponse)
