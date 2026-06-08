@@ -8,7 +8,7 @@ require (
 	github.com/mark3labs/mcp-go v0.54.1
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.1
-	github.com/ollama/ollama v0.24.0
+	github.com/ollama/ollama v0.30.6
 	github.com/openai/openai-go v1.12.0
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
