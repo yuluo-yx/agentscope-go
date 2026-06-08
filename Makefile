@@ -4,6 +4,7 @@ _run:
 		-f tools/make/tools.mk \
 		-f tools/make/linter.mk \
 		-f tools/make/go.mk \
+		-f tools/make/e2e.mk \
 		-f tools/make/docs.mk \
 		$(MAKECMDGOALS)
 
