@@ -99,7 +99,7 @@ agent-sandbox-kind-setup: ## Create a KinD cluster and install Agent Sandbox tes
 .PHONY: agent-sandbox-kind-tools
 agent-sandbox-kind-tools: ## Install kind and kubectl for Agent Sandbox E2E
 	@$(LOG_TARGET)
-	sh tools/agentsandbox/install-kind.sh
+	tools/agentsandbox/install-kind.sh
 
 .PHONY: test-e2e-agent-sandbox
 test-e2e-agent-sandbox: ## Run Agent Sandbox-backed E2E profile on KinD
