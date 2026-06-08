@@ -10,11 +10,13 @@
 - Anthropic。
 - DeepSeek。
 - DashScope。
+- Gemini。
 - Moonshot。
 - xAI。
+- 智谱 AI。
 - Ollama。
 
-示例只构造模型并做本地 token 估算，不发起真实网络请求。
+示例只构造模型并对每个 provider 做本地 token 估算，不发起真实网络请求。
 
 ## 前置条件
 
@@ -34,5 +36,5 @@ go run .
 输出包含：
 
 ```text
-providers=7
+providers=9
 ```
