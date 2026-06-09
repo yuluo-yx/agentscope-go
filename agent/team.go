@@ -314,7 +314,7 @@ func (m *TeamManager) createAgent(ctx context.Context, state *asstate.AgentState
 		m.mu.Unlock()
 		return "", fmt.Errorf("AgentCreate: name is required")
 	}
-	if err := m.ensureUniqueNameLocked(team, name); err != nil {
+	if err = m.ensureUniqueNameLocked(team, name); err != nil {
 		m.mu.Unlock()
 		return "", err
 	}
