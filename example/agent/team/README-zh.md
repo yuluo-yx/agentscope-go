@@ -1,0 +1,32 @@
+# Agent Team 示例
+
+项目主页：[README-zh.md](../../../README-zh.md)。
+
+英文文档：[README.md](README.md)。
+
+本示例展示进程内 Agent team 协作：
+
+- 通过 `WithTeam` 给 leader 挂载 team tools。
+- leader 调用 `TeamCreate` 和 `AgentCreate`。
+- worker 的初始任务通过 team inbox 投递。
+- worker 通过 `TeamSay` 汇报结果。
+
+## 前置条件
+
+- Go 1.26.3。
+- 不需要 API Key。
+
+## 运行
+
+```bash
+cd example/agent/team
+go run .
+```
+
+## 预期输出
+
+输出包含：
+
+```text
+team=Launch members=1
+```

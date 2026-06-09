@@ -24,6 +24,7 @@ go run .
 | `model/providers` | 已实现 provider 的构造与 token 估算 |
 | `model/dashscope` | DashScope OpenAI-compatible ChatModel、工具 schema、数据块输入和可选真调用 |
 | `agent/basic` | Agent + scripted model + task tool 的端到端 ReAct 流程 |
+| `agent/team` | 进程内 leader/worker Agent team tools 与 inbox 投递 |
 | `agent/configuration` | Agent model fallback、ReAct 配置和本地上下文清理 |
 | `agent/context_strategy` | 摘要压缩、workspace offload 和自定义上下文策略 |
 | `agent/external` | Agent 外部工具执行的暂停与恢复流程 |
