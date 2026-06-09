@@ -24,6 +24,7 @@ Model and tool examples demonstrate ChatModel tool-call loops where that matches
 | `model/providers` | Provider construction and token estimation |
 | `model/dashscope` | DashScope OpenAI-compatible ChatModel, tool schemas, data-block input, and optional live call |
 | `agent/basic` | Agent + scripted model + task tool end-to-end ReAct flow |
+| `agent/team` | Process-local leader/worker Agent team tools and inbox delivery |
 | `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
 | `agent/context_strategy` | Summary compression, workspace offload, and custom context strategies |
 | `agent/external` | Agent pause/resume flow for tools executed outside the Go process |
