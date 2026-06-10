@@ -25,6 +25,11 @@ import (
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 )
 
+const (
+	coverageSchemaObjectType = "object"
+	coverageResetToolsName   = "reset_tools"
+)
+
 func TestFunctionToolOptionsAndInternalBranches(t *testing.T) {
 	t.Parallel()
 
@@ -80,7 +85,7 @@ func TestFunctionToolOptionsAndInternalBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schemaForTool returned error: %v", err)
 	}
-	if formattedSchema.Function.Parameters["type"] != "object" {
+	if formattedSchema.Function.Parameters["type"] != coverageSchemaObjectType {
 		t.Fatalf("schemaForTool should add object type: %#v", formattedSchema.Function.Parameters)
 	}
 	decision, err := tool.CheckPermissions(context.Background(), nil, permission.NewContext(permission.ModeDefault))
@@ -99,7 +104,7 @@ func TestFunctionToolOptionsAndInternalBranches(t *testing.T) {
 		t.Fatalf("chunk mismatch: %#v", chunk)
 	}
 
-	if got := cloneSchemaOrObject(nil); got["type"] != "object" {
+	if got := cloneSchemaOrObject(nil); got["type"] != coverageSchemaObjectType {
 		t.Fatalf("cloneSchemaOrObject nil mismatch: %#v", got)
 	}
 	if chunk := errorChunk("id-1", "boom"); chunk.ID != "id-1" || chunk.State != message.ToolResultError {
@@ -166,7 +171,7 @@ func TestToolkitInternalErrorBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewToolkitWithGroups returned error: %v", err)
 	}
-	if tools := kit.AvailableTools(); len(tools) != 2 || tools[0].Group != basicGroupName || tools[1].Tool.Name() != "reset_tools" {
+	if tools := kit.AvailableTools(); len(tools) != 2 || tools[0].Group != basicGroupName || tools[1].Tool.Name() != coverageResetToolsName {
 		t.Fatalf("AvailableTools mismatch: %#v", tools)
 	}
 	if found, ok := kit.FindTool("Normal"); !ok || found.Name() != "Normal" {
@@ -218,7 +223,7 @@ func TestResetToolsBranches(t *testing.T) {
 		{Name: " search ", Description: " Search desc ", Instructions: " Use rg "},
 		{Name: "write", Description: "Write desc"},
 	})
-	if reset.Name() != "reset_tools" || reset.Description() == "" {
+	if reset.Name() != coverageResetToolsName || reset.Description() == "" {
 		t.Fatalf("reset identity mismatch")
 	}
 	if reset.IsConcurrencySafe() || reset.IsReadOnly() || !reset.IsStateInjected() || reset.IsExternalTool() || reset.IsMCP() || reset.MCPName() != "" {
@@ -226,7 +231,7 @@ func TestResetToolsBranches(t *testing.T) {
 	}
 	schema := reset.InputSchema()
 	schema["type"] = "changed"
-	if reset.InputSchema()["type"] != "object" {
+	if reset.InputSchema()["type"] != coverageSchemaObjectType {
 		t.Fatalf("InputSchema should be cloned: %#v", reset.InputSchema())
 	}
 	decision, err := reset.CheckPermissions(context.Background(), nil, permission.NewContext(permission.ModeDefault))
@@ -236,7 +241,7 @@ func TestResetToolsBranches(t *testing.T) {
 	if !reset.MatchRule("", nil) || reset.MatchRule("x", nil) {
 		t.Fatalf("reset MatchRule mismatch")
 	}
-	if suggestions := reset.GenerateSuggestions(nil); len(suggestions) != 1 || suggestions[0].ToolName != "reset_tools" {
+	if suggestions := reset.GenerateSuggestions(nil); len(suggestions) != 1 || suggestions[0].ToolName != coverageResetToolsName {
 		t.Fatalf("reset suggestions mismatch: %#v", suggestions)
 	}
 
