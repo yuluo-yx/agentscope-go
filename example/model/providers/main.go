@@ -40,7 +40,7 @@ func main() {
 		mustModel(gemini.NewChatModel(gemini.NewCredential("demo-gemini-key"), "gemini-2.5-flash")),
 		mustModel(moonshot.NewChatModel(moonshot.NewCredential("demo-moonshot-key"), "kimi-k2.6", moonshot.WithStream(false))),
 		mustModel(xai.NewChatModel(xai.NewCredential("demo-xai-key"), "grok-3", xai.WithStream(false))),
-		mustModel(zhipu.NewChatModel(zhipu.NewCredential("demo-zhipu-key"), "glm-4.5-flash", zhipu.WithStream(false))),
+		mustModel(zhipu.NewChatModel(zhipu.NewCredential("demo-zhipu-key"), "glm-5.1", zhipu.WithStream(false))),
 		mustModel(ollama.NewChatModel(ollama.NewCredential(ollama.WithHost("http://localhost:11434")), "llama3.2", ollama.WithStream(false))),
 	}
 

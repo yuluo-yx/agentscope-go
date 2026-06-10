@@ -1,0 +1,22 @@
+name: glm-4.7-flash
+label: GLM-4.7-Flash
+status: active
+
+input_types:
+  - text/plain
+
+output_types:
+  - text/plain
+  - application/x-thinking
+
+context_size: 200000
+output_size: 131072
+
+parameter_overrides:
+  max_tokens:
+    default: 65536
+    maximum: 131072
+  thinking_budget:
+    hidden: true
+  reasoning_effort:
+    hidden: true

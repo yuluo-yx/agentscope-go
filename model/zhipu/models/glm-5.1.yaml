@@ -1,0 +1,21 @@
+name: glm-5.1
+label: GLM-5.1
+status: active
+
+input_types:
+  - text/plain
+
+output_types:
+  - text/plain
+  - application/x-thinking
+
+context_size: 200000
+output_size: 131072
+
+parameter_overrides:
+  max_tokens:
+    maximum: 131072
+  thinking_budget:
+    hidden: true
+  reasoning_effort:
+    hidden: true
