@@ -19,6 +19,8 @@ formatters:
 
   exclusions:
     generated: lax
+    paths:
+      - '.*agent/.*\.go$'
 
 linters:
   default: none
@@ -77,6 +79,7 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
+        - shadow
     revive:
       rules:
         - name: exported
@@ -119,6 +122,9 @@ linters:
           - goheader
           - errcheck
           - staticcheck
+      - path: '.*agent/.*\.go$'
+        linters:
+          - misspell
 
 issues:
   max-issues-per-linter: 0

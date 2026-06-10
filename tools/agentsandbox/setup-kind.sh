@@ -7,10 +7,13 @@ NAMESPACE="${AGENTSCOPE_AGENT_SANDBOX_NAMESPACE:-default}"
 TEMPLATE="${AGENTSCOPE_AGENT_SANDBOX_TEMPLATE:-python-sandbox-template}"
 ROUTER_IMAGE="${AGENT_SANDBOX_ROUTER_IMAGE:-agentscope-agent-sandbox-router:${VERSION}}"
 RUNTIME_IMAGE="${AGENT_SANDBOX_RUNTIME_IMAGE:-agentscope-agent-sandbox-runtime:${VERSION}}"
+CONTROLLER_IMAGE="${AGENT_SANDBOX_CONTROLLER_IMAGE:-registry.k8s.io/agent-sandbox/agent-sandbox-controller:${VERSION}}"
+PRELOAD_CONTROLLER_IMAGE="${AGENT_SANDBOX_PRELOAD_CONTROLLER_IMAGE:-true}"
 BUILD_ROUTER_IMAGE="${AGENT_SANDBOX_BUILD_ROUTER_IMAGE:-true}"
 BUILD_RUNTIME_IMAGE="${AGENT_SANDBOX_BUILD_RUNTIME_IMAGE:-true}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tmpdir=""
+cluster_exists=false
 
 log() {
 	printf '\n[agent-sandbox-kind] %s\n' "$*"
@@ -116,10 +119,10 @@ if (bool_enabled "${BUILD_ROUTER_IMAGE}" || bool_enabled "${BUILD_RUNTIME_IMAGE}
 	exit 1
 fi
 
-log "using Agent Sandbox ${VERSION}; kind cluster=${CLUSTER}; namespace=${NAMESPACE}; template=${TEMPLATE}; router image=${ROUTER_IMAGE}; runtime image=${RUNTIME_IMAGE}"
+log "using Agent Sandbox ${VERSION}; kind cluster=${CLUSTER}; namespace=${NAMESPACE}; template=${TEMPLATE}; controller image=${CONTROLLER_IMAGE}; router image=${ROUTER_IMAGE}; runtime image=${RUNTIME_IMAGE}"
 kind version
 kubectl version --client=true
-if bool_enabled "${BUILD_ROUTER_IMAGE}" || bool_enabled "${BUILD_RUNTIME_IMAGE}"; then
+if bool_enabled "${PRELOAD_CONTROLLER_IMAGE}" || bool_enabled "${BUILD_ROUTER_IMAGE}" || bool_enabled "${BUILD_RUNTIME_IMAGE}"; then
 	docker version
 fi
 
@@ -127,6 +130,7 @@ if ! kind get clusters | grep -qx "${CLUSTER}"; then
 	log "creating kind cluster ${CLUSTER}"
 	kind create cluster --name "${CLUSTER}" --wait 60s
 else
+	cluster_exists=true
 	log "reusing kind cluster ${CLUSTER}"
 fi
 
@@ -137,9 +141,18 @@ kubectl get nodes -o wide
 log "creating namespace ${NAMESPACE}"
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
+if bool_enabled "${PRELOAD_CONTROLLER_IMAGE}"; then
+	log "preloading Agent Sandbox controller image ${CONTROLLER_IMAGE} into kind cluster ${CLUSTER}"
+	docker image inspect "${CONTROLLER_IMAGE}" >/dev/null 2>&1 || docker pull "${CONTROLLER_IMAGE}"
+	kind load docker-image "${CONTROLLER_IMAGE}" --name "${CLUSTER}"
+fi
+
 log "installing Agent Sandbox controller and extensions"
 kubectl apply -f "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/manifest.yaml"
 kubectl apply -f "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${VERSION}/extensions.yaml"
+if bool_enabled "${cluster_exists}"; then
+	kubectl -n agent-sandbox-system delete pods -l app=agent-sandbox-controller --ignore-not-found --wait=false
+fi
 
 log "waiting for Agent Sandbox controller deployments"
 kubectl -n agent-sandbox-system wait --for=condition=Available deploy --all --timeout=180s
