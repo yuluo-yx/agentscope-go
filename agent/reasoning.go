@@ -29,32 +29,43 @@ const (
 	thinkingDeltaBlock
 )
 
+// runReasoning is the entry point for the Reasoning phase in the ReAct loop,
+// responsible for invoking the LLM to obtain reasoning content.
 func (a *Agent) runReasoning(ctx context.Context, assistant *message.Message, emit func(message.Event) error) error {
+
+	// Non hook, directly exec.
 	if len(a.reasoningHooks) == 0 {
 		return a.reason(ctx, assistant, func(event message.Event) error {
 			return a.emitAndApply(assistant, event, emit)
 		})
 	}
+
 	hookCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
 	var finalCalled atomic.Bool
 	errs := make(chan error, 1)
 	final := func(ctx context.Context) (<-chan message.Event, error) {
 		finalCalled.Store(true)
 		events := make(chan message.Event)
 		go func() {
-			errs <- a.reason(ctx, assistant, func(event message.Event) error {
-				select {
-				case events <- event:
-					return nil
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			})
+			errs <- a.reason(
+				ctx,
+				assistant,
+				func(event message.Event) error {
+					select {
+					case events <- event:
+						return nil
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				})
 			close(events)
 		}()
+
 		return events, nil
 	}
+
 	events, err := a.applyReasoningHooks(hookCtx, HookInput{}, final)
 	if err != nil {
 		return err
@@ -73,21 +84,30 @@ func (a *Agent) runReasoning(ctx context.Context, assistant *message.Message, em
 			return nil
 		}
 	}
+
 	return nil
 }
 
+// reason is the actual execution function for the Reasoning phase — it interacts
+// directly with the LLM. The flow follows the standard four steps:
+//
+//	prepare → invoke → output → finalize.
 func (a *Agent) reason(ctx context.Context, _ *message.Message, emit func(message.Event) error) error {
+
 	if err := emit(message.NewModelCallStartEvent(a.state.ReplyID, a.model.Name())); err != nil {
 		return err
 	}
+
 	request, err := a.prepareModelInput(ctx)
 	if err != nil {
 		return err
 	}
+
 	responses, err := a.callModel(ctx, request)
 	if err != nil {
 		return err
 	}
+
 	response, err := a.emitChatResponseStream(responses, emit)
 	if err != nil {
 		return err
@@ -95,36 +115,44 @@ func (a *Agent) reason(ctx context.Context, _ *message.Message, emit func(messag
 	if response == nil {
 		return fmt.Errorf("agentscope: model returned nil response")
 	}
+
 	inputTokens, outputTokens := 0, 0
 	if response.Usage != nil {
 		inputTokens = response.Usage.InputTokens
 		outputTokens = response.Usage.OutputTokens
 	}
+
 	return emit(message.NewModelCallEndEvent(a.state.ReplyID, inputTokens, outputTokens))
 }
 
 func (a *Agent) prepareModelInput(ctx context.Context) (CallRequest, error) {
+
 	systemPrompt, err := a.buildSystemPrompt(ctx)
 	if err != nil {
 		return CallRequest{}, err
 	}
+
 	systemMsg, err := message.NewSystemMessage("system", systemPrompt)
 	if err != nil {
 		return CallRequest{}, err
 	}
+
 	messages := []*message.Message{systemMsg}
 	if summary := a.summaryMessage(); summary != nil {
 		messages = append(messages, summary)
 	}
+
 	for _, msg := range a.state.Context {
 		if msg != nil {
 			messages = append(messages, msg.Clone())
 		}
 	}
+
 	tools, err := a.effectiveToolProvider().ToolSchemas(a.activeGroups()...)
 	if err != nil {
 		return CallRequest{}, err
 	}
+
 	return CallRequest{Messages: messages, Tools: tools}, nil
 }
 
@@ -155,6 +183,7 @@ func (a *Agent) summaryMessage() *message.Message {
 }
 
 func (a *Agent) callModel(ctx context.Context, request CallRequest) (<-chan ChatResponse, error) {
+
 	models := []ChatModel{a.model}
 	if a.modelConfig.FallbackModel != nil {
 		models = append(models, a.modelConfig.FallbackModel)
@@ -192,25 +221,49 @@ func (a *Agent) callModel(ctx context.Context, request CallRequest) (<-chan Chat
 	return nil, lastErr
 }
 
+// State tracker used during LLM streaming response processing, responsible for
+// assembling fragmented LLM chunks into a structured event stream within
+// emitChatResponseStream.
 type modelStreamState struct {
-	textID       string
-	thinkingID   string
-	toolActive   map[string]bool
-	toolOrder    []string
-	seenText     bool
+
+	// Text content id, used to correlate streaming text deltas and determine when text blocks start and end.
+	textID string
+	// Thinking content id, used to correlate streaming thinking deltas and determine when thinking blocks start and end.
+	thinkingID string
+
+	// Tracks whether a start event has been emitted for each tool call ID
+	// (prevents duplicate start events).
+	toolActive map[string]bool
+	// Records the order in which tool calls appear, ensuring output order matches
+	// the LLM production order.
+	toolOrder []string
+
+	// Whether a text block has been processed
+	seenText bool
+	// Whether a thinking block has been processed
 	seenThinking bool
-	seenTools    map[string]bool
-	seenData     map[string]bool
-	emitted      bool
+	// Which tool call IDs have been seen
+	seenTools map[string]bool
+	// Which data block IDs have been seen
+	seenData map[string]bool
+
+	// Whether any event has been emitted, used to determine edge-case handling
+	// such as whether to send an empty reply.
+	emitted bool
 }
 
 type modelStreamChunkState struct {
+
+	//  Which tool call IDs have appeared.
 	currentTools map[string]bool
-	hasText      bool
-	hasThinking  bool
+	// Whether the content includes text.
+	hasText bool
+	// Whether the think content includes text.
+	hasThinking bool
 }
 
 func newModelStreamState() *modelStreamState {
+
 	return &modelStreamState{
 		toolActive: map[string]bool{},
 		seenTools:  map[string]bool{},
@@ -266,6 +319,7 @@ func (a *Agent) emitChatResponseChunk(response *ChatResponse, state *modelStream
 }
 
 func (a *Agent) emitStreamChunkBlock(block message.ContentBlock, state *modelStreamState, chunkState *modelStreamChunkState, emit func(message.Event) error) error {
+
 	switch typed := block.(type) {
 	case *message.TextBlock:
 		chunkState.hasText = true

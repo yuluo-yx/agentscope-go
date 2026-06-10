@@ -44,20 +44,33 @@ type AgentOption func(*Agent) error
 
 // Agent runs ReAct reasoning, permission checks, and tool calls.
 type Agent struct {
-	name              string
-	systemPrompt      string
-	model             ChatModel
+
+	// Agent name, agent ID.
+	name string
+	// Define Agent role and behavior.
+	systemPrompt string
+
+	// Runtime properties.
+	model ChatModel
+
 	toolkit           ToolProvider
 	middlewareTools   []Tool
 	middlewareToolkit ToolProvider
-	state             *AgentState
-	offloader         asworkspace.Offloader
 
-	modelConfig       ModelConfig
-	contextConfig     ContextConfig
-	reactConfig       ReActConfig
+	state *AgentState
+	// Workspace offloader, used to offload context to external storage and reload
+	// it on demand, in order to overcome context limits.
+	offloader asworkspace.Offloader
+
+	modelConfig ModelConfig
+	// Context management strategy (window size, truncation rules, etc.)
+	contextConfig ContextConfig
+	// ReAct loop configuration (max iterations, termination conditions, etc.)
+	reactConfig ReActConfig
+	// List of context strategies (e.g., summarization, truncation), sorted by priority.
 	contextStrategies []ContextStrategy
 
+	// Agent Hooks config, allow change agent behavior without changing core logic.
 	replyHooks           []ReplyHook
 	reasoningHooks       []ReasoningHook
 	actingHooks          []ActingHook
@@ -68,6 +81,7 @@ type Agent struct {
 
 // WithToolkit sets the toolkit used by the Agent.
 func WithToolkit(toolkit ToolProvider) AgentOption {
+
 	return func(agent *Agent) error {
 		if toolkit == nil {
 			return agenterrors.NewDeveloperError("agent toolkit is nil")
@@ -79,6 +93,7 @@ func WithToolkit(toolkit ToolProvider) AgentOption {
 
 // WithOffloader sets the offloader used for context, tool result, and DataBlock lifecycle.
 func WithOffloader(offloader asworkspace.Offloader) AgentOption {
+
 	return func(agent *Agent) error {
 		if offloader == nil {
 			return agenterrors.NewDeveloperError("agent offloader is nil")
@@ -90,63 +105,76 @@ func WithOffloader(offloader asworkspace.Offloader) AgentOption {
 
 // WithWorkspace initializes a workspace and wires instructions, tools, skills, MCPs, and offloader into the Agent.
 func WithWorkspace(ctx context.Context, workspace asworkspace.Workspace) AgentOption {
+
 	return func(agent *Agent) error {
 		resources, err := asworkspace.BuildAgentResources(ctx, workspace)
 		if err != nil {
 			return agenterrors.NewDeveloperError("invalid agent workspace", agenterrors.WithErrorCause(err))
 		}
+
 		agent.systemPrompt = appendSystemPrompt(agent.systemPrompt, resources.SystemPrompt)
 		agent.toolkit = resources.Toolkit
 		agent.offloader = resources.Offloader
+
 		return nil
 	}
 }
 
 // WithAgentResources wires prebuilt workspace resources into the Agent.
 func WithAgentResources(resources *asworkspace.AgentResources) AgentOption {
+
 	return func(agent *Agent) error {
 		if resources == nil {
 			return agenterrors.NewDeveloperError("agent resources are nil")
 		}
 		agent.systemPrompt = appendSystemPrompt(agent.systemPrompt, resources.SystemPrompt)
+
 		if resources.Toolkit != nil {
 			agent.toolkit = resources.Toolkit
 		}
 		if resources.Offloader != nil {
 			agent.offloader = resources.Offloader
 		}
+
 		return nil
 	}
 }
 
 // WithAgentState sets the initial Agent state.
 func WithAgentState(state *AgentState) AgentOption {
+
 	return func(agent *Agent) error {
 		if state == nil {
 			return agenterrors.NewDeveloperError("agent state is nil")
 		}
 		agent.state = state
+
 		return nil
 	}
 }
 
 // WithModelConfig sets model call configuration.
 func WithModelConfig(config ModelConfig) AgentOption {
+
 	return func(agent *Agent) error {
 		if err := config.Validate(); err != nil {
 			return agenterrors.NewDeveloperError("invalid model config", agenterrors.WithErrorCause(err))
 		}
+
 		agent.modelConfig = config
+
 		return nil
 	}
 }
 
 // WithContextConfig sets context management configuration.
 func WithContextConfig(config ContextConfig) AgentOption {
+
 	return func(agent *Agent) error {
 		if err := config.Validate(); err != nil {
 			return agenterrors.NewDeveloperError("invalid context config", agenterrors.WithErrorCause(err))
 		}
+
 		agent.contextConfig = config
 		return nil
 	}
@@ -154,12 +182,14 @@ func WithContextConfig(config ContextConfig) AgentOption {
 
 // WithContextStrategies replaces the default context compression strategy chain.
 func WithContextStrategies(strategies ...ContextStrategy) AgentOption {
+
 	return func(agent *Agent) error {
 		for _, strategy := range strategies {
 			if strategy == nil {
 				return agenterrors.NewDeveloperError("agent context strategy is nil")
 			}
 		}
+
 		agent.contextStrategies = append([]ContextStrategy(nil), strategies...)
 		return nil
 	}
@@ -167,10 +197,12 @@ func WithContextStrategies(strategies ...ContextStrategy) AgentOption {
 
 // WithReActConfig sets ReAct loop configuration.
 func WithReActConfig(config ReActConfig) AgentOption {
+
 	return func(agent *Agent) error {
 		if err := config.Validate(); err != nil {
 			return agenterrors.NewDeveloperError("invalid ReAct config", agenterrors.WithErrorCause(err))
 		}
+
 		agent.reactConfig = config
 		return nil
 	}
@@ -178,6 +210,7 @@ func WithReActConfig(config ReActConfig) AgentOption {
 
 // WithMiddlewares registers middleware values by the hook interfaces they implement.
 func WithMiddlewares(middlewares ...Middleware) AgentOption {
+
 	return func(agent *Agent) error {
 		for _, middleware := range middlewares {
 			if middleware == nil {
@@ -187,12 +220,14 @@ func WithMiddlewares(middlewares ...Middleware) AgentOption {
 				return err
 			}
 		}
+
 		return nil
 	}
 }
 
 // NewAgent creates an Agent.
 func NewAgent(name, systemPrompt string, model ChatModel, opts ...AgentOption) (*Agent, error) {
+
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, agenterrors.NewDeveloperError("agent name is empty")
@@ -200,6 +235,7 @@ func NewAgent(name, systemPrompt string, model ChatModel, opts ...AgentOption) (
 	if model == nil {
 		return nil, agenterrors.NewDeveloperError("agent model is nil")
 	}
+
 	agent := &Agent{
 		name:              name,
 		systemPrompt:      systemPrompt,
@@ -211,6 +247,7 @@ func NewAgent(name, systemPrompt string, model ChatModel, opts ...AgentOption) (
 		reactConfig:       DefaultReActConfig(),
 		contextStrategies: DefaultContextStrategies(),
 	}
+
 	for _, opt := range opts {
 		if opt == nil {
 			continue
@@ -219,12 +256,15 @@ func NewAgent(name, systemPrompt string, model ChatModel, opts ...AgentOption) (
 			return nil, err
 		}
 	}
+
 	return agent, nil
 }
 
 func appendSystemPrompt(base, extra string) string {
+
 	base = strings.TrimSpace(base)
 	extra = strings.TrimSpace(extra)
+
 	switch {
 	case base == "":
 		return extra
@@ -237,6 +277,7 @@ func appendSystemPrompt(base, extra string) string {
 
 // AgentName returns the Agent name.
 func (a *Agent) AgentName() string {
+
 	if a == nil {
 		return ""
 	}
@@ -245,6 +286,7 @@ func (a *Agent) AgentName() string {
 
 // AgentState returns the current Agent state.
 func (a *Agent) AgentState() *AgentState {
+
 	if a == nil {
 		return nil
 	}
@@ -253,39 +295,49 @@ func (a *Agent) AgentState() *AgentState {
 
 // ReplyStream runs one reply and yields events one by one.
 func (a *Agent) ReplyStream(ctx context.Context, input any, yield func(message.Event) error) error {
+
 	if a == nil {
 		return agenterrors.NewDeveloperError("agent is nil")
 	}
 	if yield == nil {
 		yield = func(message.Event) error { return nil }
 	}
+
+	// If no any hooks, exec.
 	if len(a.replyHooks) == 0 {
 		return a.runReply(ctx, input, yield)
 	}
+
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
 	events, streamErr, err := a.replyEventStream(streamCtx, input)
 	if err != nil {
 		return err
 	}
 	for event := range events {
+		// callback api, stop streaming if callback returns error.
 		if err := yield(event); err != nil {
 			cancel()
 			return err
 		}
 	}
+
 	return streamErr()
 }
 
 // Reply runs one reply and returns the current assistant message.
 func (a *Agent) Reply(ctx context.Context, input any) (*message.Message, error) {
+
 	if err := a.ReplyStream(ctx, input, nil); err != nil {
 		return nil, err
 	}
+
 	last := a.lastMessage()
 	if last == nil || last.Role != message.RoleAssistant || last.ID != a.state.ReplyID {
 		return nil, agenterrors.NewDeveloperError("agent did not produce a final assistant message")
 	}
+
 	return last.Clone(), nil
 }
 
@@ -293,6 +345,7 @@ func (a *Agent) Reply(ctx context.Context, input any) (*message.Message, error) 
 // starting a reply turn. Messages are appended to context; events are replayed
 // against the assistant message with the matching reply id.
 func (a *Agent) Observe(ctx context.Context, input any) error {
+
 	if a == nil {
 		return agenterrors.NewDeveloperError("agent is nil")
 	}
@@ -302,7 +355,10 @@ func (a *Agent) Observe(ctx context.Context, input any) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	switch value := input.(type) {
+	default:
+		return fmt.Errorf("agentscope: unsupported observe input %T", input)
 	case nil:
 		return nil
 	case *message.Message:
@@ -329,35 +385,45 @@ func (a *Agent) Observe(ctx context.Context, input any) error {
 			}
 		}
 		return nil
-	default:
-		return fmt.Errorf("agentscope: unsupported observe input %T", input)
 	}
 }
 
 func (a *Agent) replyEventStream(ctx context.Context, input any) (<-chan message.Event, func() error, error) {
+
 	var finalCalled atomic.Bool
+
+	// make channle, buffer 1 to avoid goroutine leak if final is called but runReply is not started yet.
 	errs := make(chan error, 1)
+
 	final := func(ctx context.Context) (<-chan message.Event, error) {
 		finalCalled.Store(true)
 		events := make(chan message.Event)
+
 		go func() {
-			errs <- a.runReply(ctx, input, func(event message.Event) error {
-				select {
-				case events <- event:
-					return nil
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			})
+			errs <- a.runReply(
+				ctx,
+				input,
+				func(event message.Event) error {
+					select {
+					case events <- event:
+						return nil
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				},
+			)
 			close(events)
 		}()
+
 		return events, nil
 	}
+
 	events, err := a.applyReplyHooks(ctx, HookInput{"input": input}, final)
 	if err != nil {
 		return nil, nil, err
 	}
-	return events, func() error {
+
+	returnFunc := func() error {
 		if !finalCalled.Load() {
 			return nil
 		}
@@ -367,10 +433,13 @@ func (a *Agent) replyEventStream(ctx context.Context, input any) (<-chan message
 		default:
 			return nil
 		}
-	}, nil
+	}
+
+	return events, returnFunc, nil
 }
 
 func (a *Agent) runReply(ctx context.Context, input any, emit func(message.Event) error) error {
+
 	if err := a.appendInput(input); err != nil {
 		return err
 	}
@@ -378,21 +447,26 @@ func (a *Agent) runReply(ctx context.Context, input any, emit func(message.Event
 		a.state.ReplyID = assistant.ID
 		return a.continueReply(ctx, assistant, emit)
 	}
+
 	a.state.ReplyID = utils.NewID()
 	a.state.CurIter = 0
+
 	assistant, err := message.NewAssistantMessage(a.name, nil, message.WithMessageID(a.state.ReplyID))
 	if err != nil {
 		return err
 	}
+
 	a.state.Context = append(a.state.Context, assistant)
 
 	if err := a.emitAndApply(assistant, message.NewReplyStartEvent(a.state.SessionID, a.state.ReplyID, a.name), emit); err != nil {
 		return err
 	}
+
 	return a.continueReply(ctx, assistant, emit)
 }
 
 func (a *Agent) continueReply(ctx context.Context, assistant *message.Message, emit func(message.Event) error) error {
+
 	for a.state.CurIter < a.reactConfig.MaxIters {
 		if err := a.CompressContext(ctx); err != nil {
 			return err
@@ -430,10 +504,15 @@ func (a *Agent) continueReply(ctx context.Context, assistant *message.Message, e
 		}
 		a.state.CurIter++
 	}
+
 	return a.emitAndApply(assistant, message.NewExceedMaxItersEvent(a.state.ReplyID, a.name), emit)
 }
 
+// Check whether the current conversation can resume from where it was interrupted,
+// allowing the Agent to continue processing unfinished tool calls from the previous
+// assistant message after the user grants permission or external tool results are returned.
 func (a *Agent) resumableAssistant() *message.Message {
+
 	last := a.lastMessage()
 	if last == nil || last.Role != message.RoleAssistant || last.Name != a.name {
 		return nil
@@ -441,11 +520,15 @@ func (a *Agent) resumableAssistant() *message.Message {
 	if len(pendingToolCalls(last)) == 0 {
 		return nil
 	}
+
 	return last
 }
 
 func (a *Agent) appendInput(input any) error {
+
 	switch value := input.(type) {
+	default:
+		return fmt.Errorf("agentscope: unsupported reply input %T", input)
 	case nil:
 		return nil
 	case *message.Message:
@@ -460,20 +543,21 @@ func (a *Agent) appendInput(input any) error {
 		return nil
 	case message.Event:
 		return a.applyIncomingEvent(value)
-	default:
-		return fmt.Errorf("agentscope: unsupported reply input %T", input)
 	}
 }
 
 func (a *Agent) applyIncomingEvent(event message.Event) error {
+
 	last := a.lastMessage()
 	if last == nil {
 		return fmt.Errorf("agentscope: cannot apply incoming event without context")
 	}
+
 	return a.applyIncomingEventToMessage(last, event)
 }
 
 func (a *Agent) observeMessage(msg *message.Message) error {
+
 	if msg == nil {
 		return nil
 	}
@@ -481,10 +565,12 @@ func (a *Agent) observeMessage(msg *message.Message) error {
 		return fmt.Errorf("agentscope: invalid observed message %q: role must be user or assistant and content must not contain tool calls, tool results or thinking blocks", msg.ID)
 	}
 	a.state.Context = append(a.state.Context, msg.Clone())
+
 	return nil
 }
 
 func (a *Agent) observeEvent(event message.Event) error {
+
 	if event == nil {
 		return nil
 	}
@@ -494,10 +580,12 @@ func (a *Agent) observeEvent(event message.Event) error {
 			return a.applyIncomingEventToMessage(msg, event)
 		}
 	}
+
 	return fmt.Errorf("agentscope: cannot apply observed event for reply %q without matching context message", event.ReplyID())
 }
 
 func (a *Agent) applyIncomingEventToMessage(target *message.Message, event message.Event) error {
+
 	if target == nil {
 		return fmt.Errorf("agentscope: cannot apply incoming event without context")
 	}
@@ -521,6 +609,7 @@ func (a *Agent) applyIncomingEventToMessage(target *message.Message, event messa
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -544,6 +633,7 @@ func (a *Agent) lastMessage() *message.Message {
 }
 
 func (a *Agent) registerMiddleware(ctx context.Context, middleware Middleware) error {
+
 	if typed, ok := middleware.(ReplyMiddleware); ok {
 		a.replyHooks = append(a.replyHooks, typed.OnReply)
 	}
