@@ -80,10 +80,10 @@ func TestOpenAICompatibleProviderPackagesUseProviderDefaults(t *testing.T) {
 		{
 			name: "zhipu",
 			new: func(baseURL string) (asmodel.ChatModel, error) {
-				return zhipu.NewChatModel(zhipu.NewCredential("test-key", zhipu.WithBaseURL(baseURL)), "glm-4.5-flash", zhipu.WithStream(false))
+				return zhipu.NewChatModel(zhipu.NewCredential("test-key", zhipu.WithBaseURL(baseURL)), "glm-5.1", zhipu.WithStream(false))
 			},
-			want:    "zhipu:glm-4.5-flash",
-			request: "glm-4.5-flash",
+			want:    "zhipu:glm-5.1",
+			request: "glm-5.1",
 		},
 	}
 
