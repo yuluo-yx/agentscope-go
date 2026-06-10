@@ -178,7 +178,7 @@ func testAgentSandboxWorkspaceBuiltinToolsLoop(ctx context.Context, opts pkgtest
 		{requestIndex: 6, name: "Grep", want: "verified line"},
 	}
 	for _, check := range checks {
-		result, err := onlyToolResultFromRequest(model.requests[check.requestIndex])
+		result, err := lastToolResultFromRequest(model.requests[check.requestIndex])
 		if err != nil {
 			return fmt.Errorf("request %d %s result: %w", check.requestIndex, check.name, err)
 		}
@@ -459,20 +459,21 @@ func agentSandboxOptions(hostWorkdir string) []agentsandboxworkspace.Option {
 	return opts
 }
 
-func onlyToolResultFromRequest(request modelpkg.CallRequest) (*message.ToolResultBlock, error) {
+func lastToolResultFromRequest(request modelpkg.CallRequest) (*message.ToolResultBlock, error) {
 	if len(request.Messages) == 0 {
 		return nil, fmt.Errorf("request has no messages")
 	}
-	last := request.Messages[len(request.Messages)-1]
-	blocks := last.GetContentBlocks("tool_result")
-	if len(blocks) != 1 {
-		return nil, fmt.Errorf("expected one tool result, got %d", len(blocks))
+	for msgIndex := len(request.Messages) - 1; msgIndex >= 0; msgIndex-- {
+		blocks := request.Messages[msgIndex].GetContentBlocks("tool_result")
+		for blockIndex := len(blocks) - 1; blockIndex >= 0; blockIndex-- {
+			result, ok := blocks[blockIndex].(*message.ToolResultBlock)
+			if !ok {
+				return nil, fmt.Errorf("tool_result block has unexpected type %T", blocks[blockIndex])
+			}
+			return result, nil
+		}
 	}
-	result, ok := blocks[0].(*message.ToolResultBlock)
-	if !ok {
-		return nil, fmt.Errorf("tool_result block has unexpected type %T", blocks[0])
-	}
-	return result, nil
+	return nil, fmt.Errorf("request has no tool result")
 }
 
 func runWorkspaceTool(ctx context.Context, kit *tool.Toolkit, name string, input map[string]any, state *asstate.AgentState) (*tool.ToolResponse, error) {
