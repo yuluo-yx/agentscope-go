@@ -21,6 +21,7 @@ import (
 )
 
 func (a *Agent) applyReplyHooks(ctx context.Context, input HookInput, final EventHandler) (<-chan message.Event, error) {
+
 	handler := final
 	for i := len(a.replyHooks) - 1; i >= 0; i-- {
 		hook := a.replyHooks[i]
@@ -29,6 +30,7 @@ func (a *Agent) applyReplyHooks(ctx context.Context, input HookInput, final Even
 			return hook(ctx, a, input, next)
 		}
 	}
+
 	return handler(ctx)
 }
 

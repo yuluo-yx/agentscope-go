@@ -30,5 +30,10 @@ func (*Profile) Setup(context.Context, *framework.SetupOptions) error {
 func (*Profile) Teardown(context.Context, *framework.TeardownOptions) error { return nil }
 
 func (*Profile) GetTestCases() []string {
-	return []string{"workspace-agent-sandbox-agent-loop"}
+	return []string{
+		"workspace-agent-sandbox-agent-loop",
+		"workspace-agent-sandbox-builtin-tools-loop",
+		"workspace-agent-sandbox-resource-lifecycle",
+		"workspace-agent-sandbox-tool-error-boundaries",
+	}
 }
