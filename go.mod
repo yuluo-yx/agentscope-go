@@ -11,7 +11,7 @@ require (
 	github.com/ollama/ollama v0.30.6
 	github.com/openai/openai-go v1.12.0
 	go.opentelemetry.io/otel v1.44.0
-	go.opentelemetry.io/otel/sdk v1.43.0
+	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	google.golang.org/genai v1.59.0
 	gopkg.in/yaml.v3 v3.0.1
