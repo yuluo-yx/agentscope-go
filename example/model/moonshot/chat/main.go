@@ -47,7 +47,7 @@ func chat() {
 	maxTokens := int64(256)
 
 	// create chatModel instance
-	chat := mustModel(dashscope.NewChatModel(
+	chat, err := dashscope.NewChatModel(
 		dashscope.NewCredential(cfg.APIKey),
 		cfg.Model,
 		dashscope.WithStream(false),
@@ -55,20 +55,29 @@ func chat() {
 			MaxTokens:   &maxTokens,
 			Temperature: &temperature,
 		}),
-	))
+	)
+	if err != nil {
+		panic(err)
+	}
 
 	// tools
-	kit := mustToolkit(tool.NewToolkit(weatherTool()))
+	kit, err := tool.NewToolkit(weatherTool())
+	if err != nil {
+		panic(err)
+	}
 	schemas, err := kit.ToolSchemas()
 	if err != nil {
 		panic(err)
 	}
 
 	// user prompt
-	visionMessage := mustMessage(message.NewUserMessage("user", message.ContentBlockList{
+	visionMessage, err := message.NewUserMessage("user", message.ContentBlockList{
 		message.NewTextBlock("Describe this image in one sentence."),
 		message.NewDataBlock(message.NewURLSource("https://example.com/sample.png", "image/png"), message.WithDataBlockName("sample.png")),
-	}))
+	})
+	if err != nil {
+		panic(err)
+	}
 	tokens, err := chat.CountTokens(asmodel.CallRequest{
 		Messages: []*message.Message{visionMessage},
 		Tools:    schemas,
@@ -91,7 +100,7 @@ func chat() {
 	}
 
 	ctx := context.Background()
-	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
+	liveMessage, err := message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go.")
 	response, err := chat.Call(ctx, asmodel.CallRequest{
 		Messages: []*message.Message{liveMessage},
 	})
@@ -102,9 +111,12 @@ func chat() {
 	if text := response.GetTextContent(); text != nil {
 		responseText = *text
 	}
-	fmt.Printf("dashscope_live=ok response=%q\n", shorten(responseText, 120))
+	fmt.Printf("dashscope_live=ok response=%q\n", responseText)
 
-	weatherMessage := mustMessage(message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？"))
+	weatherMessage, err := message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？")
+	if err != nil {
+		panic(err)
+	}
 	toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
 		Messages: []*message.Message{weatherMessage},
 		Tools:    schemas,
@@ -125,10 +137,16 @@ func chat() {
 		panic(err)
 	}
 
-	assistantMessage := mustMessage(message.NewAssistantMessage("assistant", toolCallResponse.Content))
-	toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
+	assistantMessage, err := message.NewAssistantMessage("assistant", toolCallResponse.Content)
+	if err != nil {
+		panic(err)
+	}
+	toolMessage, err := message.NewAssistantMessage("tool", message.ContentBlockList{
 		message.NewToolResultBlock(weatherCall.ID, weatherCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
-	}))
+	})
+	if err != nil {
+		panic(err)
+	}
 	weatherResponse, err := chat.Call(ctx, asmodel.CallRequest{
 		Messages: []*message.Message{weatherMessage, assistantMessage, toolMessage},
 	})
@@ -140,7 +158,7 @@ func chat() {
 	if text := weatherResponse.GetTextContent(); text != nil {
 		weatherText = *text
 	}
-	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(weatherText, 120))
+	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, weatherText)
 }
 
 func streamChat() {
@@ -149,7 +167,7 @@ func streamChat() {
 	temperature := 0.2
 	maxTokens := int64(256)
 
-	streamChat := mustModel(dashscope.NewChatModel(
+	streamChat, err := dashscope.NewChatModel(
 		dashscope.NewCredential(cfg.APIKey),
 		cfg.Model,
 		dashscope.WithStream(true),
@@ -157,20 +175,29 @@ func streamChat() {
 			MaxTokens:   &maxTokens,
 			Temperature: &temperature,
 		}),
-	))
+	)
+	if err != nil {
+		panic(err)
+	}
 
 	// tools
-	kit := mustToolkit(tool.NewToolkit(weatherTool()))
+	kit, err := tool.NewToolkit(weatherTool())
+	if err != nil {
+		panic(err)
+	}
 	schemas, err := kit.ToolSchemas()
 	if err != nil {
 		panic(err)
 	}
 
 	// user prompt
-	visionMessage := mustMessage(message.NewUserMessage("user", message.ContentBlockList{
+	visionMessage, err := message.NewUserMessage("user", message.ContentBlockList{
 		message.NewTextBlock("Describe this image in one sentence."),
 		message.NewDataBlock(message.NewURLSource("https://example.com/sample.png", "image/png"), message.WithDataBlockName("sample.png")),
-	}))
+	})
+	if err != nil {
+		panic(err)
+	}
 	tokens, err := streamChat.CountTokens(asmodel.CallRequest{
 		Messages: []*message.Message{visionMessage},
 		Tools:    schemas,
@@ -193,7 +220,10 @@ func streamChat() {
 	}
 
 	ctx := context.Background()
-	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
+	liveMessage, err := message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go.")
+	if err != nil {
+		panic(err)
+	}
 	responses, err := streamChat.Stream(ctx, asmodel.CallRequest{
 		Messages: []*message.Message{liveMessage},
 		Stream:   true,
@@ -214,18 +244,18 @@ func streamChat() {
 		}
 		if text != "" {
 			streamed.WriteString(text)
-			fmt.Printf("dashscope_stream_delta=%q\n", shorten(text, 60))
+			fmt.Printf("dashscope_stream_delta=%q\n", text)
 		}
 	}
 	if finalText == "" {
 		finalText = streamed.String()
 	}
-	fmt.Printf("dashscope_stream=ok response=%q\n", shorten(finalText, 120))
+	fmt.Printf("dashscope_stream=ok response=%q\n", finalText)
 }
 
 func weatherTool() *tool.FunctionTool {
 
-	return mustTool(tool.NewFunctionTool(
+	functionTool, err := tool.NewFunctionTool(
 		"GetWeather",
 		"Return weather for one city.",
 		map[string]any{
@@ -239,7 +269,12 @@ func weatherTool() *tool.FunctionTool {
 			return message.ContentBlockList{message.NewTextBlock("sunny")}, nil
 		},
 		tool.WithFunctionReadOnly(true),
-	))
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	return functionTool
 }
 
 func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {
@@ -249,41 +284,4 @@ func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {
 		}
 	}
 	return nil
-}
-
-func shorten(text string, limit int) string {
-	text = strings.TrimSpace(text)
-	runes := []rune(text)
-	if len(runes) <= limit {
-		return text
-	}
-	return string(runes[:limit]) + "..."
-}
-
-func mustModel(model asmodel.ChatModel, err error) asmodel.ChatModel {
-	if err != nil {
-		panic(err)
-	}
-	return model
-}
-
-func mustTool(tool *tool.FunctionTool, err error) *tool.FunctionTool {
-	if err != nil {
-		panic(err)
-	}
-	return tool
-}
-
-func mustToolkit(kit *tool.Toolkit, err error) *tool.Toolkit {
-	if err != nil {
-		panic(err)
-	}
-	return kit
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
 }
