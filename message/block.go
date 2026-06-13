@@ -22,9 +22,16 @@ import (
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
-// ContentBlock is the sealed interface for all message content blocks.
+// ContentBlock is a core abstraction in the messaging system.
+// It serves three responsibilities:
+//  1. Enforcing type safety.
+//  2. Defining the Type method used as a discriminator for JSON
+//     serialization and deserialization.
+//  3. Ensuring block updates in streaming events correctly
+//     identify the target block.
 type ContentBlock interface {
 	// BlockType returns the discriminator used for JSON encoding, decoding, and event replay.
+	// text, thinking, hint, tool_call, tool_result, data, etc.
 	BlockType() string
 	// BlockID returns the stable block identifier used by streaming events to update this block.
 	BlockID() string
@@ -50,6 +57,7 @@ func (l ContentBlockList) Clone() ContentBlockList {
 		}
 		out = append(out, block.Clone())
 	}
+
 	return out
 }
 
@@ -68,18 +76,27 @@ func (l ContentBlockList) HasContentBlocks(types ...string) bool {
 			}
 		}
 	}
+
 	return false
 }
 
 // GetTextContent returns concatenated TextBlock content, using "\n" as the default separator.
 func (l ContentBlockList) GetTextContent(separator ...string) *string {
-	sep := "\n"
+	// DefaultDelimiter is the default message delimiter used to
+	// assemble fragmented LLM responses into a complete output.
+	const defaultSep = "\n"
+
+	var (
+		sep     = defaultSep
+		builder strings.Builder
+		found   bool
+		out     string
+	)
+
 	if len(separator) > 0 {
 		sep = separator[0]
 	}
 
-	var builder strings.Builder
-	found := false
 	for _, block := range l {
 		text, ok := block.(*TextBlock)
 		if !ok || text == nil {
@@ -94,16 +111,21 @@ func (l ContentBlockList) GetTextContent(separator ...string) *string {
 	if !found {
 		return nil
 	}
-	out := builder.String()
+	out = builder.String()
+
 	return &out
 }
 
-// GetContentBlocks returns matching blocks, or a shallow copy of all blocks when no type is provided.
+// GetContentBlocks filters the message's content blocks by type.
+// When called with no arguments, it returns a copy of all blocks.
+// Supported types: tool_call, text, thinking, etc.
 func (l ContentBlockList) GetContentBlocks(types ...string) []ContentBlock {
 	if len(types) == 0 {
 		return append([]ContentBlock(nil), l...)
 	}
+
 	var out []ContentBlock
+
 	for _, block := range l {
 		if block == nil {
 			continue
@@ -115,6 +137,7 @@ func (l ContentBlockList) GetContentBlocks(types ...string) []ContentBlock {
 			}
 		}
 	}
+
 	return out
 }
 
@@ -128,80 +151,14 @@ func (l ContentBlockList) FindBlock(blockType, blockID string) ContentBlock {
 			return block
 		}
 	}
+
 	return nil
 }
 
-type TextBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-	ID   string `json:"id"`
-}
-
-type ThinkingBlock struct {
-	Type     string         `json:"type"`
-	Thinking string         `json:"thinking"`
-	ID       string         `json:"id"`
-	Extra    map[string]any `json:"-"`
-}
-
-type HintBlock struct {
-	Type   string           `json:"type"`
-	Hint   string           `json:"-"`
-	Blocks ContentBlockList `json:"-"`
-	ID     string           `json:"id"`
-	Source *string          `json:"source,omitempty"`
-}
-
-type ToolCallState string
-
-const (
-	ToolCallPending   ToolCallState = "pending"
-	ToolCallAsking    ToolCallState = "asking"
-	ToolCallAllowed   ToolCallState = "allowed"
-	ToolCallSubmitted ToolCallState = "submitted"
-	ToolCallFinished  ToolCallState = "finished"
-)
-
-type ToolCallBlock struct {
-	Type           string            `json:"type"`
-	ID             string            `json:"id"`
-	Name           string            `json:"name"`
-	Input          string            `json:"input"`
-	State          ToolCallState     `json:"state"`
-	SuggestedRules []permission.Rule `json:"suggested_rules"`
-	Extra          map[string]any    `json:"-"`
-}
-
-type ToolResultState string
-
-const (
-	ToolResultSuccess     ToolResultState = "success"
-	ToolResultError       ToolResultState = "error"
-	ToolResultInterrupted ToolResultState = "interrupted"
-	ToolResultDenied      ToolResultState = "denied"
-	ToolResultRunning     ToolResultState = "running"
-)
-
-type ToolResultBlock struct {
-	Type   string           `json:"type"`
-	ID     string           `json:"id"`
-	Name   string           `json:"name"`
-	Output ToolResultOutput `json:"output"`
-	State  ToolResultState  `json:"state"`
-}
-
-type ToolResultOutput struct {
-	Raw    string
-	Blocks ContentBlockList
-}
-
-type DataBlock struct {
-	Type   string     `json:"type"`
-	ID     string     `json:"id"`
-	Source DataSource `json:"source"`
-	Name   *string    `json:"name"`
-}
-
+// DataSource defines the interface for multimodal data sources
+// within a DataBlock. It has two implementations:
+//  1. Base64-encoded binary data.
+//  2. URL-based resources.
 type DataSource interface {
 	// SourceType returns the discriminator for the concrete data source representation.
 	SourceType() string
