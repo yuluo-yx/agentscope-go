@@ -64,6 +64,7 @@ func (m *Message) applyLifecycleEvent(event Event) bool {
 	default:
 		return false
 	}
+
 	return true
 }
 
@@ -101,6 +102,7 @@ func (m *Message) applyContentBlockEvent(event Event) bool {
 	default:
 		return false
 	}
+
 	return true
 }
 
@@ -116,6 +118,7 @@ func (m *Message) applyToolCallEvent(event Event) bool {
 	default:
 		return false
 	}
+
 	return true
 }
 
@@ -146,6 +149,7 @@ func (m *Message) applyToolResultEvent(event Event) bool {
 	default:
 		return false
 	}
+
 	return true
 }
 
@@ -162,12 +166,14 @@ func (m *Message) applyPermissionEvent(event Event) bool {
 	default:
 		return false
 	}
+
 	return true
 }
 
 func (m *Message) requireUserConfirm(toolCalls []*ToolCallBlock) {
 	for _, toolCall := range toolCalls {
 		if block, ok := m.FindBlock("tool_call", toolCall.ID).(*ToolCallBlock); ok {
+
 			block.State = ToolCallAsking
 			block.SuggestedRules = append([]permission.Rule(nil), toolCall.SuggestedRules...)
 		}
@@ -194,6 +200,7 @@ func (m *Message) requireExternalExecution(toolCalls []*ToolCallBlock) {
 		if toolCall == nil {
 			continue
 		}
+
 		if block, ok := m.FindBlock("tool_call", toolCall.ID).(*ToolCallBlock); ok {
 			block.State = ToolCallSubmitted
 		}
@@ -210,21 +217,25 @@ func (m *Message) applyExternalExecutionResults(results []*ToolResultBlock) {
 
 func appendToolResultText(block *ToolResultBlock, delta string) {
 	ensureToolResultBlocks(block)
+
 	if len(block.Output.Blocks) == 0 || block.Output.Blocks[len(block.Output.Blocks)-1].BlockType() != "text" {
 		block.Output.Blocks = append(block.Output.Blocks, NewTextBlock(delta))
 		return
 	}
+
 	block.Output.Blocks[len(block.Output.Blocks)-1].(*TextBlock).Text += delta
 }
 
 func appendToolResultData(block *ToolResultBlock, event *ToolResultDataDeltaEvent) {
 	ensureToolResultBlocks(block)
 	var source DataSource
+
 	if event.Data != "" {
 		source = NewBase64Source(event.Data, event.MediaType)
 	} else {
 		source = NewURLSource(event.URL, event.MediaType)
 	}
+
 	block.Output.Blocks = append(block.Output.Blocks, &DataBlock{Type: "data", ID: event.BlockID, Source: source})
 }
 
@@ -232,6 +243,7 @@ func ensureToolResultBlocks(block *ToolResultBlock) {
 	if block.Output.Blocks != nil {
 		return
 	}
+
 	block.Output.Blocks = ContentBlockList{}
 	if block.Output.Raw != "" {
 		block.Output.Blocks = append(block.Output.Blocks, NewTextBlock(block.Output.Raw))
@@ -241,13 +253,16 @@ func ensureToolResultBlocks(block *ToolResultBlock) {
 
 func hintBlockFromEvent(event *HintBlockEvent) *HintBlock {
 	var block *HintBlock
+
 	if event.Blocks != nil {
 		block = NewHintBlock(event.Blocks, WithHintBlockID(event.BlockID))
 	} else {
 		block = NewHintBlock(event.Hint, WithHintBlockID(event.BlockID))
 	}
+
 	if event.Source != nil {
 		block.Source = cloneString(*event.Source)
 	}
+
 	return block
 }
