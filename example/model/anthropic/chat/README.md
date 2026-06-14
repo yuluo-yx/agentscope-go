@@ -11,6 +11,7 @@ This example shows live Anthropic `ChatModel` usage:
 - Use the SDK default Anthropic API base URL, or override it with `AI_ANTHROPIC_BASE_URL`.
 - Run a local token estimate without making a network request.
 - When an API key is set, run a real non-streaming `ChatModel.Call`.
+- When an API key is set, run a real tool-call round trip with a local `GetWeather` tool.
 - When an API key is set, run a real streaming `ChatModel.Stream` and print streamed deltas.
 
 ## Prerequisites
@@ -41,10 +42,10 @@ Choose a model:
 AI_ANTHROPIC_MODEL=claude-sonnet-4-5 AI_ANTHROPIC_API_KEY=your-key go run .
 ```
 
-Override the base URL:
+Override the base URL for a proxy endpoint:
 
 ```bash
-AI_ANTHROPIC_BASE_URL=https://api.anthropic.com AI_ANTHROPIC_API_KEY=your-key go run .
+AI_ANTHROPIC_BASE_URL=https://your-proxy.example.com AI_ANTHROPIC_API_KEY=your-key go run .
 ```
 
 ## Expected Output
@@ -59,5 +60,6 @@ Live success output includes:
 
 ```text
 anthropic_live=ok
+anthropic_weather=ok
 anthropic_stream=ok
 ```

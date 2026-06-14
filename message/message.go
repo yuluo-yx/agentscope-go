@@ -34,14 +34,24 @@ type Usage struct {
 }
 
 type Message struct {
-	Name       string           `json:"name"`
-	Content    ContentBlockList `json:"content"`
-	Role       Role             `json:"role"`
-	ID         string           `json:"id"`
-	Metadata   map[string]any   `json:"metadata,omitempty"`
-	CreatedAt  string           `json:"created_at"`
-	FinishedAt *string          `json:"finished_at,omitempty"`
-	Usage      *Usage           `json:"usage,omitempty"`
+	// Name identifies the message sender (e.g. agent name, "user", "tool").
+	// Unlike Role which is a semantic category, Name distinguishes individual senders within the same role.
+	Name string `json:"name"`
+	// Content holds the ordered list of content blocks that make up this message.
+	Content ContentBlockList `json:"content"`
+	// Role is the semantic role of the message sender: user, assistant, or system.
+	Role Role `json:"role"`
+	// ID is a globally unique identifier for this message, generated at creation time.
+	ID string `json:"id"`
+	// Metadata carries arbitrary key-value pairs attached to the message for extensibility.
+	Metadata map[string]any `json:"metadata,omitempty"`
+	// CreatedAt records when the message was created in ISO 8601 format.
+	CreatedAt string `json:"created_at"`
+	// FinishedAt records when the message was fully completed (e.g. streaming ended).
+	// Nil for in-progress assistant messages; always set for user and system messages.
+	FinishedAt *string `json:"finished_at,omitempty"`
+	// Usage tracks token consumption for assistant messages produced by model calls.
+	Usage *Usage `json:"usage,omitempty"`
 }
 
 type MessageOption func(*Message)
@@ -176,6 +186,7 @@ func (m *Message) Validate() error {
 	default:
 		return fmt.Errorf("message: unsupported role %q", m.Role)
 	}
+
 	return nil
 }
 
@@ -183,6 +194,7 @@ func (m *Message) HasContentBlocks(types ...string) bool {
 	if m == nil {
 		return false
 	}
+
 	return m.Content.HasContentBlocks(types...)
 }
 
@@ -190,6 +202,7 @@ func (m *Message) GetTextContent(separator ...string) *string {
 	if m == nil {
 		return nil
 	}
+
 	return m.Content.GetTextContent(separator...)
 }
 
@@ -197,6 +210,7 @@ func (m *Message) GetContentBlocks(types ...string) []ContentBlock {
 	if m == nil {
 		return nil
 	}
+
 	return m.Content.GetContentBlocks(types...)
 }
 
@@ -204,6 +218,7 @@ func (m *Message) FindBlock(blockType, blockID string) ContentBlock {
 	if m == nil {
 		return nil
 	}
+
 	return m.Content.FindBlock(blockType, blockID)
 }
 
@@ -211,6 +226,7 @@ func (m *Message) Clone() *Message {
 	cp := *m
 	cp.Metadata = utils.CloneAnyMap(m.Metadata)
 	cp.Content = cloneContent(m.Content)
+
 	if m.FinishedAt != nil {
 		finishedAt := *m.FinishedAt
 		cp.FinishedAt = &finishedAt
@@ -219,6 +235,7 @@ func (m *Message) Clone() *Message {
 		usage := *m.Usage
 		cp.Usage = &usage
 	}
+
 	return &cp
 }
 
@@ -231,7 +248,7 @@ func toBlocks(content any) ([]ContentBlock, error) {
 	case []ContentBlock:
 		return value, nil
 	case ContentBlockList:
-		return []ContentBlock(value), nil
+		return value, nil
 	case []*TextBlock:
 		blocks := make([]ContentBlock, 0, len(value))
 		for _, block := range value {
@@ -247,9 +264,11 @@ func cloneContent(blocks []ContentBlock) ContentBlockList {
 	if blocks == nil {
 		return nil
 	}
+
 	out := make(ContentBlockList, 0, len(blocks))
 	for _, block := range blocks {
 		out = append(out, block.Clone())
 	}
+
 	return out
 }

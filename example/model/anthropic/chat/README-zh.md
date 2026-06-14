@@ -11,6 +11,7 @@
 - 默认使用 SDK 内置的 Anthropic API base URL，可用 `AI_ANTHROPIC_BASE_URL` 覆盖。
 - 未发起网络请求时先做本地 token 估算。
 - 设置 API Key 后真实运行非流式 `ChatModel.Call`。
+- 设置 API Key 后真实运行带本地 `GetWeather` 工具的 tool-call 往返。
 - 设置 API Key 后真实运行流式 `ChatModel.Stream` 并输出流式增量。
 
 ## 前置条件
@@ -41,10 +42,10 @@ AI_ANTHROPIC_API_KEY=your-key go run .
 AI_ANTHROPIC_MODEL=claude-sonnet-4-5 AI_ANTHROPIC_API_KEY=your-key go run .
 ```
 
-覆盖 base URL：
+使用中转站或自定义 base URL：
 
 ```bash
-AI_ANTHROPIC_BASE_URL=https://api.anthropic.com AI_ANTHROPIC_API_KEY=your-key go run .
+AI_ANTHROPIC_BASE_URL=https://your-proxy.example.com AI_ANTHROPIC_API_KEY=your-key go run .
 ```
 
 ## 预期输出
@@ -59,5 +60,6 @@ anthropic_live=skipped
 
 ```text
 anthropic_live=ok
+anthropic_weather=ok
 anthropic_stream=ok
 ```

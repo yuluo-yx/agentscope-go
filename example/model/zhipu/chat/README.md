@@ -11,6 +11,7 @@ This example shows live Zhipu AI `ChatModel` usage:
 - Use the default base URL `https://open.bigmodel.cn/api/paas/v4`, or override it with `AI_ZHIPU_BASE_URL`.
 - Run a local token estimate without making a network request.
 - When an API key is set, run a real non-streaming `ChatModel.Call`.
+- When an API key is set, run a real tool-call round trip with a local `GetWeather` tool.
 - When an API key is set, run a real streaming `ChatModel.Stream` and print streamed deltas.
 
 ## Prerequisites
@@ -41,10 +42,10 @@ Choose a model:
 AI_ZHIPU_MODEL=glm-5.1 AI_ZHIPU_API_KEY=your-key go run .
 ```
 
-Override the base URL:
+Override the base URL for a proxy endpoint:
 
 ```bash
-AI_ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4 AI_ZHIPU_API_KEY=your-key go run .
+AI_ZHIPU_BASE_URL=https://your-proxy.example.com/api/paas/v4 AI_ZHIPU_API_KEY=your-key go run .
 ```
 
 ## Expected Output
@@ -59,5 +60,6 @@ Live success output includes:
 
 ```text
 zhipu_live=ok
+zhipu_weather=ok
 zhipu_stream=ok
 ```

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package modelconfig provides shared model runtime configuration for examples.
 package modelconfig
 
 import (
@@ -28,11 +27,6 @@ type DashScopeConfig struct {
 }
 
 // DashScope resolves example model settings from unified environment variables.
-//
-// Priority:
-// 1) AI_DASHSCOPE_API_KEY / AI_DASHSCOPE_MODEL
-// 2) AI_API_KEY / AI_MODEL
-// 3) demo defaults for offline examples
 func DashScope(defaultModel string) DashScopeConfig {
 	apiKey := firstEnv("AI_DASHSCOPE_API_KEY", "AI_API_KEY")
 	model := firstEnv("AI_DASHSCOPE_MODEL", "AI_MODEL")
@@ -51,10 +45,9 @@ func DashScope(defaultModel string) DashScopeConfig {
 	return cfg
 }
 
-func firstEnv(names ...string) string {
-	for _, name := range names {
-		value := strings.TrimSpace(os.Getenv(name))
-		if value != "" {
+func firstEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 			return value
 		}
 	}

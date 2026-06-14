@@ -14,11 +14,14 @@
 
 package agent
 
-import "fmt"
+import (
+	"fmt"
+)
 
-const defaultCompressionPrompt = "<system-hint>You have been working on the task described above but have not yet completed it. Now write a continuation summary that will allow you to resume work efficiently in a future context window where the conversation history will be replaced with this summary. Your summary should be structured, concise, and actionable.</system-hint>"
-
-const defaultSummaryTemplate = "<system-info>Here is a summary of your previous work\n# Task Overview\n{task_overview}\n\n# Current State\n{current_state}\n\n# Important Discoveries\n{important_discoveries}\n\n# Next Steps\n{next_steps}\n\n# Context to Preserve\n{context_to_preserve}</system-info>"
+const (
+	defaultCompressionPrompt = "<system-hint>You have been working on the task described above but have not yet completed it. Now write a continuation summary that will allow you to resume work efficiently in a future context window where the conversation history will be replaced with this summary. Your summary should be structured, concise, and actionable.</system-hint>"
+	defaultSummaryTemplate   = "<system-info>Here is a summary of your previous work\n# Task Overview\n{task_overview}\n\n# Current State\n{current_state}\n\n# Important Discoveries\n{important_discoveries}\n\n# Next Steps\n{next_steps}\n\n# Context to Preserve\n{context_to_preserve}</system-info>"
+)
 
 // ContextConfig controls context compression thresholds, retention, and summaries.
 type ContextConfig struct {
@@ -33,6 +36,7 @@ type ContextConfig struct {
 
 // DefaultContextConfig returns context defaults aligned with the Python version.
 func DefaultContextConfig() ContextConfig {
+
 	return ContextConfig{
 		TriggerRatio:      0.8,
 		ReserveRatio:      0.1,

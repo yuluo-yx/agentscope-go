@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// StreamingEvent defines the event model for streaming data
+// produced during an Agent's execution in stream mode.
+
 package message
 
 import (

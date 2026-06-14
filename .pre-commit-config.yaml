@@ -25,6 +25,8 @@ repos:
     hooks:
       - id: golangci-lint
         args:
+          # 官方 hook 默认带 --fix；提交检查只报告问题，避免与未暂存改动冲突。
+          - --fix=false
           - --config=tools/linter/go/.golangci.yml
           - --timeout=5m
 

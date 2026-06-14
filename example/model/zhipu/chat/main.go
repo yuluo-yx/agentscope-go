@@ -23,6 +23,8 @@ import (
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/zhipu"
+	asstate "github.com/yuluo-yx/agentscope-go/state"
+	"github.com/yuluo-yx/agentscope-go/tool"
 )
 
 func main() {
@@ -35,22 +37,20 @@ func main() {
 
 func chat() {
 	cfg := modelconfig.Zhipu("glm-5.1")
-	temperature := 0.2
-	maxTokens := int64(256)
+	chat := newZhipuModel(cfg, false)
 
-	chat := mustModel(zhipu.NewChatModel(
-		zhipuCredential(cfg),
-		cfg.Model,
-		zhipu.WithStream(false),
-		zhipu.WithChatParameters(zhipu.ChatParameters{
-			MaxTokens:   &maxTokens,
-			Temperature: &temperature,
-		}),
-	))
+	kit, err := tool.NewToolkit(weatherTool())
+	if err != nil {
+		panic(err)
+	}
+	schemas, err := kit.ToolSchemas()
+	if err != nil {
+		panic(err)
+	}
 
-	user := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
-	request := asmodel.CallRequest{Messages: []*message.Message{user}}
-	tokens, err := chat.CountTokens(request)
+	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
+	liveRequest := asmodel.CallRequest{Messages: []*message.Message{liveMessage}}
+	tokens, err := chat.CountTokens(liveRequest)
 	if err != nil {
 		panic(err)
 	}
@@ -61,31 +61,47 @@ func chat() {
 		return
 	}
 
-	response, err := chat.Call(context.Background(), request)
+	ctx := context.Background()
+	response, err := chat.Call(ctx, liveRequest)
 	if err != nil {
 		panic(err)
 	}
-	responseText := ""
-	if text := response.GetTextContent(); text != nil {
-		responseText = *text
+	fmt.Printf("zhipu_live=ok response=%q\n", shorten(textContent(response), 120))
+
+	weatherMessage := mustMessage(message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？"))
+	toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
+		Messages: []*message.Message{weatherMessage},
+		Tools:    schemas,
+	})
+	if err != nil {
+		panic(err)
 	}
-	fmt.Printf("zhipu_live=ok response=%q\n", shorten(responseText, 120))
+	weatherCall := firstToolCall(toolCallResponse.Content)
+	if weatherCall == nil {
+		panic(fmt.Sprintf("zhipu weather request returned no tool call: %q", shorten(textContent(toolCallResponse), 120)))
+	}
+	toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
+	if err != nil {
+		panic(err)
+	}
+
+	assistantMessage := mustMessage(message.NewAssistantMessage("assistant", toolCallResponse.Content))
+	toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
+		message.NewToolResultBlock(weatherCall.ID, weatherCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
+	}))
+	weatherResponse, err := chat.Call(ctx, asmodel.CallRequest{
+		Messages: []*message.Message{weatherMessage, assistantMessage, toolMessage},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("zhipu_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(textContent(weatherResponse), 120))
 }
 
 func streamChat() {
 	cfg := modelconfig.Zhipu("glm-5.1")
-	temperature := 0.2
-	maxTokens := int64(256)
-
-	streamChat := mustModel(zhipu.NewChatModel(
-		zhipuCredential(cfg),
-		cfg.Model,
-		zhipu.WithStream(true),
-		zhipu.WithChatParameters(zhipu.ChatParameters{
-			MaxTokens:   &maxTokens,
-			Temperature: &temperature,
-		}),
-	))
+	streamChat := newZhipuModel(cfg, true)
 
 	user := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
 	request := asmodel.CallRequest{Messages: []*message.Message{user}, Stream: true}
@@ -110,10 +126,7 @@ func streamChat() {
 		if response.Error != nil {
 			panic(response.Error)
 		}
-		text := ""
-		if responseText := response.GetTextContent(); responseText != nil {
-			text = *responseText
-		}
+		text := textContent(&response)
 		if response.IsLast {
 			finalText = text
 			continue
@@ -129,6 +142,25 @@ func streamChat() {
 	fmt.Printf("zhipu_stream=ok response=%q\n", shorten(finalText, 120))
 }
 
+func newZhipuModel(cfg modelconfig.ZhipuConfig, stream bool) asmodel.ChatModel {
+	temperature := 0.2
+	maxTokens := int64(256)
+
+	chat, err := zhipu.NewChatModel(
+		zhipuCredential(cfg),
+		cfg.Model,
+		zhipu.WithStream(stream),
+		zhipu.WithChatParameters(zhipu.ChatParameters{
+			MaxTokens:   &maxTokens,
+			Temperature: &temperature,
+		}),
+	)
+	if err != nil {
+		panic(err)
+	}
+	return chat
+}
+
 func zhipuCredential(cfg modelconfig.ZhipuConfig) zhipu.Credential {
 	if strings.TrimSpace(cfg.BaseURL) == "" {
 		return zhipu.NewCredential(cfg.APIKey)
@@ -136,11 +168,35 @@ func zhipuCredential(cfg modelconfig.ZhipuConfig) zhipu.Credential {
 	return zhipu.NewCredential(cfg.APIKey, zhipu.WithBaseURL(cfg.BaseURL))
 }
 
-func mustModel(model asmodel.ChatModel, err error) asmodel.ChatModel {
+func weatherTool() *tool.FunctionTool {
+	functionTool, err := tool.NewFunctionTool(
+		"GetWeather",
+		"Return weather for one city.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"city": map[string]any{"type": "string", "description": "City name."},
+			},
+			"required": []any{"city"},
+		},
+		func(context.Context, map[string]any, *asstate.AgentState) (message.ContentBlockList, error) {
+			return message.ContentBlockList{message.NewTextBlock("sunny")}, nil
+		},
+		tool.WithFunctionReadOnly(true),
+	)
 	if err != nil {
 		panic(err)
 	}
-	return model
+	return functionTool
+}
+
+func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {
+	for _, block := range blocks {
+		if toolCall, ok := block.(*message.ToolCallBlock); ok {
+			return toolCall
+		}
+	}
+	return nil
 }
 
 func mustMessage(msg *message.Message, err error) *message.Message {
@@ -148,6 +204,16 @@ func mustMessage(msg *message.Message, err error) *message.Message {
 		panic(err)
 	}
 	return msg
+}
+
+func textContent(response *asmodel.ChatResponse) string {
+	if response == nil {
+		return ""
+	}
+	if text := response.GetTextContent(); text != nil {
+		return *text
+	}
+	return ""
 }
 
 func shorten(value string, limit int) string {
