@@ -31,6 +31,8 @@ import (
 	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
 )
 
+const mcpSchemaObjectType = "object"
+
 func TestClientConfigValidationSnapshotsAndHelpers(t *testing.T) {
 	if validateStdioConfig(StdioConfig{}) == nil {
 		t.Fatal("empty stdio command should be rejected")
@@ -162,7 +164,7 @@ func TestToolMetadataRulesErrorsAndContentConversion(t *testing.T) {
 	}
 	schema := wrapped.InputSchema()
 	schema["type"] = "changed"
-	if wrapped.InputSchema()["type"] != "object" {
+	if wrapped.InputSchema()["type"] != mcpSchemaObjectType {
 		t.Fatal("InputSchema should return a clone")
 	}
 	decision, err := wrapped.CheckPermissions(context.Background(), nil, permission.NewContext(permission.ModeDefault))
@@ -239,7 +241,7 @@ func TestToolMetadataRulesErrorsAndContentConversion(t *testing.T) {
 	if got := embeddedResourceBlocks(nil); len(got) != 0 {
 		t.Fatalf("unknown embedded resource should be ignored: %#v", got)
 	}
-	if got := inputSchemaMap(gomcp.Tool{RawInputSchema: json.RawMessage(`not-json`)}); got["type"] != "object" || got["properties"] == nil || got["required"] == nil {
+	if got := inputSchemaMap(gomcp.Tool{RawInputSchema: json.RawMessage(`not-json`)}); got["type"] != mcpSchemaObjectType || got["properties"] == nil || got["required"] == nil {
 		t.Fatalf("invalid raw input schema should fall back to object schema: %#v", got)
 	}
 	if got := jsonString(make(chan int)); !strings.Contains(got, "0x") {

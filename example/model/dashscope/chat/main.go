@@ -20,7 +20,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
@@ -42,19 +41,15 @@ func main() {
 // chat. chat method use case.
 func chat() {
 
-	// get apiKey and set some params.
-	cfg := modelconfig.DashScope("qwen3.7-max")
-	temperature := 0.2
-	maxTokens := int64(256)
-
 	// create chatModel instance
 	chat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
+		// tips: need update.
+		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		"qwen3.7-max",
 		dashscope.WithStream(false),
 		dashscope.WithChatParameters(dashscope.ChatParameters{
-			MaxTokens:   &maxTokens,
-			Temperature: &temperature,
+			MaxTokens:   func() *int64 { v := int64(1000); return &v }(),
+			Temperature: func() *float64 { v := 0.0; return &v }(),
 		}),
 	))
 
@@ -86,10 +81,6 @@ func chat() {
 		len(visionMessage.Content),
 		tokens,
 	)
-	if !cfg.Live {
-		fmt.Println("dashscope_live=skipped")
-		return
-	}
 
 	ctx := context.Background()
 	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
@@ -146,17 +137,14 @@ func chat() {
 
 func streamChat() {
 
-	cfg := modelconfig.DashScope("qwen3.7-max")
-	temperature := 0.2
-	maxTokens := int64(256)
-
 	streamChat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
+		// tips: need update.
+		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		"qwen3.7-max",
 		dashscope.WithStream(true),
 		dashscope.WithChatParameters(dashscope.ChatParameters{
-			MaxTokens:   &maxTokens,
-			Temperature: &temperature,
+			MaxTokens:   func() *int64 { v := int64(1000); return &v }(),
+			Temperature: func() *float64 { v := 0.0; return &v }(),
 		}),
 	))
 
@@ -188,10 +176,6 @@ func streamChat() {
 		len(visionMessage.Content),
 		tokens,
 	)
-	if !cfg.Live {
-		fmt.Println("dashscope_live=skipped")
-		return
-	}
 
 	ctx := context.Background()
 	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
@@ -241,24 +225,6 @@ func weatherTool() *tool.FunctionTool {
 		},
 		tool.WithFunctionReadOnly(true),
 	))
-}
-
-func textContent(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
-}
-
-func getenv(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
 }
 
 func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {
