@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package agent
+package team
 
 import (
 	"context"
@@ -20,8 +20,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/yuluo-yx/agentscope-go/agent"
 	agenterrors "github.com/yuluo-yx/agentscope-go/errors"
 	"github.com/yuluo-yx/agentscope-go/message"
+	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/permission"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	astool "github.com/yuluo-yx/agentscope-go/tool"
@@ -41,7 +43,7 @@ const (
 // TeamWorkerRequest describes a worker requested by AgentCreate.
 type TeamWorkerRequest struct {
 	Team           TeamSnapshot
-	Leader         *Agent
+	Leader         *agent.Agent
 	Name           string
 	Description    string
 	Prompt         string
@@ -50,18 +52,18 @@ type TeamWorkerRequest struct {
 }
 
 // TeamWorkerFactory creates a worker agent for AgentCreate.
-type TeamWorkerFactory func(context.Context, TeamWorkerRequest) (*Agent, error)
+type TeamWorkerFactory func(context.Context, TeamWorkerRequest) (*agent.Agent, error)
 
-// TeamManagerOption configures a TeamManager.
-type TeamManagerOption func(*TeamManager)
+// ManagerOption configures a Manager.
+type ManagerOption func(*Manager)
 
-// TeamManager stores process-local team membership and inbox messages.
-type TeamManager struct {
+// Manager stores process-local team membership and inbox messages.
+type Manager struct {
 	mu sync.Mutex
 
 	workerFactory TeamWorkerFactory
-	workerModel   ChatModel
-	workerOptions []AgentOption
+	workerModel   asmodel.ChatModel
+	workerOptions []agent.AgentOption
 
 	participants map[string]*teamParticipant
 	teams        map[string]*teamRecord
@@ -69,13 +71,23 @@ type TeamManager struct {
 	inbox        map[string][]*message.Message
 }
 
+// TeamManager is kept for compatibility with earlier examples.
+//
+// Deprecated: use Manager.
+type TeamManager = Manager
+
+// TeamManagerOption is kept for compatibility with earlier examples.
+//
+// Deprecated: use ManagerOption.
+type TeamManagerOption = ManagerOption
+
 type teamParticipant struct {
 	ID          string
 	Name        string
 	Description string
 	Role        TeamRole
 	SessionID   string
-	Agent       *Agent
+	Agent       *agent.Agent
 }
 
 type teamRecord struct {
@@ -105,29 +117,29 @@ type TeamMemberSnapshot struct {
 }
 
 // WithTeamWorkerFactory sets the worker factory used by AgentCreate.
-func WithTeamWorkerFactory(factory TeamWorkerFactory) TeamManagerOption {
-	return func(manager *TeamManager) {
+func WithTeamWorkerFactory(factory TeamWorkerFactory) ManagerOption {
+	return func(manager *Manager) {
 		manager.workerFactory = factory
 	}
 }
 
 // WithTeamWorkerModel sets the model used by the default worker factory.
-func WithTeamWorkerModel(model ChatModel) TeamManagerOption {
-	return func(manager *TeamManager) {
+func WithTeamWorkerModel(model asmodel.ChatModel) ManagerOption {
+	return func(manager *Manager) {
 		manager.workerModel = model
 	}
 }
 
 // WithTeamWorkerOptions sets options appended by the default worker factory.
-func WithTeamWorkerOptions(opts ...AgentOption) TeamManagerOption {
-	return func(manager *TeamManager) {
-		manager.workerOptions = append([]AgentOption(nil), opts...)
+func WithTeamWorkerOptions(opts ...agent.AgentOption) ManagerOption {
+	return func(manager *Manager) {
+		manager.workerOptions = append([]agent.AgentOption(nil), opts...)
 	}
 }
 
-// NewTeamManager creates a process-local team manager.
-func NewTeamManager(opts ...TeamManagerOption) *TeamManager {
-	manager := &TeamManager{
+// NewManager creates a process-local team manager.
+func NewManager(opts ...ManagerOption) *Manager {
+	manager := &Manager{
 		participants: map[string]*teamParticipant{},
 		teams:        map[string]*teamRecord{},
 		sessionTeams: map[string]string{},
@@ -141,46 +153,46 @@ func NewTeamManager(opts ...TeamManagerOption) *TeamManager {
 	return manager
 }
 
-// WithTeam registers an agent with a TeamManager and attaches team tools.
-func WithTeam(manager *TeamManager, role TeamRole) AgentOption {
-	return func(agent *Agent) error {
+// NewTeamManager creates a process-local team manager.
+//
+// Deprecated: use NewManager.
+func NewTeamManager(opts ...ManagerOption) *Manager {
+	return NewManager(opts...)
+}
+
+// WithTeam registers an agent with a Manager and attaches team tools.
+func WithTeam(manager *Manager, role TeamRole) agent.AgentOption {
+	return func(agentValue *agent.Agent) error {
 		if manager == nil {
 			return agenterrors.NewDeveloperError("agent team manager is nil")
 		}
-		if err := manager.RegisterAgent(agent, role, ""); err != nil {
+		if err := manager.RegisterAgent(agentValue, role, ""); err != nil {
 			return err
 		}
 		kit, err := manager.Toolkit(role)
 		if err != nil {
 			return err
 		}
-		agent.toolkit = composeToolProviders(agent.toolkit, kit)
-		return nil
+		return agent.WithAdditionalToolkit(kit)(agentValue)
 	}
-}
-
-func composeToolProviders(primary, secondary ToolProvider) ToolProvider {
-	if primary == nil {
-		return secondary
-	}
-	if secondary == nil {
-		return primary
-	}
-	return compositeToolProvider{primary: primary, secondary: secondary}
 }
 
 // RegisterAgent makes an existing agent addressable by team tools.
-func (m *TeamManager) RegisterAgent(agent *Agent, role TeamRole, description string) error {
+func (m *Manager) RegisterAgent(agentValue *agent.Agent, role TeamRole, description string) error {
 	if m == nil {
 		return agenterrors.NewDeveloperError("agent team manager is nil")
 	}
-	if agent == nil || agent.state == nil {
+	if agentValue == nil {
+		return agenterrors.NewDeveloperError("team agent is nil")
+	}
+	agentState := agentValue.AgentState()
+	if agentState == nil {
 		return agenterrors.NewDeveloperError("team agent is nil")
 	}
 	if role == "" {
 		role = TeamRoleLeader
 	}
-	sessionID := strings.TrimSpace(agent.state.SessionID)
+	sessionID := strings.TrimSpace(agentState.SessionID)
 	if sessionID == "" {
 		return agenterrors.NewDeveloperError("team agent session id is empty")
 	}
@@ -191,16 +203,16 @@ func (m *TeamManager) RegisterAgent(agent *Agent, role TeamRole, description str
 		participant = &teamParticipant{ID: utils.NewID()}
 		m.participants[sessionID] = participant
 	}
-	participant.Name = agent.AgentName()
+	participant.Name = agentValue.AgentName()
 	participant.Description = description
 	participant.Role = role
 	participant.SessionID = sessionID
-	participant.Agent = agent
+	participant.Agent = agentValue
 	return nil
 }
 
 // Toolkit returns the team tools visible to a role.
-func (m *TeamManager) Toolkit(role TeamRole) (*astool.Toolkit, error) {
+func (m *Manager) Toolkit(role TeamRole) (*astool.Toolkit, error) {
 	if m == nil {
 		return nil, agenterrors.NewDeveloperError("agent team manager is nil")
 	}
@@ -217,7 +229,7 @@ func (m *TeamManager) Toolkit(role TeamRole) (*astool.Toolkit, error) {
 }
 
 // TeamForSession returns the team snapshot for a session.
-func (m *TeamManager) TeamForSession(sessionID string) (*TeamSnapshot, bool) {
+func (m *Manager) TeamForSession(sessionID string) (*TeamSnapshot, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	teamID, ok := m.sessionTeams[sessionID]
@@ -229,26 +241,30 @@ func (m *TeamManager) TeamForSession(sessionID string) (*TeamSnapshot, bool) {
 }
 
 // Team returns a team snapshot by id.
-func (m *TeamManager) Team(teamID string) (*TeamSnapshot, bool) {
+func (m *Manager) Team(teamID string) (*TeamSnapshot, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.snapshotLocked(teamID)
 }
 
 // DrainInbox observes pending team messages on the agent and clears its inbox.
-func (m *TeamManager) DrainInbox(ctx context.Context, agent *Agent) error {
-	if agent == nil || agent.state == nil {
+func (m *Manager) DrainInbox(ctx context.Context, agentValue *agent.Agent) error {
+	if agentValue == nil {
 		return agenterrors.NewDeveloperError("team drain agent is nil")
 	}
-	messages := m.PendingMessages(agent.state.SessionID)
+	agentState := agentValue.AgentState()
+	if agentState == nil {
+		return agenterrors.NewDeveloperError("team drain agent is nil")
+	}
+	messages := m.PendingMessages(agentState.SessionID)
 	if len(messages) == 0 {
 		return nil
 	}
-	return agent.Observe(ctx, messages)
+	return agentValue.Observe(ctx, messages)
 }
 
 // PendingMessages returns and clears pending team messages for a session.
-func (m *TeamManager) PendingMessages(sessionID string) []*message.Message {
+func (m *Manager) PendingMessages(sessionID string) []*message.Message {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	messages := m.inbox[sessionID]
@@ -263,10 +279,10 @@ func (m *TeamManager) PendingMessages(sessionID string) []*message.Message {
 }
 
 // PendingAgents returns registered agents with pending team messages.
-func (m *TeamManager) PendingAgents() []*Agent {
+func (m *Manager) PendingAgents() []*agent.Agent {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	agents := []*Agent{}
+	agents := []*agent.Agent{}
 	for sessionID, inbox := range m.inbox {
 		if len(inbox) == 0 {
 			continue
@@ -278,7 +294,7 @@ func (m *TeamManager) PendingAgents() []*Agent {
 	return agents
 }
 
-func (m *TeamManager) createTeam(state *asstate.AgentState, name, description string) (string, error) {
+func (m *Manager) createTeam(state *asstate.AgentState, name, description string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	caller, err := m.callerLocked(state)
@@ -303,7 +319,7 @@ func (m *TeamManager) createTeam(state *asstate.AgentState, name, description st
 	return fmt.Sprintf("Team %s (%s) created. You are the leader. Use AgentCreate to add members, then TeamSay to coordinate them.", team.ID, team.Name), nil
 }
 
-func (m *TeamManager) createAgent(ctx context.Context, state *asstate.AgentState, name, description, prompt string, mode permission.PermissionMode) (string, error) {
+func (m *Manager) createAgent(ctx context.Context, state *asstate.AgentState, name, description, prompt string, mode permission.PermissionMode) (string, error) {
 	m.mu.Lock()
 	caller, team, err := m.leaderTeamLocked(state)
 	if err != nil {
@@ -338,7 +354,8 @@ func (m *TeamManager) createAgent(ctx context.Context, state *asstate.AgentState
 	if err != nil {
 		return "", err
 	}
-	if worker == nil || worker.state == nil {
+	workerState := worker.AgentState()
+	if worker == nil || workerState == nil {
 		return "", fmt.Errorf("AgentCreate: worker factory returned nil agent")
 	}
 	if err := m.RegisterAgent(worker, TeamRoleWorker, description); err != nil {
@@ -351,17 +368,17 @@ func (m *TeamManager) createAgent(ctx context.Context, state *asstate.AgentState
 	if team == nil {
 		return "", fmt.Errorf("AgentCreate: team %s no longer exists", request.Team.ID)
 	}
-	participant := m.participants[worker.state.SessionID]
+	participant := m.participants[workerState.SessionID]
 	participant.Name = name
 	participant.Description = description
 	participant.Role = TeamRoleWorker
-	team.MemberIDs = append(team.MemberIDs, worker.state.SessionID)
-	m.sessionTeams[worker.state.SessionID] = team.ID
-	m.deliverLocked(worker.state.SessionID, caller.Name, prompt)
+	team.MemberIDs = append(team.MemberIDs, workerState.SessionID)
+	m.sessionTeams[workerState.SessionID] = team.ID
+	m.deliverLocked(workerState.SessionID, caller.Name, prompt)
 	return fmt.Sprintf("Member %q added to team %q.", name, team.Name), nil
 }
 
-func (m *TeamManager) say(state *asstate.AgentState, content, to string) (string, error) {
+func (m *Manager) say(state *asstate.AgentState, content, to string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	caller, team, err := m.currentTeamLocked(state)
@@ -395,7 +412,7 @@ func (m *TeamManager) say(state *asstate.AgentState, content, to string) (string
 	return fmt.Sprintf("Delivered to %d recipient(s) (%s).", len(recipients), target), nil
 }
 
-func (m *TeamManager) deleteTeam(state *asstate.AgentState) (string, error) {
+func (m *Manager) deleteTeam(state *asstate.AgentState) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, team, err := m.leaderTeamLocked(state)
@@ -412,26 +429,26 @@ func (m *TeamManager) deleteTeam(state *asstate.AgentState) (string, error) {
 	return fmt.Sprintf("Team %s dissolved. All members deleted; your session is no longer leading any team.", team.ID), nil
 }
 
-func (m *TeamManager) defaultWorkerFactory(ctx context.Context, request TeamWorkerRequest) (*Agent, error) {
+func (m *Manager) defaultWorkerFactory(ctx context.Context, request TeamWorkerRequest) (*agent.Agent, error) {
 	if m.workerModel == nil {
 		return nil, fmt.Errorf("AgentCreate: no worker factory or worker model configured")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	opts := append([]AgentOption{}, m.workerOptions...)
+	opts := append([]agent.AgentOption{}, m.workerOptions...)
 	opts = append(opts, WithTeam(m, TeamRoleWorker))
-	worker, err := NewAgent(request.Name, request.SystemPrompt, m.workerModel, opts...)
+	worker, err := agent.NewAgent(request.Name, request.SystemPrompt, m.workerModel, opts...)
 	if err != nil {
 		return nil, err
 	}
-	if request.PermissionMode != "" && worker.state != nil {
-		worker.state.PermissionContext = permission.NewContext(request.PermissionMode)
+	if request.PermissionMode != "" && worker.AgentState() != nil {
+		worker.AgentState().PermissionContext = permission.NewContext(request.PermissionMode)
 	}
 	return worker, nil
 }
 
-func (m *TeamManager) callerLocked(state *asstate.AgentState) (*teamParticipant, error) {
+func (m *Manager) callerLocked(state *asstate.AgentState) (*teamParticipant, error) {
 	if state == nil {
 		return nil, fmt.Errorf("team tool requires agent state")
 	}
@@ -442,7 +459,7 @@ func (m *TeamManager) callerLocked(state *asstate.AgentState) (*teamParticipant,
 	return caller, nil
 }
 
-func (m *TeamManager) currentTeamLocked(state *asstate.AgentState) (*teamParticipant, *teamRecord, error) {
+func (m *Manager) currentTeamLocked(state *asstate.AgentState) (*teamParticipant, *teamRecord, error) {
 	caller, err := m.callerLocked(state)
 	if err != nil {
 		return nil, nil, err
@@ -458,7 +475,7 @@ func (m *TeamManager) currentTeamLocked(state *asstate.AgentState) (*teamPartici
 	return caller, team, nil
 }
 
-func (m *TeamManager) leaderTeamLocked(state *asstate.AgentState) (*teamParticipant, *teamRecord, error) {
+func (m *Manager) leaderTeamLocked(state *asstate.AgentState) (*teamParticipant, *teamRecord, error) {
 	caller, team, err := m.currentTeamLocked(state)
 	if err != nil {
 		return nil, nil, err
@@ -469,7 +486,7 @@ func (m *TeamManager) leaderTeamLocked(state *asstate.AgentState) (*teamParticip
 	return caller, team, nil
 }
 
-func (m *TeamManager) ensureUniqueNameLocked(team *teamRecord, name string) error {
+func (m *Manager) ensureUniqueNameLocked(team *teamRecord, name string) error {
 	if leader := m.participants[team.LeaderID]; leader != nil && leader.Name == name {
 		return fmt.Errorf("AgentCreate: a team member named %q already exists", name)
 	}
@@ -481,7 +498,7 @@ func (m *TeamManager) ensureUniqueNameLocked(team *teamRecord, name string) erro
 	return nil
 }
 
-func (m *TeamManager) memberByNameLocked(team *teamRecord, name string) (*teamParticipant, bool) {
+func (m *Manager) memberByNameLocked(team *teamRecord, name string) (*teamParticipant, bool) {
 	if leader := m.participants[team.LeaderID]; leader != nil && leader.Name == name {
 		return leader, true
 	}
@@ -493,7 +510,7 @@ func (m *TeamManager) memberByNameLocked(team *teamRecord, name string) (*teamPa
 	return nil, false
 }
 
-func (m *TeamManager) snapshotLocked(teamID string) (*TeamSnapshot, bool) {
+func (m *Manager) snapshotLocked(teamID string) (*TeamSnapshot, bool) {
 	team := m.teams[teamID]
 	if team == nil {
 		return nil, false
@@ -525,7 +542,7 @@ func (p *teamParticipant) snapshot() TeamMemberSnapshot {
 	}
 }
 
-func (m *TeamManager) deliverLocked(sessionID, from, content string) {
+func (m *Manager) deliverLocked(sessionID, from, content string) {
 	msg, err := newTeamMessage(from, content)
 	if err != nil {
 		return
@@ -549,7 +566,7 @@ func buildWorkerSystemPrompt(teamName, teamDescription, memberName, memberDescri
 	return strings.Join(sections, "\n\n")
 }
 
-func (m *TeamManager) teamCreateTool() astool.Tool {
+func (m *Manager) teamCreateTool() astool.Tool {
 	tool, _ := astool.NewFunctionTool(
 		"TeamCreate",
 		"Create a new team led by your current session and return its team id. Use AgentCreate to add members, then TeamSay to coordinate them.",
@@ -566,7 +583,7 @@ func (m *TeamManager) teamCreateTool() astool.Tool {
 	return tool
 }
 
-func (m *TeamManager) agentCreateTool() astool.Tool {
+func (m *Manager) agentCreateTool() astool.Tool {
 	tool, _ := astool.NewFunctionTool(
 		"AgentCreate",
 		"Add a new member to the team you lead. The prompt is delivered to the member immediately as its first team message.",
@@ -589,7 +606,7 @@ func (m *TeamManager) agentCreateTool() astool.Tool {
 	return tool
 }
 
-func (m *TeamManager) teamSayTool(role TeamRole) astool.Tool {
+func (m *Manager) teamSayTool(role TeamRole) astool.Tool {
 	description := "Send a message to a specific team member or broadcast to all members."
 	if role == TeamRoleWorker {
 		description = "Send a message to the team leader or broadcast to all team members. When you finish your assigned task, report results with this tool."
@@ -610,7 +627,7 @@ func (m *TeamManager) teamSayTool(role TeamRole) astool.Tool {
 	return tool
 }
 
-func (m *TeamManager) teamDeleteTool() astool.Tool {
+func (m *Manager) teamDeleteTool() astool.Tool {
 	tool, _ := astool.NewFunctionTool(
 		"TeamDelete",
 		"Dissolve the team you currently lead and clean up all members.",

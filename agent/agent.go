@@ -91,6 +91,19 @@ func WithToolkit(toolkit ToolProvider) AgentOption {
 	}
 }
 
+// WithAdditionalToolkit appends a toolkit to the Agent without replacing the existing provider.
+func WithAdditionalToolkit(toolkit ToolProvider) AgentOption {
+
+	return func(agent *Agent) error {
+		if toolkit == nil {
+			return agenterrors.NewDeveloperError("agent toolkit is nil")
+		}
+		agent.toolkit = composeToolProviders(agent.toolkit, toolkit)
+
+		return nil
+	}
+}
+
 // WithOffloader sets the offloader used for context, tool result, and DataBlock lifecycle.
 func WithOffloader(offloader asworkspace.Offloader) AgentOption {
 

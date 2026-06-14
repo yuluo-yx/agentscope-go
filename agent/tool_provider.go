@@ -34,6 +34,16 @@ func (a *Agent) effectiveToolProvider() ToolProvider {
 	}
 }
 
+func composeToolProviders(primary, secondary ToolProvider) ToolProvider {
+	if primary == nil {
+		return secondary
+	}
+	if secondary == nil {
+		return primary
+	}
+	return compositeToolProvider{primary: primary, secondary: secondary}
+}
+
 type compositeToolProvider struct {
 	primary   ToolProvider
 	secondary ToolProvider
