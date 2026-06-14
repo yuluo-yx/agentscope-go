@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package agent_test
+package team_test
 
 import (
 	"context"
@@ -22,17 +22,18 @@ import (
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	"github.com/yuluo-yx/agentscope-go/message"
 	modelpkg "github.com/yuluo-yx/agentscope-go/model"
+	teampkg "github.com/yuluo-yx/agentscope-go/team"
 	astool "github.com/yuluo-yx/agentscope-go/tool"
 )
 
 func TestTeamToolsCreateWorkerAndRouteMessages(t *testing.T) {
 	model := teamScriptedModel{}
-	manager := agentpkg.NewTeamManager(agentpkg.WithTeamWorkerModel(model))
-	leader, err := agentpkg.NewAgent("leader", "Lead the team.", model, agentpkg.WithTeam(manager, agentpkg.TeamRoleLeader))
+	manager := teampkg.NewManager(teampkg.WithTeamWorkerModel(model))
+	leader, err := agentpkg.NewAgent("leader", "Lead the team.", model, teampkg.WithTeam(manager, teampkg.TeamRoleLeader))
 	if err != nil {
 		t.Fatalf("NewAgent leader returned error: %v", err)
 	}
-	leaderTools := mustTeamToolkit(t, manager, agentpkg.TeamRoleLeader)
+	leaderTools := mustTeamToolkit(t, manager, teampkg.TeamRoleLeader)
 
 	createTeam := runTeamTool(t, leaderTools, "TeamCreate", `{"name":"Launch","description":"Ship the release"}`, leader.AgentState())
 	if !strings.Contains(createTeam, "created") {
@@ -61,7 +62,7 @@ func TestTeamToolsCreateWorkerAndRouteMessages(t *testing.T) {
 		t.Fatalf("worker direct inbox mismatch: %#v", pending)
 	}
 
-	workerTools := mustTeamToolkit(t, manager, agentpkg.TeamRoleWorker)
+	workerTools := mustTeamToolkit(t, manager, teampkg.TeamRoleWorker)
 	runTeamTool(t, workerTools, "TeamSay", `{"content":"Research complete"}`, worker.AgentState())
 	leaderInbox := manager.PendingMessages(leader.AgentState().SessionID)
 	if len(leaderInbox) != 1 || !teamMessageContains(leaderInbox[0], "Research complete") {
@@ -80,12 +81,12 @@ func TestTeamToolsCreateWorkerAndRouteMessages(t *testing.T) {
 func TestTeamManagerDrainInboxObservesMessages(t *testing.T) {
 	ctx := context.Background()
 	model := teamScriptedModel{}
-	manager := agentpkg.NewTeamManager(agentpkg.WithTeamWorkerModel(model))
-	leader, err := agentpkg.NewAgent("leader", "Lead.", model, agentpkg.WithTeam(manager, agentpkg.TeamRoleLeader))
+	manager := teampkg.NewManager(teampkg.WithTeamWorkerModel(model))
+	leader, err := agentpkg.NewAgent("leader", "Lead.", model, teampkg.WithTeam(manager, teampkg.TeamRoleLeader))
 	if err != nil {
 		t.Fatalf("NewAgent leader returned error: %v", err)
 	}
-	leaderTools := mustTeamToolkit(t, manager, agentpkg.TeamRoleLeader)
+	leaderTools := mustTeamToolkit(t, manager, teampkg.TeamRoleLeader)
 	runTeamTool(t, leaderTools, "TeamCreate", `{"name":"Team","description":"Work"}`, leader.AgentState())
 	runTeamTool(t, leaderTools, "AgentCreate", `{"name":"worker","description":"Work","prompt":"Initial task"}`, leader.AgentState())
 
@@ -98,7 +99,7 @@ func TestTeamManagerDrainInboxObservesMessages(t *testing.T) {
 	}
 }
 
-func mustTeamToolkit(t *testing.T, manager *agentpkg.TeamManager, role agentpkg.TeamRole) *astool.Toolkit {
+func mustTeamToolkit(t *testing.T, manager *teampkg.Manager, role teampkg.TeamRole) *astool.Toolkit {
 	t.Helper()
 	kit, err := manager.Toolkit(role)
 	if err != nil {
@@ -120,7 +121,7 @@ func runTeamTool(t *testing.T, kit *astool.Toolkit, name, input string, state *a
 	return *text
 }
 
-func onlyPendingAgent(t *testing.T, manager *agentpkg.TeamManager) *agentpkg.Agent {
+func onlyPendingAgent(t *testing.T, manager *teampkg.Manager) *agentpkg.Agent {
 	t.Helper()
 	agents := manager.PendingAgents()
 	if len(agents) != 1 {

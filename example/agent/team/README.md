@@ -6,7 +6,8 @@ Chinese documentation: [README-zh.md](README-zh.md).
 
 This example shows process-local Agent team coordination:
 
-- Attach team tools to a leader with `WithTeam`.
+- Create a process-local team manager with the standalone `team` package.
+- Attach team tools to a leader with `team.WithTeam`.
 - Let the leader call `TeamCreate` and `AgentCreate`.
 - Deliver the worker's first task through the team inbox.
 - Let the worker report back with `TeamSay`.

@@ -22,15 +22,16 @@ import (
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	teampkg "github.com/yuluo-yx/agentscope-go/team"
 	astool "github.com/yuluo-yx/agentscope-go/tool"
 )
 
 func main() {
 	ctx := context.Background()
 	model := scriptedChatModel{}
-	manager := agentpkg.NewTeamManager(agentpkg.WithTeamWorkerModel(model))
-	leader := mustAgent(agentpkg.NewAgent("leader", "Coordinate the team.", model, agentpkg.WithTeam(manager, agentpkg.TeamRoleLeader)))
-	leaderTools := mustToolkit(manager.Toolkit(agentpkg.TeamRoleLeader))
+	manager := teampkg.NewManager(teampkg.WithTeamWorkerModel(model))
+	leader := mustAgent(agentpkg.NewAgent("leader", "Coordinate the team.", model, teampkg.WithTeam(manager, teampkg.TeamRoleLeader)))
+	leaderTools := mustToolkit(manager.Toolkit(teampkg.TeamRoleLeader))
 
 	fmt.Println(runTool(leaderTools, "TeamCreate", `{"name":"Launch","description":"Prepare a release summary"}`, leader.AgentState()))
 	fmt.Println(runTool(leaderTools, "AgentCreate", `{"name":"researcher","description":"Collects release facts","prompt":"Find the three most important release facts and report back."}`, leader.AgentState()))
@@ -39,7 +40,7 @@ func main() {
 	must(manager.DrainInbox(ctx, worker))
 	workerInput := worker.AgentState().Context[0].GetTextContent("")
 
-	workerTools := mustToolkit(manager.Toolkit(agentpkg.TeamRoleWorker))
+	workerTools := mustToolkit(manager.Toolkit(teampkg.TeamRoleWorker))
 	fmt.Println(runTool(workerTools, "TeamSay", `{"content":"Release facts collected: API, examples, and tests are ready."}`, worker.AgentState()))
 	must(manager.DrainInbox(ctx, leader))
 	leaderInput := leader.AgentState().Context[len(leader.AgentState().Context)-1].GetTextContent("")
@@ -77,7 +78,7 @@ func runTool(kit *astool.Toolkit, name, input string, state *agentpkg.AgentState
 	return value(response.GetTextContent(""))
 }
 
-func onlyPendingAgent(manager *agentpkg.TeamManager) *agentpkg.Agent {
+func onlyPendingAgent(manager *teampkg.Manager) *agentpkg.Agent {
 	agents := manager.PendingAgents()
 	if len(agents) != 1 {
 		panic(fmt.Sprintf("expected one pending agent, got %d", len(agents)))
