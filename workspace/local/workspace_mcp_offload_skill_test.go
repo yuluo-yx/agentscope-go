@@ -509,6 +509,13 @@ func TestWorkspaceSkillIndexAndHelperBranches(t *testing.T) {
 	if err := copyFile(sourceFile, destinationFile); err == nil {
 		t.Fatalf("copyFile should fail when destination already exists")
 	}
+	linkSource := filepath.Join(t.TempDir(), "linked-source")
+	if err := os.Symlink(sourceFile, linkSource); err != nil {
+		t.Fatalf("Symlink returned error: %v", err)
+	}
+	if err := copyDir(filepath.Dir(linkSource), filepath.Join(t.TempDir(), "linked-out")); err == nil {
+		t.Fatalf("copyDir should reject symlink entries")
+	}
 	if err := copyDir(filepath.Join(t.TempDir(), "missing"), filepath.Join(t.TempDir(), "out")); err == nil {
 		t.Fatalf("copyDir should fail for missing source")
 	}

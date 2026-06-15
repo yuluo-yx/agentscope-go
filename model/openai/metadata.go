@@ -25,7 +25,7 @@ var chatModelFS embed.FS
 
 // ListModels returns embedded OpenAI Chat Completions model cards.
 func ListModels() ([]asmodel.ModelCard, error) {
-	return asmodel.LoadModelCardsFSWithDefaults(chatModelFS, "models", asmodel.NewModelCardDefaults("openai", asmodel.ModelCapabilities{
+	return asmodel.LoadModelCardsFSWithDefaults(chatModelFS, "models", asmodel.NewModelCardDefaults(defaultProviderName, asmodel.ModelCapabilities{
 		asmodel.ModelCapabilityTools:            true,
 		asmodel.ModelCapabilityStructuredOutput: false,
 		asmodel.ModelCapabilityEmbedding:        false,

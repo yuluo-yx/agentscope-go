@@ -359,8 +359,8 @@ func TestServerRoutesErrorsHelpersAndFallbackMCPTools(t *testing.T) {
 		WithServerMCPs(nil, &plainGatewayMCP{name: ""}, plainMCP),
 		WithServerBearerToken("secret"),
 	)
-	if !NewServer().authorized(httptest.NewRequest(http.MethodGet, "/tools", nil)) {
-		t.Fatalf("authorized should allow requests when server has no token")
+	if NewServer().authorized(httptest.NewRequest(http.MethodGet, "/tools", nil)) {
+		t.Fatalf("authorized should reject requests when server has no token")
 	}
 	req := httptest.NewRequest(http.MethodGet, "/tools", nil)
 	rec := httptest.NewRecorder()
@@ -377,6 +377,14 @@ func TestServerRoutesErrorsHelpersAndFallbackMCPTools(t *testing.T) {
 	}
 	if rec := authed(http.MethodPost, "/tools/Read/call", "{"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad tool JSON status = %d", rec.Code)
+	}
+	largeBody := strings.NewReader(`{"input":"` + strings.Repeat("x", 33<<20) + `"}`)
+	req = httptest.NewRequest(http.MethodPost, "/tools/Read/call", largeBody)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("oversized body status = %d", rec.Code)
 	}
 	if rec := authed(http.MethodPost, "/tools/Missing/call", `{}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing tool status = %d", rec.Code)

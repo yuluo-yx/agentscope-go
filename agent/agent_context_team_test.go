@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/yuluo-yx/agentscope-go/message"
@@ -781,17 +782,17 @@ func TestRunActingBatchesSafeToolsFlushesSerialToolsAndAppliesHooks(t *testing.T
 	}
 	agent := &Agent{state: state, toolkit: provider}
 
-	var hookCalls int
+	var hookCalls atomic.Int64
 	agent.actingHooks = []ActingHook{
 		func(ctx context.Context, _ AgentAccessor, input HookInput, next ToolHandler) (<-chan ToolChunk, error) {
 			if input[toolCallHook] == nil {
 				t.Fatalf("acting hook should receive tool_call input")
 			}
-			hookCalls++
+			hookCalls.Add(1)
 			return next(ctx)
 		},
 		func(ctx context.Context, _ AgentAccessor, _ HookInput, next ToolHandler) (<-chan ToolChunk, error) {
-			hookCalls++
+			hookCalls.Add(1)
 			return next(ctx)
 		},
 	}
@@ -829,8 +830,8 @@ func TestRunActingBatchesSafeToolsFlushesSerialToolsAndAppliesHooks(t *testing.T
 			t.Fatalf("tool call %s should be finished, got %s", call.ID, call.State)
 		}
 	}
-	if hookCalls != 6 {
-		t.Fatalf("two acting hooks should wrap three executions, got %d calls", hookCalls)
+	if hookCalls.Load() != 6 {
+		t.Fatalf("two acting hooks should wrap three executions, got %d calls", hookCalls.Load())
 	}
 
 	singleCall := message.NewToolCallBlock("single", "SafeText", `{}`)

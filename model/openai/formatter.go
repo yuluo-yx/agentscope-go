@@ -27,7 +27,7 @@ import (
 )
 
 func formatMessages(messages []*message.Message, providerName ...string) ([]sdk.ChatCompletionMessageParamUnion, error) {
-	provider := "openai"
+	provider := defaultProviderName
 	if len(providerName) > 0 && strings.TrimSpace(providerName[0]) != "" {
 		provider = providerName[0]
 	}
@@ -177,7 +177,7 @@ func dataBlockPart(block *message.DataBlock, providerName ...string) (*sdk.ChatC
 	if block == nil || block.Source == nil {
 		return nil, nil
 	}
-	provider := "openai"
+	provider := defaultProviderName
 	if len(providerName) > 0 && strings.TrimSpace(providerName[0]) != "" {
 		provider = providerName[0]
 	}

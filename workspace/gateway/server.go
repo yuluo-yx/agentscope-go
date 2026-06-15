@@ -32,6 +32,8 @@ import (
 	"github.com/yuluo-yx/agentscope-go/workspace"
 )
 
+const defaultMaxRequestBytes int64 = 32 << 20
+
 // ServerOption configures an in-workspace gateway HTTP server.
 type ServerOption func(*Server)
 
@@ -42,6 +44,7 @@ type Server struct {
 	mcps       map[string]workspace.MCPClient
 	mcpFactory workspace.MCPClientFactory
 	token      string
+	maxBytes   int64
 }
 
 // NewServer creates a gateway HTTP handler. The handler is intentionally small
@@ -51,6 +54,7 @@ func NewServer(opts ...ServerOption) *Server {
 		tools:      map[string]workspace.Tool{},
 		mcps:       map[string]workspace.MCPClient{},
 		mcpFactory: defaultServerMCPFactory,
+		maxBytes:   defaultMaxRequestBytes,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -98,6 +102,15 @@ func WithServerMCPClientFactory(factory workspace.MCPClientFactory) ServerOption
 func WithServerBearerToken(token string) ServerOption {
 	return func(server *Server) {
 		server.token = strings.TrimSpace(token)
+	}
+}
+
+// WithServerMaxRequestBytes limits JSON request bodies accepted by the server.
+func WithServerMaxRequestBytes(maxBytes int64) ServerOption {
+	return func(server *Server) {
+		if maxBytes > 0 {
+			server.maxBytes = maxBytes
+		}
 	}
 }
 
@@ -183,7 +196,7 @@ func (s *Server) routeMCPByName(w http.ResponseWriter, r *http.Request, path str
 
 func (s *Server) authorized(r *http.Request) bool {
 	if s.token == "" {
-		return true
+		return false
 	}
 	return r.Header.Get("Authorization") == "Bearer "+s.token
 }
@@ -212,7 +225,7 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, path str
 		return
 	}
 	var input map[string]any
-	err = decodeJSON(r, &input)
+	err = s.decodeJSON(w, r, &input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -247,7 +260,7 @@ func (s *Server) handleListMCPs(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleAddMCP(w http.ResponseWriter, r *http.Request) {
 	var config workspace.MCPClientConfig
-	if err := decodeJSON(r, &config); err != nil {
+	if err := s.decodeJSON(w, r, &config); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -339,7 +352,7 @@ func (s *Server) handleMCPToolCall(w http.ResponseWriter, r *http.Request, path 
 	var request struct {
 		Arguments map[string]any `json:"arguments"`
 	}
-	err = decodeJSON(r, &request)
+	err = s.decodeJSON(w, r, &request)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -588,12 +601,17 @@ func mcpAndToolNameFromCallPath(path string) (string, string, error) {
 	return mcpName, toolName, nil
 }
 
-func decodeJSON(r *http.Request, out any) error {
+func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, out any) error {
 	if out == nil {
 		return nil
 	}
-	defer r.Body.Close()
-	return json.NewDecoder(r.Body).Decode(out)
+	maxBytes := defaultMaxRequestBytes
+	if s != nil && s.maxBytes > 0 {
+		maxBytes = s.maxBytes
+	}
+	body := http.MaxBytesReader(w, r.Body, maxBytes)
+	defer body.Close()
+	return json.NewDecoder(body).Decode(out)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
