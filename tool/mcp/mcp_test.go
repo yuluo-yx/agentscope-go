@@ -101,6 +101,53 @@ func TestMCPToolConvertsDataBlocksAndToolErrors(t *testing.T) {
 	}
 }
 
+func TestStatelessInProcessClientUsesEphemeralConnections(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client, err := NewInProcessClient(
+		"ephemeral",
+		newTestMCPServer(),
+		WithStateful(false),
+		WithDisabledTools("hidden_tool"),
+		WithExecutionTimeout(time.Second),
+	)
+	if err != nil {
+		t.Fatalf("NewInProcessClient returned error: %v", err)
+	}
+	if client.IsStateful() || client.IsConnected() {
+		t.Fatalf("stateless client should not report persistent state")
+	}
+	rawTools, err := client.ListRawTools(ctx)
+	if err != nil {
+		t.Fatalf("ListRawTools returned error: %v", err)
+	}
+	if len(rawTools) != 3 {
+		t.Fatalf("hidden tool should be filtered from stateless raw tools: %#v", rawTools)
+	}
+	wrapped, err := client.GetTool(ctx, "lookup_profile")
+	if err != nil {
+		t.Fatalf("GetTool returned error: %v", err)
+	}
+	response := runTool(t, wrapped, map[string]any{"name": "Grace"})
+	if response.State != message.ToolResultSuccess || response.GetTextContent("") == nil || !strings.Contains(*response.GetTextContent(""), "profile:Grace") {
+		t.Fatalf("stateless wrapped tool response mismatch: %#v", response)
+	}
+	result, err := client.CallTool(ctx, "lookup_profile", map[string]any{"name": "Lin"})
+	if err != nil {
+		t.Fatalf("CallTool returned error: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatalf("CallTool should return MCP content: %#v", result)
+	}
+	if err := client.Connect(ctx); err != nil {
+		t.Fatalf("stateless Connect should be a no-op: %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("stateless Close should be a no-op: %v", err)
+	}
+}
+
 func TestClientValidationMatchesPythonMCPConstraints(t *testing.T) {
 	t.Parallel()
 

@@ -55,6 +55,9 @@ func TestWorkspaceOptionsSpecNilAndContextBranches(t *testing.T) {
 	if ws.WorkspaceID() == "" || (*Workspace)(nil).WorkspaceID() != "" {
 		t.Fatal("workspace IDs should be populated and nil-safe")
 	}
+	if ws.WorkspaceRoot() != "/agent" || (*Workspace)(nil).WorkspaceRoot() != "" {
+		t.Fatalf("WorkspaceRoot mismatch: %q", ws.WorkspaceRoot())
+	}
 	spec := ws.containerSpec()
 	if spec.Image != "ubuntu:22.04" || spec.Name != "agent-box" || spec.Workdir != "/agent" || spec.Env["A"] != "1" ||
 		!spec.KeepContainer || !spec.PullImage || spec.StopTimeout != 2*time.Second || !spec.NetworkDisabled ||
@@ -144,6 +147,119 @@ func TestWorkspaceOptionsSpecNilAndContextBranches(t *testing.T) {
 	}
 	if err := ws.RemoveMCP(canceled, "weather"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("RemoveMCP should return context error: %v", err)
+	}
+}
+
+func TestWorkspaceLifecycleMCPAndGatewayErrorBranches(t *testing.T) {
+	ctx := context.Background()
+
+	createErr := errors.New("create failed")
+	createWS, err := NewWorkspace(withRuntime(&fakeRuntime{createErr: createErr}))
+	if err != nil {
+		t.Fatalf("NewWorkspace create error branch returned error: %v", err)
+	}
+	if err := createWS.Initialize(ctx); !errors.Is(err, createErr) {
+		t.Fatalf("Initialize create error = %v", err)
+	}
+
+	startErr := errors.New("start failed")
+	startWS, err := NewWorkspace(withRuntime(&fakeRuntime{startErr: startErr}))
+	if err != nil {
+		t.Fatalf("NewWorkspace start error branch returned error: %v", err)
+	}
+	if err := startWS.Initialize(ctx); !errors.Is(err, startErr) {
+		t.Fatalf("Initialize start error = %v", err)
+	}
+
+	gatewayErr := errors.New("gateway failed")
+	gatewayWS, err := NewWorkspace(withRuntime(&fakeRuntime{}), WithMCPGateway(&fakeGateway{bootstrapErr: gatewayErr, configs: map[string]asworkspace.MCPClientConfig{}}))
+	if err != nil {
+		t.Fatalf("NewWorkspace gateway error branch returned error: %v", err)
+	}
+	if err := gatewayWS.Initialize(ctx); !errors.Is(err, gatewayErr) {
+		t.Fatalf("Initialize gateway error = %v", err)
+	}
+
+	ws, err := NewWorkspace(WithHostWorkdir(t.TempDir()), withRuntime(&fakeRuntime{}), WithMCPGateway(newFakeGateway()))
+	if err != nil {
+		t.Fatalf("NewWorkspace returned error: %v", err)
+	}
+	if err := ws.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize returned error: %v", err)
+	}
+	if err := ws.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize should be idempotent: %v", err)
+	}
+	if err := ws.AddMCP(ctx, nil); err == nil || !strings.Contains(err.Error(), "nil MCP client") {
+		t.Fatalf("AddMCP nil error = %v", err)
+	}
+	if err := ws.AddMCP(ctx, nonConfigDockerMCP{name: "runtime"}); err == nil || !strings.Contains(err.Error(), "cannot be persisted") {
+		t.Fatalf("AddMCP non-config error = %v", err)
+	}
+	news := newPersistedMCP("news")
+	if err := ws.AddMCP(ctx, news); err != nil {
+		t.Fatalf("AddMCP news returned error: %v", err)
+	}
+	if err := ws.AddMCP(ctx, news); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("AddMCP duplicate error = %v", err)
+	}
+	if err := ws.RemoveMCP(ctx, " "); err == nil || !strings.Contains(err.Error(), "MCP name is empty") {
+		t.Fatalf("RemoveMCP empty error = %v", err)
+	}
+	if err := ws.RemoveMCP(ctx, "missing"); err != nil {
+		t.Fatalf("RemoveMCP missing should be a no-op: %v", err)
+	}
+
+	addErrGateway := newFakeGateway()
+	addErrGateway.addErr = gatewayErr
+	addErrWS, err := NewWorkspace(WithHostWorkdir(t.TempDir()), withRuntime(&fakeRuntime{}), WithMCPGateway(addErrGateway))
+	if err != nil {
+		t.Fatalf("NewWorkspace add error branch returned error: %v", err)
+	}
+	if err := addErrWS.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize add error branch returned error: %v", err)
+	}
+	if err := addErrWS.AddMCP(ctx, newPersistedMCP("bad")); !errors.Is(err, gatewayErr) {
+		t.Fatalf("AddMCP gateway error = %v", err)
+	}
+
+	removeErrGateway := newFakeGateway()
+	removeErrGateway.removeErr = gatewayErr
+	removeErrWS, err := NewWorkspace(WithHostWorkdir(t.TempDir()), withRuntime(&fakeRuntime{}), WithMCPGateway(removeErrGateway), WithMCPs(newPersistedMCP("bad")))
+	if err != nil {
+		t.Fatalf("NewWorkspace remove error branch returned error: %v", err)
+	}
+	if err := removeErrWS.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize remove error branch returned error: %v", err)
+	}
+	if err := removeErrWS.RemoveMCP(ctx, "bad"); !errors.Is(err, gatewayErr) {
+		t.Fatalf("RemoveMCP gateway error = %v", err)
+	}
+
+	closeGateway := newFakeGateway()
+	closeGateway.closeErr = errors.New("gateway close failed")
+	closeRuntime := &fakeRuntime{stopErr: errors.New("stop failed"), removeErr: errors.New("remove failed"), closeErr: errors.New("runtime close failed")}
+	closeWS, err := NewWorkspace(withRuntime(closeRuntime), WithMCPGateway(closeGateway))
+	if err != nil {
+		t.Fatalf("NewWorkspace close error branch returned error: %v", err)
+	}
+	if err := closeWS.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize close error branch returned error: %v", err)
+	}
+	err = closeWS.Close(ctx)
+	if err == nil || !strings.Contains(err.Error(), "gateway close failed") || !strings.Contains(err.Error(), "stop failed") || !strings.Contains(err.Error(), "remove failed") || !strings.Contains(err.Error(), "runtime close failed") {
+		t.Fatalf("Close should join cleanup errors, got %v", err)
+	}
+
+	if _, err := mcpConfig(nil); err == nil || !strings.Contains(err.Error(), "nil MCP client") {
+		t.Fatalf("mcpConfig nil error = %v", err)
+	}
+	providerErr := errors.New("config failed")
+	if _, err := mcpConfig(errorConfigDockerMCP{name: "bad", err: providerErr}); !errors.Is(err, providerErr) {
+		t.Fatalf("mcpConfig provider error = %v", err)
+	}
+	if cloneStringMap(nil) == nil {
+		t.Fatalf("docker cloneStringMap returns an empty map for nil input")
 	}
 }
 

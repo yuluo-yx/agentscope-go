@@ -45,6 +45,29 @@ func NewContext(mode PermissionMode) *Context {
 	}
 }
 
+// Clone returns a deep copy of the permission context.
+func (c *Context) Clone() *Context {
+	if c == nil {
+		return nil
+	}
+	mode := c.Mode
+	if mode == "" {
+		mode = ModeDefault
+	}
+	cp := &Context{
+		Mode:               mode,
+		WorkingDirectories: make(map[string]AdditionalWorkingDirectory, len(c.WorkingDirectories)),
+		AllowRules:         cloneRuleMap(c.AllowRules),
+		DenyRules:          cloneRuleMap(c.DenyRules),
+		AskRules:           cloneRuleMap(c.AskRules),
+	}
+	for key, value := range c.WorkingDirectories {
+		cp.WorkingDirectories[key] = value
+	}
+	cp.ensureMaps()
+	return cp
+}
+
 func (c *Context) ensureMaps() {
 	if c.WorkingDirectories == nil {
 		c.WorkingDirectories = map[string]AdditionalWorkingDirectory{}
@@ -58,4 +81,12 @@ func (c *Context) ensureMaps() {
 	if c.AskRules == nil {
 		c.AskRules = map[string][]Rule{}
 	}
+}
+
+func cloneRuleMap(in map[string][]Rule) map[string][]Rule {
+	out := make(map[string][]Rule, len(in))
+	for key, rules := range in {
+		out[key] = append([]Rule(nil), rules...)
+	}
+	return out
 }

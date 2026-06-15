@@ -92,6 +92,14 @@ func TestAgentOptionsInputAndObservationBranches(t *testing.T) {
 	if err := nilAgent.Observe(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "agent is nil") {
 		t.Fatalf("nil Observe error = %v", err)
 	}
+	if err := (&Agent{}).Observe(context.Background(), nil); err != nil {
+		t.Fatalf("Observe with nil state should be a no-op: %v", err)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := agent.Observe(canceled, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Observe canceled error = %v", err)
+	}
 
 	if err := agent.appendInput(42); err == nil || !strings.Contains(err.Error(), "unsupported reply input") {
 		t.Fatalf("appendInput unsupported error = %v", err)
@@ -152,8 +160,34 @@ func TestAgentOptionsInputAndObservationBranches(t *testing.T) {
 	if err := agent.Observe(context.Background(), 42); err == nil || !strings.Contains(err.Error(), "unsupported observe input") {
 		t.Fatalf("Observe unsupported input error = %v", err)
 	}
+	system, err := message.NewSystemMessage("system", "invalid")
+	if err != nil {
+		t.Fatalf("NewSystemMessage returned error: %v", err)
+	}
+	if err := agent.observeMessage(system); err == nil || !strings.Contains(err.Error(), "invalid observed message") {
+		t.Fatalf("observeMessage system error = %v", err)
+	}
+	thinking, err := message.NewAssistantMessage("assistant", []message.ContentBlock{message.NewThinkingBlock("hidden")})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage thinking returned error: %v", err)
+	}
+	if err := agent.observeMessage(thinking); err == nil || !strings.Contains(err.Error(), "invalid observed message") {
+		t.Fatalf("observeMessage thinking error = %v", err)
+	}
+	if err := agent.Observe(context.Background(), []*message.Message{nil}); err != nil {
+		t.Fatalf("Observe nil message slice returned error: %v", err)
+	}
+	if err := agent.Observe(context.Background(), []message.Event{nil}); err != nil {
+		t.Fatalf("Observe nil event slice returned error: %v", err)
+	}
 	if err := agent.observeEvent(message.NewReplyEndEvent("session", "missing")); err == nil || !strings.Contains(err.Error(), "without matching context") {
 		t.Fatalf("observeEvent missing reply error = %v", err)
+	}
+	if err := agent.applyIncomingEventToMessage(nil, message.NewReplyEndEvent("session", "reply-1")); err == nil || !strings.Contains(err.Error(), "without context") {
+		t.Fatalf("applyIncomingEventToMessage nil error = %v", err)
+	}
+	if err := agent.emitAndApply(assistant, nil, func(message.Event) error { return errors.New("should not run") }); err != nil {
+		t.Fatalf("emitAndApply nil event should be a no-op: %v", err)
 	}
 }
 
@@ -393,6 +427,25 @@ func TestReasoningEventEmissionBranches(t *testing.T) {
 	if _, err := agent.emitChatResponseStream(emptyStream, func(message.Event) error { return nil }); err == nil || !strings.Contains(err.Error(), "did not return a final response") {
 		t.Fatalf("emitChatResponseStream empty error = %v", err)
 	}
+	errorStream := make(chan ChatResponse, 1)
+	errorStream <- *asmodel.NewChatResponse(nil, false, asmodel.WithChatResponseError(errors.New("model chunk failed")))
+	close(errorStream)
+	if _, err := agent.emitChatResponseStream(errorStream, func(message.Event) error { return nil }); err == nil || !strings.Contains(err.Error(), "model chunk failed") {
+		t.Fatalf("emitChatResponseStream model error = %v", err)
+	}
+	finalOnly := make(chan ChatResponse, 1)
+	finalOnly <- *asmodel.NewChatResponse(message.ContentBlockList{
+		message.NewTextBlock("final", message.WithBlockID("final-text")),
+		message.NewDataBlock(nil, message.WithDataBlockID("unknown-data")),
+	}, true)
+	close(finalOnly)
+	events = collectAgentEvents(t, func(emit func(message.Event) error) error {
+		_, err := agent.emitChatResponseStream(finalOnly, emit)
+		return err
+	})
+	if !hasAgentEventType(events, message.TextBlockStartType) {
+		t.Fatalf("final-only stream should emit full response, got %#v", eventTypes(events))
+	}
 
 	stream := make(chan ChatResponse, 3)
 	stream <- *asmodel.NewChatResponse(message.ContentBlockList{
@@ -422,6 +475,116 @@ func TestReasoningEventEmissionBranches(t *testing.T) {
 	if err := agent.emitToolCallBlock(message.NewToolCallBlock("call-error", "Search", "{}"), func(message.Event) error { return errors.New("emit failed") }); err == nil {
 		t.Fatalf("emitToolCallBlock should propagate emit errors")
 	}
+	if err := agent.emitStreamChunkBlock(nil, newModelStreamState(), &modelStreamChunkState{currentTools: map[string]bool{}}, func(message.Event) error { return nil }); err != nil {
+		t.Fatalf("emitStreamChunkBlock unknown block should be ignored: %v", err)
+	}
+	if err := agent.emitDataBlock(&message.DataBlock{}, func(message.Event) error { return errors.New("should not run") }); err != nil {
+		t.Fatalf("emitDataBlock unknown source should be ignored: %v", err)
+	}
+}
+
+func TestReasoningModelInputCallModelAndSummaryBranches(t *testing.T) {
+
+	t.Parallel()
+
+	state := NewAgentState()
+	state.Summary.Text = "previous summary"
+	user, err := message.NewUserMessage("user", "current task")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	state.Context = []*message.Message{nil, user}
+	state.ToolContext.ActivatedGroups = []string{"active"}
+	provider := &coverageToolProvider{schemas: []ToolSchema{{Type: "function", Function: FunctionSchema{Name: "Search"}}}}
+	primaryErr := errors.New("primary failed")
+	primary := &coverageChatModel{name: "primary", streamErr: primaryErr}
+	fallback := &coverageChatModel{name: "fallback", responses: []*ChatResponse{
+		asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("fallback")}, true),
+	}}
+	agent := &Agent{
+		name:         "agent",
+		systemPrompt: "base system",
+		state:        state,
+		model:        primary,
+		modelConfig:  ModelConfig{MaxRetries: 2, FallbackModel: fallback},
+		toolkit:      provider,
+	}
+
+	request, err := agent.prepareModelInput(context.Background())
+	if err != nil {
+		t.Fatalf("prepareModelInput returned error: %v", err)
+	}
+	if len(request.Messages) != 3 || len(request.Tools) != 1 {
+		t.Fatalf("prepareModelInput should include system, summary, context, and tools: %#v", request)
+	}
+	if text := request.Messages[1].GetTextContent(""); text == nil || *text != "previous summary" {
+		t.Fatalf("summary text message mismatch: %#v", request.Messages[1])
+	}
+	user.Content = nil
+	if text := request.Messages[2].GetTextContent(""); text == nil || *text != "current task" {
+		t.Fatalf("context message should be cloned: %#v", request.Messages[2])
+	}
+	if summary := (&Agent{}).summaryMessage(); summary != nil {
+		t.Fatalf("missing state summary should be nil: %#v", summary)
+	}
+	state.Summary.Text = ""
+	state.Summary.Blocks = message.ContentBlockList{message.NewTextBlock("block summary")}
+	if summary := agent.summaryMessage(); summary == nil || summary.GetTextContent("") == nil || *summary.GetTextContent("") != "block summary" {
+		t.Fatalf("summary block message mismatch: %#v", summary)
+	}
+
+	responses, err := agent.callModel(context.Background(), request)
+	if err != nil {
+		t.Fatalf("callModel should fall back after retries: %v", err)
+	}
+	if len(primary.streams) != 2 || len(fallback.streams) != 1 {
+		t.Fatalf("callModel retry/fallback counts mismatch: primary=%d fallback=%d", len(primary.streams), len(fallback.streams))
+	}
+	if !fallback.streams[0].Stream {
+		t.Fatalf("callModel should force streaming requests: %#v", fallback.streams[0])
+	}
+	drained := drainChatResponses(responses)
+	if len(drained) != 1 || !drained[0].IsLast {
+		t.Fatalf("fallback response stream mismatch: %#v", drained)
+	}
+
+	nilStreamModel := &coverageChatModel{name: "nil-stream", nilStream: true}
+	agent.model = nilStreamModel
+	agent.modelConfig = ModelConfig{MaxRetries: 1}
+	agent.modelCallHooks = nil
+	if _, err := agent.callModel(context.Background(), request); err == nil || !strings.Contains(err.Error(), "nil response stream") {
+		t.Fatalf("nil stream error mismatch: %v", err)
+	}
+
+	baseModel := &coverageChatModel{name: "base", responses: []*ChatResponse{
+		asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("base")}, true),
+	}}
+	replacement := &coverageChatModel{name: "replacement", responses: []*ChatResponse{
+		asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("replacement")}, true),
+	}}
+	agent.model = baseModel
+	agent.modelCallHooks = []ModelCallHook{
+		func(ctx context.Context, _ AgentAccessor, input HookInput, next ModelCallHandler) (<-chan ChatResponse, error) {
+			input["model"] = replacement
+			updated := input["request"].(CallRequest)
+			updated.Metadata = map[string]any{"from_hook": true}
+			input["request"] = &updated
+			return next(ctx)
+		},
+	}
+	responses, err = agent.callModel(context.Background(), request)
+	if err != nil {
+		t.Fatalf("callModel with hook returned error: %v", err)
+	}
+	if len(baseModel.streams) != 0 || len(replacement.streams) != 1 {
+		t.Fatalf("model hook should replace model: base=%d replacement=%d", len(baseModel.streams), len(replacement.streams))
+	}
+	if got, ok := replacement.streams[0].Metadata["from_hook"].(bool); !ok || !got {
+		t.Fatalf("model hook should update request metadata: %#v", replacement.streams[0].Metadata)
+	}
+	if len(drainChatResponses(responses)) != 1 {
+		t.Fatalf("hook response stream should be drainable")
+	}
 }
 
 func TestCompositeToolProviderAndEmptyProviderBranches(t *testing.T) {
@@ -446,6 +609,16 @@ func TestCompositeToolProviderAndEmptyProviderBranches(t *testing.T) {
 		secondary: &coverageToolProvider{schemas: []ToolSchema{{Type: "function", Function: FunctionSchema{Name: "dup"}}}},
 	}).ToolSchemas(); err == nil || !strings.Contains(err.Error(), "duplicate tool schema") {
 		t.Fatalf("composite duplicate schema error = %v", err)
+	}
+	schemaErr := errors.New("schema failed")
+	if _, err := (compositeToolProvider{primary: &coverageToolProvider{schemaErr: schemaErr}}).ToolSchemas(); !errors.Is(err, schemaErr) {
+		t.Fatalf("composite primary schema error = %v", err)
+	}
+	if got := composeToolProviders(nil, empty); got == nil {
+		t.Fatalf("composeToolProviders should return secondary when primary is nil")
+	}
+	if got := composeToolProviders(empty, nil); got == nil {
+		t.Fatalf("composeToolProviders should return primary when secondary is nil")
 	}
 
 	state := NewAgentState()
@@ -475,6 +648,210 @@ func TestCompositeToolProviderAndEmptyProviderBranches(t *testing.T) {
 	}
 	if (&Agent{}).activeGroups() != nil {
 		t.Fatalf("agent activeGroups without state should return nil")
+	}
+
+	primary.schemas = []ToolSchema{{Type: "function", Function: FunctionSchema{Name: "Primary"}}}
+	secondary.schemas = []ToolSchema{{Type: "function", Function: FunctionSchema{Name: "Secondary"}}}
+	model := &coverageChatModel{name: "toolkit"}
+	agent, err := NewAgent("agent", "system", model, WithToolkit(primary), WithAdditionalToolkit(secondary))
+	if err != nil {
+		t.Fatalf("NewAgent with additional toolkit returned error: %v", err)
+	}
+	schemas, err := agent.effectiveToolProvider().ToolSchemas()
+	if err != nil || len(schemas) != 2 {
+		t.Fatalf("additional toolkit schemas = %#v, %v", schemas, err)
+	}
+}
+
+func TestActingPreparationExecutionAndDataEmissionBranches(t *testing.T) {
+
+	t.Parallel()
+
+	state := NewAgentState()
+	state.ReplyID = "reply-acting"
+	assistant, err := message.NewAssistantMessage("agent", []message.ContentBlock{
+		message.NewToolCallBlock("call-1", "Search", `{"q":"go"}`),
+	}, message.WithMessageID("reply-acting"))
+	if err != nil {
+		t.Fatalf("NewAssistantMessage returned error: %v", err)
+	}
+
+	missingAgent := &Agent{state: state, toolkit: &actingProvider{}}
+	events := collectAgentEvents(t, func(emit func(message.Event) error) error {
+		_, waiting, err := missingAgent.prepareToolCall(context.Background(), assistant, message.NewToolCallBlock("missing", "Missing", `{}`), emit)
+		if waiting {
+			t.Fatalf("missing tool should not wait")
+		}
+		return err
+	})
+	assertAgentEventTypes(t, events, []message.EventType{
+		message.ToolResultStartType,
+		message.ToolResultTextDeltaType,
+		message.ToolResultEndType,
+	})
+
+	provider := &actingProvider{tools: map[string]actingTool{
+		"Search": {name: "Search", decision: &permission.Decision{Behavior: permission.BehaviorAllow, UpdatedInput: map[string]any{"q": "rewritten"}}},
+		"Deny":   {name: "Deny", decision: &permission.Decision{Behavior: permission.BehaviorDeny, Message: "denied"}},
+		"Remote": {name: "Remote", external: true, decision: &permission.Decision{Behavior: permission.BehaviorAllow}},
+	}}
+	agent := &Agent{state: state, toolkit: provider}
+	toolCall := message.NewToolCallBlock("call-allow", "Search", `{"q":"go"}`)
+	plan, waiting, err := agent.prepareToolCall(context.Background(), assistant, toolCall, func(message.Event) error { return nil })
+	if err != nil || waiting || plan == nil {
+		t.Fatalf("allow prepare mismatch: plan=%#v waiting=%v err=%v", plan, waiting, err)
+	}
+	if !strings.Contains(toolCall.Input, "rewritten") {
+		t.Fatalf("UpdatedInput should rewrite tool call JSON, got %s", toolCall.Input)
+	}
+	_, waiting, err = agent.prepareToolCall(context.Background(), assistant, message.NewToolCallBlock("bad-json", "Search", `{bad`), func(message.Event) error { return nil })
+	if err != nil || waiting {
+		t.Fatalf("invalid JSON should emit tool error without returning error: waiting=%v err=%v", waiting, err)
+	}
+	_, waiting, err = agent.prepareToolCall(context.Background(), assistant, message.NewToolCallBlock("deny", "Deny", `{}`), func(message.Event) error { return nil })
+	if err != nil || waiting {
+		t.Fatalf("deny should finish without waiting: waiting=%v err=%v", waiting, err)
+	}
+	_, waiting, err = agent.prepareToolCall(context.Background(), assistant, message.NewToolCallBlock("remote", "Remote", `{}`), func(message.Event) error { return nil })
+	if err != nil || !waiting {
+		t.Fatalf("external tool should wait for external execution: waiting=%v err=%v", waiting, err)
+	}
+
+	provider.callErr = errors.New("tool failed")
+	if err := agent.executeLocalTool(context.Background(), assistant, message.NewToolCallBlock("call-error", "Search", `{}`), func(message.Event) error { return nil }); err != nil {
+		t.Fatalf("executeLocalTool should emit tool errors and swallow provider error: %v", err)
+	}
+	provider.callErr = nil
+	provider.nilStream = true
+	if err := agent.executeLocalTool(context.Background(), assistant, message.NewToolCallBlock("call-nil", "Search", `{}`), func(message.Event) error { return nil }); err != nil {
+		t.Fatalf("executeLocalTool should emit nil stream error: %v", err)
+	}
+
+	events = collectAgentEvents(t, func(emit func(message.Event) error) error {
+		if err := agent.emitToolResultData(assistant, message.NewToolCallBlock("data-b64", "Search", `{}`), message.NewDataBlock(message.NewBase64Source("aGVsbG8=", "text/plain"), message.WithDataBlockID("data-b64")), emit); err != nil {
+			return err
+		}
+		if err := agent.emitToolResultData(assistant, message.NewToolCallBlock("data-url", "Search", `{}`), message.NewDataBlock(message.NewURLSource("https://example.test/file", "text/plain"), message.WithDataBlockID("data-url")), emit); err != nil {
+			return err
+		}
+		return agent.emitToolResultData(assistant, message.NewToolCallBlock("data-empty", "Search", `{}`), &message.DataBlock{}, emit)
+	})
+	assertAgentEventTypes(t, events, []message.EventType{
+		message.ToolResultDataDeltaType,
+		message.ToolResultDataDeltaType,
+	})
+}
+
+func TestRunActingBatchesSafeToolsFlushesSerialToolsAndAppliesHooks(t *testing.T) {
+	t.Parallel()
+
+	state := NewAgentState()
+	state.ReplyID = "reply-batch"
+	provider := &actingProvider{
+		tools: map[string]actingTool{
+			"SafeText":   {name: "SafeText"},
+			"SafeData":   {name: "SafeData"},
+			"SerialText": {name: "SerialText", serial: true},
+		},
+		chunks: map[string][]ToolChunk{
+			"SafeText": {
+				*astool.NewToolChunk(
+					message.ContentBlockList{message.NewTextBlock("safe")},
+					astool.WithToolChunkState(message.ToolResultSuccess),
+				),
+			},
+			"SafeData": {
+				*astool.NewToolChunk(
+					message.ContentBlockList{
+						message.NewDataBlock(
+							message.NewBase64Source("aGVsbG8=", "text/plain"),
+							message.WithDataBlockID("data-safe"),
+						),
+					},
+					astool.WithToolChunkState(message.ToolResultSuccess),
+				),
+			},
+			"SerialText": {
+				*astool.NewToolChunk(
+					message.ContentBlockList{message.NewTextBlock("serial")},
+					astool.WithToolChunkState(message.ToolResultSuccess),
+				),
+			},
+		},
+	}
+	agent := &Agent{state: state, toolkit: provider}
+
+	var hookCalls int
+	agent.actingHooks = []ActingHook{
+		func(ctx context.Context, _ AgentAccessor, input HookInput, next ToolHandler) (<-chan ToolChunk, error) {
+			if input[toolCallHook] == nil {
+				t.Fatalf("acting hook should receive tool_call input")
+			}
+			hookCalls++
+			return next(ctx)
+		},
+		func(ctx context.Context, _ AgentAccessor, _ HookInput, next ToolHandler) (<-chan ToolChunk, error) {
+			hookCalls++
+			return next(ctx)
+		},
+	}
+
+	calls := []*message.ToolCallBlock{
+		message.NewToolCallBlock("safe-text", "SafeText", `{}`),
+		message.NewToolCallBlock("safe-data", "SafeData", `{}`),
+		message.NewToolCallBlock("serial-text", "SerialText", `{}`),
+	}
+	assistant, err := message.NewAssistantMessage("agent", []message.ContentBlock{calls[0], calls[1], calls[2]}, message.WithMessageID("reply-batch"))
+	if err != nil {
+		t.Fatalf("NewAssistantMessage returned error: %v", err)
+	}
+
+	events := collectAgentEvents(t, func(emit func(message.Event) error) error {
+		waiting, err := agent.runActing(context.Background(), assistant, calls, emit)
+		if waiting {
+			t.Fatalf("runActing should not wait for local tools")
+		}
+		return err
+	})
+	assertAgentEventTypes(t, events, []message.EventType{
+		message.ToolResultStartType,
+		message.ToolResultStartType,
+		message.ToolResultTextDeltaType,
+		message.ToolResultEndType,
+		message.ToolResultDataDeltaType,
+		message.ToolResultEndType,
+		message.ToolResultStartType,
+		message.ToolResultTextDeltaType,
+		message.ToolResultEndType,
+	})
+	for _, call := range calls {
+		if call.State != message.ToolCallFinished {
+			t.Fatalf("tool call %s should be finished, got %s", call.ID, call.State)
+		}
+	}
+	if hookCalls != 6 {
+		t.Fatalf("two acting hooks should wrap three executions, got %d calls", hookCalls)
+	}
+
+	singleCall := message.NewToolCallBlock("single", "SafeText", `{}`)
+	singleAssistant, err := message.NewAssistantMessage("agent", []message.ContentBlock{singleCall}, message.WithMessageID("reply-batch-single"))
+	if err != nil {
+		t.Fatalf("NewAssistantMessage single returned error: %v", err)
+	}
+	events = collectAgentEvents(t, func(emit func(message.Event) error) error {
+		waiting, err := agent.runActing(context.Background(), singleAssistant, []*message.ToolCallBlock{singleCall}, emit)
+		if waiting {
+			t.Fatalf("single runActing should not wait")
+		}
+		return err
+	})
+	assertAgentEventTypes(t, events, []message.EventType{
+		message.ToolResultStartType,
+		message.ToolResultTextDeltaType,
+		message.ToolResultEndType,
+	})
+	if singleCall.State != message.ToolCallFinished {
+		t.Fatalf("single tool call should be finished, got %s", singleCall.State)
 	}
 }
 
@@ -531,6 +908,7 @@ type coverageChatModel struct {
 	responses   []*ChatResponse
 	callErr     error
 	streamErr   error
+	nilStream   bool
 	countTokens int
 	countErr    error
 	calls       []CallRequest
@@ -565,6 +943,9 @@ func (m *coverageChatModel) Stream(_ context.Context, request CallRequest) (<-ch
 	if m.streamErr != nil {
 		return nil, m.streamErr
 	}
+	if m.nilStream {
+		return nil, nil
+	}
 	ch := make(chan ChatResponse, len(m.responses))
 	for _, response := range m.responses {
 		ch <- *response.Clone()
@@ -582,6 +963,15 @@ func (m *coverageChatModel) CountTokens(request CallRequest) (int, error) {
 		return m.countTokens, nil
 	}
 	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
+}
+
+func drainChatResponses(responses <-chan ChatResponse) []ChatResponse {
+
+	var out []ChatResponse
+	for response := range responses {
+		out = append(out, response)
+	}
+	return out
 }
 
 type coverageOffloader struct {
@@ -685,6 +1075,89 @@ func (coverageAgentTool) MatchRule(string, map[string]any) bool { return true }
 func (coverageAgentTool) GenerateSuggestions(map[string]any) []permission.Rule { return nil }
 
 func (coverageAgentTool) Execute(context.Context, map[string]any, *AgentState) (<-chan ToolChunk, error) {
+
+	chunks := make(chan ToolChunk, 1)
+	chunks <- *astool.NewToolChunk(message.ContentBlockList{message.NewTextBlock("ok")}, astool.WithToolChunkState(message.ToolResultSuccess))
+	close(chunks)
+	return chunks, nil
+}
+
+type actingProvider struct {
+	tools     map[string]actingTool
+	chunks    map[string][]ToolChunk
+	callErr   error
+	nilStream bool
+}
+
+func (p *actingProvider) ToolSchemas(...string) ([]ToolSchema, error) { return nil, nil }
+
+func (p *actingProvider) FindTool(name string, _ ...string) (Tool, bool) {
+
+	tool, ok := p.tools[name]
+	return tool, ok
+}
+
+func (p *actingProvider) CallTool(_ context.Context, toolCall *message.ToolCallBlock, _ *AgentState) (<-chan ToolChunk, error) {
+
+	if p.callErr != nil {
+		return nil, p.callErr
+	}
+	if p.nilStream {
+		return nil, nil
+	}
+	toolChunks := p.chunks[toolCall.Name]
+	if len(toolChunks) == 0 {
+		toolChunks = []ToolChunk{
+			*astool.NewToolChunk(message.ContentBlockList{message.NewTextBlock("ok")}, astool.WithToolChunkState(message.ToolResultSuccess)),
+		}
+	}
+	chunks := make(chan ToolChunk, len(toolChunks))
+	for _, chunk := range toolChunks {
+		chunks <- chunk
+	}
+	close(chunks)
+	return chunks, nil
+}
+
+type actingTool struct {
+	name     string
+	external bool
+	serial   bool
+	decision *permission.Decision
+}
+
+func (t actingTool) Name() string { return t.name }
+
+func (actingTool) Description() string { return "acting tool" }
+
+func (actingTool) InputSchema() map[string]any { return map[string]any{"type": "object"} }
+
+func (t actingTool) IsConcurrencySafe() bool { return !t.serial }
+
+func (actingTool) IsReadOnly() bool { return true }
+
+func (t actingTool) IsExternalTool() bool { return t.external }
+
+func (actingTool) IsStateInjected() bool { return false }
+
+func (actingTool) IsMCP() bool { return false }
+
+func (actingTool) MCPName() string { return "" }
+
+func (t actingTool) CheckPermissions(context.Context, map[string]any, *permission.Context) (*permission.Decision, error) {
+
+	if t.decision != nil {
+		cp := *t.decision
+		return &cp, nil
+	}
+	return &permission.Decision{Behavior: permission.BehaviorAllow}, nil
+}
+
+func (actingTool) MatchRule(string, map[string]any) bool { return true }
+
+func (actingTool) GenerateSuggestions(map[string]any) []permission.Rule { return nil }
+
+func (actingTool) Execute(context.Context, map[string]any, *AgentState) (<-chan ToolChunk, error) {
 
 	chunks := make(chan ToolChunk, 1)
 	chunks <- *astool.NewToolChunk(message.ContentBlockList{message.NewTextBlock("ok")}, astool.WithToolChunkState(message.ToolResultSuccess))

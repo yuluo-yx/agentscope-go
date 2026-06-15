@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"os"
 
 	asagent "github.com/yuluo-yx/agentscope-go/agent"
@@ -60,7 +61,7 @@ func chat() {
 	ctx := context.Background()
 
 	model, err := dashscope.NewChatModel(
-		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
 		"qwen3.7-max",
 	)
 	if err != nil {
@@ -97,7 +98,7 @@ func agent() {
 		"DemoAgent",
 		"Hi, you is helpful assistant.",
 		func() asmodel.ChatModel {
-			model, err := dashscope.NewChatModel(dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")), "qwen3.7-max")
+			model, err := dashscope.NewChatModel(credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(), "qwen3.7-max")
 			if err != nil {
 				panic(err)
 			}

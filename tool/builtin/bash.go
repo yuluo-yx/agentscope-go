@@ -38,11 +38,22 @@ const (
 // Bash executes bash commands and returns stdout/stderr.
 type Bash struct {
 	baseTool
+	cwd string
+}
+
+// BashOption configures the Bash tool.
+type BashOption func(*Bash)
+
+// WithBashCWD sets the working directory used when executing commands.
+func WithBashCWD(cwd string) BashOption {
+	return func(b *Bash) {
+		b.cwd = strings.TrimSpace(cwd)
+	}
 }
 
 // NewBash creates the Bash tool.
-func NewBash() *Bash {
-	return &Bash{baseTool: baseTool{
+func NewBash(opts ...BashOption) *Bash {
+	bash := &Bash{baseTool: baseTool{
 		name:            "Bash",
 		description:     "Executes a bash command and returns its combined output.",
 		concurrencySafe: false,
@@ -58,6 +69,12 @@ func NewBash() *Bash {
 			"required": []string{"command"},
 		},
 	}}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(bash)
+		}
+	}
+	return bash
 }
 
 // CheckPermissions performs safety checks for Bash command execution.
@@ -169,6 +186,9 @@ func (b *Bash) Execute(ctx context.Context, input map[string]any, _ *astate.Agen
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMS)*time.Millisecond)
 	defer cancel()
 	cmd := exec.CommandContext(execCtx, "/bin/bash", "-lc", command)
+	if b.cwd != "" {
+		cmd.Dir = b.cwd
+	}
 	output, err := cmd.CombinedOutput()
 	text := string(output)
 	if execCtx.Err() == context.DeadlineExceeded {

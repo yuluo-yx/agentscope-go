@@ -104,6 +104,73 @@ func TestSDKRuntimeWaitsForSandboxReachability(t *testing.T) {
 	}
 }
 
+func TestSDKRuntimeHandlesFactoryCreateAndReachabilityErrors(t *testing.T) {
+	t.Parallel()
+
+	factoryErr := errors.New("factory failed")
+	rt := &sdkRuntime{
+		newClient: func(context.Context, agentsandboxsdk.Options) (sdkClient, error) {
+			return nil, factoryErr
+		},
+	}
+	if _, err := rt.Create(context.Background(), sandboxSpec{}); !errors.Is(err, factoryErr) {
+		t.Fatalf("Create should return client factory error, got %v", err)
+	}
+
+	createErr := errors.New("create failed")
+	rt = &sdkRuntime{
+		newClient: func(context.Context, agentsandboxsdk.Options) (sdkClient, error) {
+			return &fakeSDKClient{err: createErr}, nil
+		},
+	}
+	if _, err := rt.Create(context.Background(), sandboxSpec{}); !errors.Is(err, createErr) {
+		t.Fatalf("Create should return CreateSandbox error, got %v", err)
+	}
+
+	neverReady := &fakeSDKSandbox{}
+	rt = &sdkRuntime{
+		newClient: func(context.Context, agentsandboxsdk.Options) (sdkClient, error) {
+			return &fakeSDKClient{handle: neverReady}, nil
+		},
+	}
+	_, err := rt.Create(context.Background(), sandboxSpec{OpenTimeout: time.Nanosecond})
+	if err == nil || !strings.Contains(err.Error(), "did not become reachable") {
+		t.Fatalf("Create should time out waiting for readiness, got %v", err)
+	}
+	if !neverReady.closed {
+		t.Fatalf("Create should close sandbox after reachability failure")
+	}
+
+	if err := waitForSDKSandboxReachable(context.Background(), nil, sandboxSpec{}); err == nil {
+		t.Fatalf("waitForSDKSandboxReachable should reject nil sandbox")
+	}
+	if _, err := (*sdkRuntime)(nil).Create(context.Background(), sandboxSpec{}); err == nil {
+		t.Fatalf("nil sdkRuntime should return error")
+	}
+	defaultRuntime, err := newSDKRuntime()
+	if err != nil || defaultRuntime == nil {
+		t.Fatalf("newSDKRuntime returned runtime=%#v err=%v", defaultRuntime, err)
+	}
+	if _, err := (*sdkClientAdapter)(nil).CreateSandbox(context.Background(), "template", "namespace"); err == nil {
+		t.Fatalf("nil sdkClientAdapter should return error")
+	}
+	if _, err := (&sdkClientAdapter{}).CreateSandbox(context.Background(), "template", "namespace"); err == nil {
+		t.Fatalf("empty sdkClientAdapter should return error")
+	}
+	portForwardOptions := sandboxOptionsFromSpec(sandboxSpec{
+		Mode:             connectionModePortForward,
+		APIURL:           "http://router",
+		GatewayName:      "gateway",
+		GatewayNamespace: "gateways",
+	})
+	if portForwardOptions.APIURL != "" || portForwardOptions.GatewayName != "" || portForwardOptions.GatewayNamespace != "" {
+		t.Fatalf("port-forward options should clear direct routing settings: %#v", portForwardOptions)
+	}
+	if err := (&sdkRuntime{}).Close(); err != nil {
+		t.Fatalf("Close should be a no-op: %v", err)
+	}
+}
+
 func TestSDKHandleRunsWithWorkdirEnvAndTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -132,6 +199,72 @@ func TestSDKHandleRunsWithWorkdirEnvAndTimeout(t *testing.T) {
 	}
 	if len(sandbox.lastRunOptions) == 0 {
 		t.Fatalf("Run should pass call options for timeout")
+	}
+}
+
+func TestSDKHandleIDReadWriteCloseAndNilBranches(t *testing.T) {
+	t.Parallel()
+
+	handle := &sdkHandle{sandbox: &fakeSDKSandbox{
+		ready:     true,
+		claimName: "claim-1",
+		runResult: &agentsandboxsdk.ExecutionResult{ExitCode: 0},
+	}, spec: sandboxSpec{ID: "fallback-id", RequestTimeout: time.Second}}
+	if got := handle.ID(); got != "claim-1" {
+		t.Fatalf("ID should prefer claim name, got %q", got)
+	}
+	if ready, err := handle.IsReady(context.Background()); err != nil || !ready {
+		t.Fatalf("IsReady mismatch: ready=%v err=%v", ready, err)
+	}
+	data, err := handle.Read(context.Background(), "/tmp/file.txt")
+	if err != nil || string(data) != "read:/tmp/file.txt" {
+		t.Fatalf("Read mismatch: data=%q err=%v", data, err)
+	}
+	if err := handle.Write(context.Background(), "plain.txt", []byte("plain")); err != nil {
+		t.Fatalf("plain Write returned error: %v", err)
+	}
+	if len(handle.sandbox.(*fakeSDKSandbox).writes) != 1 || handle.sandbox.(*fakeSDKSandbox).writes[0].path != "plain.txt" {
+		t.Fatalf("plain write should use target filename directly: %#v", handle.sandbox.(*fakeSDKSandbox).writes)
+	}
+	if err := handle.Close(context.Background()); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+	if err := handle.Disconnect(context.Background()); err != nil {
+		t.Fatalf("Disconnect returned error: %v", err)
+	}
+	sandbox := handle.sandbox.(*fakeSDKSandbox)
+	if !sandbox.closed || !sandbox.disconnected {
+		t.Fatalf("Close and Disconnect should forward to sandbox: closed=%v disconnected=%v", sandbox.closed, sandbox.disconnected)
+	}
+
+	nameFallback := &sdkHandle{sandbox: &fakeSDKSandbox{sandboxName: "sandbox-2"}, spec: sandboxSpec{ID: "fallback-id"}}
+	if got := nameFallback.ID(); got != "sandbox-2" {
+		t.Fatalf("ID should fall back to sandbox name, got %q", got)
+	}
+	idFallback := &sdkHandle{sandbox: &fakeSDKSandbox{}, spec: sandboxSpec{ID: "fallback-id"}}
+	if got := idFallback.ID(); got != "fallback-id" {
+		t.Fatalf("ID should fall back to spec ID, got %q", got)
+	}
+	if got := (*sdkHandle)(nil).ID(); got != "" {
+		t.Fatalf("nil handle ID should be empty, got %q", got)
+	}
+	if ready, err := (*sdkHandle)(nil).IsReady(context.Background()); err != nil || ready {
+		t.Fatalf("nil handle IsReady mismatch: ready=%v err=%v", ready, err)
+	}
+	if _, err := (*sdkHandle)(nil).Run(context.Background(), runRequest{}); err == nil {
+		t.Fatalf("nil handle Run should return error")
+	}
+	if _, err := (*sdkHandle)(nil).Read(context.Background(), "x"); err == nil {
+		t.Fatalf("nil handle Read should return error")
+	}
+	if err := (*sdkHandle)(nil).Write(context.Background(), "x", nil); err == nil {
+		t.Fatalf("nil handle Write should return error")
+	}
+	if err := (*sdkHandle)(nil).Close(context.Background()); err != nil {
+		t.Fatalf("nil handle Close should be nil, got %v", err)
+	}
+	if err := (*sdkHandle)(nil).Disconnect(context.Background()); err != nil {
+		t.Fatalf("nil handle Disconnect should be nil, got %v", err)
 	}
 }
 
@@ -167,11 +300,15 @@ type fakeSDKClient struct {
 	handle    *fakeSDKSandbox
 	template  string
 	namespace string
+	err       error
 }
 
 func (c *fakeSDKClient) CreateSandbox(_ context.Context, template, namespace string) (sdkSandbox, error) {
 	c.template = template
 	c.namespace = namespace
+	if c.err != nil {
+		return nil, c.err
+	}
 	return c.handle, nil
 }
 
@@ -185,6 +322,8 @@ type fakeSDKSandbox struct {
 	writes         []fakeSDKWrite
 	closed         bool
 	disconnected   bool
+	claimName      string
+	sandboxName    string
 }
 
 type fakeSDKWrite struct {
@@ -231,9 +370,9 @@ func (s *fakeSDKSandbox) Disconnect(context.Context) error {
 }
 
 func (s *fakeSDKSandbox) ClaimName() string {
-	return "claim-1"
+	return s.claimName
 }
 
 func (s *fakeSDKSandbox) SandboxName() string {
-	return "sandbox-1"
+	return s.sandboxName
 }

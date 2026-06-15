@@ -398,8 +398,8 @@ func writableFilePermission(toolName, action string, input map[string]any, ctx *
 }
 
 func globMatch(pattern, value string) bool {
-	pattern = filepath.ToSlash(pattern)
-	value = filepath.ToSlash(value)
+	pattern = normalizeGlobSeparators(pattern)
+	value = normalizeGlobSeparators(value)
 	if pattern == "" {
 		return true
 	}
@@ -416,6 +416,10 @@ func globMatch(pattern, value string) bool {
 		return false
 	}
 	return regex.MatchString(value)
+}
+
+func normalizeGlobSeparators(value string) string {
+	return strings.ReplaceAll(filepath.ToSlash(value), "\\", "/")
 }
 
 func globToRegexp(pattern string) string {

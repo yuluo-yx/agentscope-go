@@ -17,6 +17,7 @@ package embedding_test
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -135,5 +136,82 @@ func TestFileCacheMaintainsMaxFileNumberAndSize(t *testing.T) {
 	}
 	if size > 512 {
 		t.Fatalf("cache size should be maintained under limit, got %d", size)
+	}
+}
+
+func TestFileCacheErrorBranches(t *testing.T) {
+	t.Parallel()
+
+	if _, err := asembedding.NewFileCache(t.TempDir(), asembedding.WithMaxFileNumber(-1)); !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
+		t.Fatalf("negative max file number should be invalid, got %v", err)
+	}
+	if _, err := asembedding.NewFileCache(t.TempDir(), asembedding.WithMaxCacheSizeBytes(-1)); !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
+		t.Fatalf("negative max cache size should be invalid, got %v", err)
+	}
+
+	var nilCache *asembedding.FileCache
+	if nilCache.Dir() != "" {
+		t.Fatalf("nil Dir should return empty string")
+	}
+	if err := nilCache.Store(context.Background(), "id", nil, asembedding.StoreOptions{}); !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
+		t.Fatalf("nil Store should return invalid input, got %v", err)
+	}
+	if _, ok, err := nilCache.Retrieve(context.Background(), "id"); ok || !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
+		t.Fatalf("nil Retrieve mismatch: ok=%v err=%v", ok, err)
+	}
+	if err := nilCache.Remove(context.Background(), "id"); !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
+		t.Fatalf("nil Remove should return invalid input, got %v", err)
+	}
+	if err := nilCache.Clear(context.Background()); !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
+		t.Fatalf("nil Clear should return invalid input, got %v", err)
+	}
+	if _, err := nilCache.SizeBytes(); !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
+		t.Fatalf("nil SizeBytes should return invalid input, got %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cache, err := asembedding.NewFileCache(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFileCache returned error: %v", err)
+	}
+	if err := cache.Store(ctx, "id", nil, asembedding.StoreOptions{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled Store error = %v", err)
+	}
+	if _, _, err := cache.Retrieve(ctx, "id"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled Retrieve error = %v", err)
+	}
+	if err := cache.Remove(ctx, "id"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled Remove error = %v", err)
+	}
+	if err := cache.Clear(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled Clear error = %v", err)
+	}
+
+	if err := cache.Store(context.Background(), math.Inf(1), nil, asembedding.StoreOptions{}); err == nil {
+		t.Fatal("non-JSON identifier should fail Store")
+	}
+	if _, _, err := cache.Retrieve(context.Background(), math.Inf(1)); err == nil {
+		t.Fatal("non-JSON identifier should fail Retrieve")
+	}
+	if err := cache.Remove(context.Background(), math.Inf(1)); err == nil {
+		t.Fatal("non-JSON identifier should fail Remove")
+	}
+
+	if err := cache.Clear(context.Background()); err != nil {
+		t.Fatalf("Clear empty cache returned error: %v", err)
+	}
+	if err := cache.Store(context.Background(), "corrupt", []types.Embedding{{1}}, asembedding.StoreOptions{}); err != nil {
+		t.Fatalf("Store corrupt seed returned error: %v", err)
+	}
+	files, err := filepath.Glob(filepath.Join(cache.Dir(), "*.json"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("Glob cache files = %#v, %v", files, err)
+	}
+	if err := os.WriteFile(files[0], []byte("{"), 0o600); err != nil {
+		t.Fatalf("WriteFile corrupt cache returned error: %v", err)
+	}
+	if _, _, err := cache.Retrieve(context.Background(), "corrupt"); err == nil {
+		t.Fatal("corrupt cache JSON should fail Retrieve")
 	}
 }

@@ -173,14 +173,45 @@ func TestAgentWithAgentResourcesUsesPrebuiltWorkspaceAssembly(t *testing.T) {
 	}
 }
 
+func TestAgentWithWorkspaceAddsWorkspaceRootToPermissionContext(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	agentState := state.NewAgentState()
+	ws := &agentWorkspace{
+		instructions: "<workspace>Use root.</workspace>",
+		root:         "/tmp/agent-workspace-root",
+	}
+	model := &scriptedChatModel{}
+	agent, err := agentpkg.NewAgent(
+		"Friday",
+		"Use workspace.",
+		model,
+		agentpkg.WithAgentState(agentState),
+		agentpkg.WithWorkspace(ctx, ws),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent returned error: %v", err)
+	}
+	entry, ok := agent.AgentState().PermissionContext.WorkingDirectories["/tmp/agent-workspace-root"]
+	if !ok {
+		t.Fatalf("workspace root should be added to permission context: %#v", agent.AgentState().PermissionContext.WorkingDirectories)
+	}
+	if entry.Path != "/tmp/agent-workspace-root" || entry.Source != "session" {
+		t.Fatalf("workspace root permission entry mismatch: %#v", entry)
+	}
+}
+
 type agentWorkspace struct {
 	instructions         string
+	root                 string
 	tools                []workspace.Tool
 	skills               []skill.Skill
 	offloadedToolResults []*message.ToolResultBlock
 }
 
 func (w *agentWorkspace) WorkspaceID() string              { return "agent-workspace" }
+func (w *agentWorkspace) WorkspaceRoot() string            { return w.root }
 func (w *agentWorkspace) IsAlive() bool                    { return true }
 func (w *agentWorkspace) Initialize(context.Context) error { return nil }
 func (w *agentWorkspace) Close(context.Context) error      { return nil }

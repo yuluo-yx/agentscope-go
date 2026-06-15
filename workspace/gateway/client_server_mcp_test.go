@@ -370,11 +370,7 @@ func TestServerRoutesErrorsHelpersAndFallbackMCPTools(t *testing.T) {
 	}
 	authed := func(method, path, body string) *httptest.ResponseRecorder {
 		t.Helper()
-		request := httptest.NewRequest(method, path, strings.NewReader(body))
-		request.Header.Set("Authorization", "Bearer secret")
-		recorder := httptest.NewRecorder()
-		server.ServeHTTP(recorder, request)
-		return recorder
+		return requestAuthed(server, method, path, body)
 	}
 	if rec := authed(http.MethodGet, "/unknown", ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown route status = %d", rec.Code)
@@ -385,20 +381,42 @@ func TestServerRoutesErrorsHelpersAndFallbackMCPTools(t *testing.T) {
 	if rec := authed(http.MethodPost, "/tools/Missing/call", `{}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing tool status = %d", rec.Code)
 	}
+	if rec := authed(http.MethodPost, "/tools/%zz/call", `{}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad escaped tool call status = %d", rec.Code)
+	}
 	if rec := authed(http.MethodPost, "/tools/Read/call", `{}`); rec.Code != http.StatusOK {
 		t.Fatalf("tool call status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	errorToolServer := NewServer(
+		WithServerBearerToken("secret"),
+		WithServerTools(&gatewayCoverageTool{name: "Bad", err: errors.New("tool failed")}),
+	)
+	if rec := postAuthed(errorToolServer, "/tools/Bad/call", `{}`); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("tool execution error status = %d", rec.Code)
 	}
 	if rec := authed(http.MethodGet, "/mcps/%20/tools", ""); rec.Code != http.StatusBadRequest {
 		t.Fatalf("empty MCP tools path status = %d", rec.Code)
 	}
+	if rec := authed(http.MethodGet, "/mcps/%zz/tools", ""); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad escaped MCP tools path status = %d", rec.Code)
+	}
 	if rec := authed(http.MethodGet, "/mcps/missing/tools", ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("missing MCP tools status = %d", rec.Code)
+	}
+	if rec := authed(http.MethodPost, "/mcps/missing/tools/Read", `{}`); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing MCP call status = %d", rec.Code)
+	}
+	if rec := authed(http.MethodPost, "/mcps/%zz/tools/Read", `{}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad escaped MCP call path status = %d", rec.Code)
 	}
 	if rec := authed(http.MethodPost, "/mcps/plain/tools/Read", "{"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad MCP call JSON status = %d", rec.Code)
 	}
 	if rec := authed(http.MethodPost, "/mcps/plain/tools/Read", `{}`); rec.Code != http.StatusOK {
 		t.Fatalf("fallback MCP tool call status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := authed(http.MethodPost, "/mcps/plain/tools/Missing", `{}`); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("missing fallback MCP tool status = %d", rec.Code)
 	}
 	if !plainMCP.connectCalled || !plainMCP.connected {
 		t.Fatalf("fallback MCP should be connected before use: %#v", plainMCP)
@@ -423,6 +441,12 @@ func TestServerRoutesErrorsHelpersAndFallbackMCPTools(t *testing.T) {
 	if rec := postAuthed(errorServer, "/mcps", `{"name":"bad","type":"http_mcp"}`); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("factory error status = %d", rec.Code)
 	}
+	connectErrServer := NewServer(WithServerBearerToken("secret"), WithServerMCPClientFactory(func(workspace.MCPClientConfig) (workspace.MCPClient, error) {
+		return &plainGatewayMCP{name: "bad-connect", stateful: true, connectErr: errors.New("connect failed")}, nil
+	}))
+	if rec := postAuthed(connectErrServer, "/mcps", `{"name":"bad-connect","type":"http_mcp","http":{"url":"http://localhost"}}`); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("connect error add status = %d", rec.Code)
+	}
 	nilFactoryServer := NewServer(WithServerBearerToken("secret"), WithServerMCPClientFactory(func(config workspace.MCPClientConfig) (workspace.MCPClient, error) {
 		return nil, nil
 	}))
@@ -435,6 +459,48 @@ func TestServerRoutesErrorsHelpersAndFallbackMCPTools(t *testing.T) {
 	}))
 	if rec := postAuthed(duplicateServer, "/mcps", `{"name":"dup","type":"http_mcp","http":{"url":"http://localhost"}}`); rec.Code != http.StatusConflict {
 		t.Fatalf("duplicate status = %d", rec.Code)
+	}
+	lateDuplicate := &plainGatewayMCP{name: "existing", stateful: true, connected: true}
+	lateDuplicateServer := NewServer(
+		WithServerBearerToken("secret"),
+		WithServerMCPs(lateDuplicate),
+		WithServerMCPClientFactory(func(workspace.MCPClientConfig) (workspace.MCPClient, error) {
+			return &plainGatewayMCP{name: "existing", stateful: true, connected: true}, nil
+		}),
+	)
+	if rec := postAuthed(lateDuplicateServer, "/mcps", `{"name":"new","type":"http_mcp","http":{"url":"http://localhost"}}`); rec.Code != http.StatusConflict {
+		t.Fatalf("late duplicate status = %d", rec.Code)
+	}
+
+	nonSerializableServer := NewServer(WithServerBearerToken("secret"), WithServerMCPs(nonConfigGatewayMCP{name: "runtime"}))
+	if rec := requestAuthed(nonSerializableServer, http.MethodGet, "/mcps", ""); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("non-serializable MCP list status = %d", rec.Code)
+	}
+	listErrServer := NewServer(WithServerBearerToken("secret"), WithServerMCPs(&plainGatewayMCP{
+		name:         "list-broken",
+		stateful:     true,
+		listToolsErr: errors.New("list failed"),
+	}))
+	if rec := requestAuthed(listErrServer, http.MethodGet, "/tools", ""); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("list tools MCP error status = %d", rec.Code)
+	}
+	closeErrServer := NewServer(WithServerBearerToken("secret"), WithServerMCPs(&plainGatewayMCP{
+		name:      "close-broken",
+		stateful:  true,
+		connected: true,
+		closeErr:  errors.New("close failed"),
+	}))
+	if rec := requestAuthed(closeErrServer, http.MethodDelete, "/mcps/close-broken", ""); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("remove close error status = %d", rec.Code)
+	}
+	closeAllServer := NewServer(WithServerBearerToken("secret"), WithServerMCPs(&plainGatewayMCP{
+		name:      "close-all-broken",
+		stateful:  true,
+		connected: true,
+		closeErr:  errors.New("close all failed"),
+	}))
+	if rec := requestAuthed(closeAllServer, http.MethodPost, "/close", ""); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("close all error status = %d", rec.Code)
 	}
 
 	if normalizedPath("/tools/") != "/tools" || normalizedPath("/") != "/" {
@@ -520,7 +586,12 @@ func collectGatewayToolResponse(t *testing.T, current workspace.Tool, input map[
 }
 
 func postAuthed(server *Server, path, body string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	return requestAuthed(server, http.MethodPost, path, body)
+}
+
+func requestAuthed(server *Server, method, path, body string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, "/", strings.NewReader(body))
+	request.URL.Path = path
 	request.Header.Set("Authorization", "Bearer secret")
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, request)

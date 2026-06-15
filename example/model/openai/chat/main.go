@@ -20,6 +20,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/openai"
@@ -156,9 +157,7 @@ func streamChat() {
 func newOpenAIModel(stream bool) asmodel.ChatModel {
 
 	chat, err := openai.NewChatModel(
-		openai.NewCredential(
-			os.Getenv("AI_OPENAI_API_KEY"),
-		),
+		credential.NewOpenAI(os.Getenv("AI_OPENAI_API_KEY")).ChatCredential(),
 		"gpt5.5",
 		openai.WithStream(stream),
 		openai.WithChatParameters(openai.ChatParameters{

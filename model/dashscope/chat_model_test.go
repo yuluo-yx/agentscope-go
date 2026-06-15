@@ -42,9 +42,21 @@ func TestListModelsAndCompatibilityBoundary(t *testing.T) {
 	if qwenPlus.Name == "" || !qwenPlus.Supports(asmodel.ModelCapabilityText) || qwenPlus.Supports(asmodel.ModelCapabilityAudio) {
 		t.Fatalf("DashScope qwen-plus metadata mismatch: %#v", qwenPlus)
 	}
+	qwenPlusProperties := dashscopeModelCardProperties(t, qwenPlus)
+	if _, exists := qwenPlusProperties["voice"]; exists {
+		t.Fatalf("DashScope text-only model should hide voice: %#v", qwenPlusProperties["voice"])
+	}
 	omni := findCard(cards, "qwen3.5-omni-plus")
 	if omni.Name == "" || !omni.Supports(asmodel.ModelCapabilityAudio) || !omni.Supports(asmodel.ModelCapabilityVideo) {
 		t.Fatalf("DashScope omni metadata should preserve Python multimodal types: %#v", omni)
+	}
+	voice := dashscopeModelCardProperties(t, omni)["voice"].(map[string]any)
+	if voice["default"] != "Tina" {
+		t.Fatalf("DashScope omni voice schema not merged: %#v", voice)
+	}
+	qwen35Plus := findCard(cards, "qwen3.5-plus")
+	if qwen35Plus.Name == "" || !qwen35Plus.Supports(asmodel.ModelCapabilityText) || qwen35Plus.ContextSize <= 0 {
+		t.Fatalf("DashScope qwen3.5-plus should be loaded from Python model cards: %#v", qwen35Plus)
 	}
 
 	boundary := dashscope.CompatibilityBoundaryInfo()
@@ -131,4 +143,13 @@ func findCard(cards []asmodel.ModelCard, name string) asmodel.ModelCard {
 		}
 	}
 	return asmodel.ModelCard{}
+}
+
+func dashscopeModelCardProperties(t *testing.T, card asmodel.ModelCard) map[string]any {
+	t.Helper()
+	properties, ok := card.ParameterSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("model card schema properties missing for %s: %#v", card.Name, card.ParameterSchema)
+	}
+	return properties
 }

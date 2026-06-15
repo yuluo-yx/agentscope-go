@@ -17,9 +17,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/anthropic"
@@ -36,8 +37,7 @@ func main() {
 }
 
 func chat() {
-	cfg := modelconfig.Anthropic("claude-sonnet-4-5")
-	chat := newAnthropicModel(cfg, false)
+	chat := newAnthropicModel(false)
 
 	kit, err := tool.NewToolkit(weatherTool())
 	if err != nil {
@@ -55,11 +55,7 @@ func chat() {
 		panic(err)
 	}
 
-	fmt.Printf("chat_model=%s anthropic_model=%s estimated_tokens=%d\n", chat.Name(), cfg.Model, tokens)
-	if !cfg.Live {
-		fmt.Println("anthropic_live=skipped")
-		return
-	}
+	fmt.Printf("chat_model=%s anthropic_model=%s estimated_tokens=%d\n", chat.Name(), "claude-sonnet-4-5", tokens)
 
 	ctx := context.Background()
 	response, err := chat.Call(ctx, liveRequest)
@@ -100,8 +96,7 @@ func chat() {
 }
 
 func streamChat() {
-	cfg := modelconfig.Anthropic("claude-sonnet-4-5")
-	streamChat := newAnthropicModel(cfg, true)
+	streamChat := newAnthropicModel(true)
 
 	user := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
 	request := asmodel.CallRequest{Messages: []*message.Message{user}, Stream: true}
@@ -110,11 +105,7 @@ func streamChat() {
 		panic(err)
 	}
 
-	fmt.Printf("chat_model=%s anthropic_model=%s estimated_tokens=%d\n", streamChat.Name(), cfg.Model, tokens)
-	if !cfg.Live {
-		fmt.Println("anthropic_live=skipped")
-		return
-	}
+	fmt.Printf("chat_model=%s anthropic_model=%s estimated_tokens=%d\n", streamChat.Name(), "claude-sonnet-4-5", tokens)
 
 	responses, err := streamChat.Stream(context.Background(), request)
 	if err != nil {
@@ -142,13 +133,13 @@ func streamChat() {
 	fmt.Printf("anthropic_stream=ok response=%q\n", shorten(finalText, 120))
 }
 
-func newAnthropicModel(cfg modelconfig.AnthropicConfig, stream bool) asmodel.ChatModel {
+func newAnthropicModel(stream bool) asmodel.ChatModel {
 	temperature := 0.2
 	maxTokens := int64(256)
 
 	chat, err := anthropic.NewChatModel(
-		anthropicCredential(cfg),
-		cfg.Model,
+		credential.NewAnthropic(os.Getenv("AI_ANTHROPIC_API_KEY")).ChatCredential(),
+		"claude-sonnet-4-5",
 		anthropic.WithStream(stream),
 		anthropic.WithChatParameters(anthropic.ChatParameters{
 			MaxTokens:   &maxTokens,
@@ -159,13 +150,6 @@ func newAnthropicModel(cfg modelconfig.AnthropicConfig, stream bool) asmodel.Cha
 		panic(err)
 	}
 	return chat
-}
-
-func anthropicCredential(cfg modelconfig.AnthropicConfig) anthropic.Credential {
-	if strings.TrimSpace(cfg.BaseURL) == "" {
-		return anthropic.NewCredential(cfg.APIKey)
-	}
-	return anthropic.NewCredential(cfg.APIKey, anthropic.WithBaseURL(cfg.BaseURL))
 }
 
 func weatherTool() *tool.FunctionTool {

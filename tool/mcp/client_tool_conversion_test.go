@@ -114,12 +114,47 @@ func TestClientConfigValidationSnapshotsAndHelpers(t *testing.T) {
 	if httpConfig.Type != asworkspace.MCPClientTypeHTTP || httpConfig.HTTP.Headers["X-Test"] != "1" || !httpConfig.HTTP.ContinuousListening {
 		t.Fatalf("HTTP config snapshot mismatch: %#v", httpConfig)
 	}
+	for _, config := range []HTTPConfig{
+		{URL: "https://example.invalid/sse", Headers: map[string]string{"X": "Y"}, Timeout: time.Second, Transport: HTTPTransportSSE},
+		{URL: "https://example.invalid/mcp", Headers: map[string]string{"X": "Y"}, Timeout: time.Second, Transport: HTTPTransportStreamable},
+	} {
+		factoryClient, err := NewHTTPClient("http-factory", config, WithStateful(false), WithStreamableHTTPContinuousListening())
+		if err != nil {
+			t.Fatalf("NewHTTPClient factory branch returned error: %v", err)
+		}
+		rawClient, err := factoryClient.factory(context.Background())
+		if err != nil {
+			t.Fatalf("HTTP factory returned error: %v", err)
+		}
+		if rawClient == nil {
+			t.Fatal("HTTP factory returned nil client")
+		}
+		_ = rawClient.Close()
+	}
+	stdioFactoryClient, err := NewStdioClient(
+		"stdio-factory",
+		StdioConfig{Command: "echo", Args: []string{"ok"}, Env: map[string]string{"A": "B"}, CWD: t.TempDir()},
+	)
+	if err != nil {
+		t.Fatalf("NewStdioClient factory branch returned error: %v", err)
+	}
+	rawStdio, err := stdioFactoryClient.factory(context.Background())
+	if err != nil {
+		t.Fatalf("stdio factory returned error: %v", err)
+	}
+	if rawStdio == nil {
+		t.Fatal("stdio factory returned nil client")
+	}
+	_ = rawStdio.Close()
 
 	if _, err := (*Client)(nil).MCPClientConfig(); err == nil {
 		t.Fatal("nil client config should fail")
 	}
 	if _, err := NewInProcessClient("", newTestMCPServer()); err == nil {
 		t.Fatal("empty client name should fail")
+	}
+	if _, err := NewInProcessClient("bad.name", newTestMCPServer()); err == nil {
+		t.Fatal("MCP client names with provider-invalid characters should fail")
 	}
 	if _, err := newClient("missing-factory", defaultClientOptions(), asworkspace.MCPClientConfig{}, nil); err == nil {
 		t.Fatal("nil client factory should fail")
@@ -161,6 +196,13 @@ func TestToolMetadataRulesErrorsAndContentConversion(t *testing.T) {
 	}
 	if wrapped.Name() != "mcp__people__raw_tool" || wrapped.Description() != "Raw description." || wrapped.IsConcurrencySafe() || wrapped.IsReadOnly() || wrapped.IsExternalTool() || wrapped.IsStateInjected() || !wrapped.IsMCP() || wrapped.MCPName() != "people" {
 		t.Fatalf("tool metadata mismatch: %#v", wrapped)
+	}
+	sanitized, err := NewTool(client, gomcp.Tool{Name: "file.read:all"})
+	if err != nil {
+		t.Fatalf("NewTool with unsafe raw name returned error: %v", err)
+	}
+	if sanitized.Name() != "mcp__people__filexreadxall" {
+		t.Fatalf("unsafe MCP tool name should be sanitized, got %q", sanitized.Name())
 	}
 	schema := wrapped.InputSchema()
 	schema["type"] = "changed"

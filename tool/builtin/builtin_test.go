@@ -154,6 +154,22 @@ func TestBashExecutesAndChecksDangerousCommands(t *testing.T) {
 	}
 }
 
+func TestBashRunsCommandsInConfiguredWorkingDirectory(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	response := runTool(t, builtin.NewBash(builtin.WithBashCWD(dir)), map[string]any{
+		"command": "pwd",
+	}, astate.NewAgentState())
+	text := response.GetTextContent("")
+	if response.State != message.ToolResultSuccess || text == nil {
+		t.Fatalf("Bash cwd execution failed: %#v", response)
+	}
+	if got := filepath.Clean(strings.TrimSpace(*text)); got != filepath.Clean(dir) {
+		t.Fatalf("Bash should run in configured cwd: got %q want %q", got, filepath.Clean(dir))
+	}
+}
+
 func TestBashUsesShellSyntaxForReadOnlyAndSuggestions(t *testing.T) {
 	t.Parallel()
 
@@ -283,6 +299,18 @@ func TestGlobAndGrepSearchFiles(t *testing.T) {
 	}
 	if !strings.Contains(*globOutput, "a.go") || strings.Contains(*globOutput, "b.txt") {
 		t.Fatalf("Glob output should include only Go file, got %q", *globOutput)
+	}
+
+	windowsGlobResp := runTool(t, builtin.NewGlob(), map[string]any{
+		"pattern": `sub\*.txt`,
+		"path":    dir,
+	}, astate.NewAgentState())
+	if windowsGlobResp.State != message.ToolResultSuccess {
+		t.Fatalf("Glob should accept Windows-style separators, got %#v", windowsGlobResp)
+	}
+	windowsGlobOutput := windowsGlobResp.GetTextContent("")
+	if windowsGlobOutput == nil || !strings.Contains(*windowsGlobOutput, filepath.Join("sub", "b.txt")) {
+		t.Fatalf("Glob output should include sub/b.txt for Windows-style pattern, got %#v", windowsGlobOutput)
 	}
 
 	grepResp := runTool(t, builtin.NewGrep(), map[string]any{

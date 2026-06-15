@@ -17,9 +17,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/zhipu"
@@ -36,8 +36,7 @@ func main() {
 }
 
 func chat() {
-	cfg := modelconfig.Zhipu("glm-5.1")
-	chat := newZhipuModel(cfg, false)
+	chat := newZhipuModel(false)
 
 	kit, err := tool.NewToolkit(weatherTool())
 	if err != nil {
@@ -55,11 +54,7 @@ func chat() {
 		panic(err)
 	}
 
-	fmt.Printf("chat_model=%s zhipu_model=%s estimated_tokens=%d\n", chat.Name(), cfg.Model, tokens)
-	if !cfg.Live {
-		fmt.Println("zhipu_live=skipped")
-		return
-	}
+	fmt.Printf("chat_model=%s zhipu_model=%s estimated_tokens=%d\n", chat.Name(), "glm-5.1", tokens)
 
 	ctx := context.Background()
 	response, err := chat.Call(ctx, liveRequest)
@@ -100,8 +95,7 @@ func chat() {
 }
 
 func streamChat() {
-	cfg := modelconfig.Zhipu("glm-5.1")
-	streamChat := newZhipuModel(cfg, true)
+	streamChat := newZhipuModel(true)
 
 	user := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
 	request := asmodel.CallRequest{Messages: []*message.Message{user}, Stream: true}
@@ -110,11 +104,7 @@ func streamChat() {
 		panic(err)
 	}
 
-	fmt.Printf("chat_model=%s zhipu_model=%s estimated_tokens=%d\n", streamChat.Name(), cfg.Model, tokens)
-	if !cfg.Live {
-		fmt.Println("zhipu_live=skipped")
-		return
-	}
+	fmt.Printf("chat_model=%s zhipu_model=%s estimated_tokens=%d\n", streamChat.Name(), "glm-5.1", tokens)
 
 	responses, err := streamChat.Stream(context.Background(), request)
 	if err != nil {
@@ -142,13 +132,13 @@ func streamChat() {
 	fmt.Printf("zhipu_stream=ok response=%q\n", shorten(finalText, 120))
 }
 
-func newZhipuModel(cfg modelconfig.ZhipuConfig, stream bool) asmodel.ChatModel {
+func newZhipuModel(stream bool) asmodel.ChatModel {
 	temperature := 0.2
 	maxTokens := int64(256)
 
 	chat, err := zhipu.NewChatModel(
-		zhipuCredential(cfg),
-		cfg.Model,
+		zhipu.NewCredential(os.Getenv("AI_ZHIPU_API_KEY")),
+		"glm-5.1",
 		zhipu.WithStream(stream),
 		zhipu.WithChatParameters(zhipu.ChatParameters{
 			MaxTokens:   &maxTokens,
@@ -159,13 +149,6 @@ func newZhipuModel(cfg modelconfig.ZhipuConfig, stream bool) asmodel.ChatModel {
 		panic(err)
 	}
 	return chat
-}
-
-func zhipuCredential(cfg modelconfig.ZhipuConfig) zhipu.Credential {
-	if strings.TrimSpace(cfg.BaseURL) == "" {
-		return zhipu.NewCredential(cfg.APIKey)
-	}
-	return zhipu.NewCredential(cfg.APIKey, zhipu.WithBaseURL(cfg.BaseURL))
 }
 
 func weatherTool() *tool.FunctionTool {

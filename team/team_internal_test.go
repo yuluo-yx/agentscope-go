@@ -75,6 +75,14 @@ func TestTeamManagerInternalErrorAndHelperBranches(t *testing.T) {
 	if text, err := manager.createTeam(leaderState, "Launch", "Ship"); err != nil || !strings.Contains(text, "created") {
 		t.Fatalf("createTeam returned %q, %v", text, err)
 	}
+	leaderState.PermissionContext.Mode = permission.ModeAcceptEdits
+	leaderState.PermissionContext.WorkingDirectories["repo"] = permission.AdditionalWorkingDirectory{Path: "/tmp/repo", Source: "session"}
+	leaderState.PermissionContext.AllowRules["Bash"] = []permission.Rule{{
+		ToolName:    "Bash",
+		RuleContent: "git status",
+		Behavior:    permission.BehaviorAllow,
+		Source:      "session",
+	}}
 	if _, err := manager.createTeam(leaderState, "Again", "Ship"); err == nil || !strings.Contains(err.Error(), "already part of a team") {
 		t.Fatalf("createTeam duplicate error = %v", err)
 	}
@@ -112,6 +120,22 @@ func TestTeamManagerInternalErrorAndHelperBranches(t *testing.T) {
 	}
 	if captured.Leader != leader || captured.Team.Name != "Launch" || !strings.Contains(captured.SystemPrompt, "research") {
 		t.Fatalf("worker request mismatch: %#v", captured)
+	}
+	if captured.PermissionContext == nil {
+		t.Fatal("worker request should include inherited permission context")
+	}
+	if captured.PermissionContext.Mode != permission.ModeExplore {
+		t.Fatalf("explicit worker mode should override inherited mode, got %q", captured.PermissionContext.Mode)
+	}
+	if captured.PermissionContext.WorkingDirectories["repo"].Path != "/tmp/repo" {
+		t.Fatalf("worker should inherit leader working directories: %#v", captured.PermissionContext.WorkingDirectories)
+	}
+	if got := captured.PermissionContext.AllowRules["Bash"]; len(got) != 1 || got[0].RuleContent != "git status" {
+		t.Fatalf("worker should inherit leader allow rules: %#v", got)
+	}
+	captured.PermissionContext.AllowRules["Bash"][0].RuleContent = "mutated"
+	if leaderState.PermissionContext.AllowRules["Bash"][0].RuleContent != "git status" {
+		t.Fatalf("worker permission context should not alias leader rules: %#v", leaderState.PermissionContext.AllowRules)
 	}
 	team, ok := manager.TeamForSession(leaderState.SessionID)
 	if !ok || len(team.Members) != 1 {
@@ -198,12 +222,25 @@ func TestTeamManagerDefaultFactoryAndDeletedTeamBranches(t *testing.T) {
 		Name:           "worker",
 		SystemPrompt:   "worker system",
 		PermissionMode: permission.ModeBypass,
+		PermissionContext: &permission.Context{
+			Mode:               permission.ModeBypass,
+			WorkingDirectories: map[string]permission.AdditionalWorkingDirectory{"repo": {Path: "/tmp/repo", Source: "session"}},
+			AllowRules: map[string][]permission.Rule{
+				"Bash": {{ToolName: "Bash", RuleContent: "git status", Behavior: permission.BehaviorAllow, Source: "session"}},
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("defaultWorkerFactory returned error: %v", err)
 	}
 	if worker.AgentName() != "worker" || worker.AgentState().PermissionContext.Mode != permission.ModeBypass {
 		t.Fatalf("default worker mismatch: %#v", worker)
+	}
+	if worker.AgentState().PermissionContext.WorkingDirectories["repo"].Path != "/tmp/repo" {
+		t.Fatalf("default worker should apply inherited working directories: %#v", worker.AgentState().PermissionContext.WorkingDirectories)
+	}
+	if got := worker.AgentState().PermissionContext.AllowRules["Bash"]; len(got) != 1 || got[0].RuleContent != "git status" {
+		t.Fatalf("default worker should apply inherited rules: %#v", got)
 	}
 
 	deletedManager := NewManager()

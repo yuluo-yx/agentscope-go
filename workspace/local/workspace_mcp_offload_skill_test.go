@@ -48,6 +48,9 @@ func TestWorkspaceOptionsNilCanceledAndBasicMethods(t *testing.T) {
 	if ws.WorkspaceID() == "" || ws.instructions != "local={workdir}" || ws.mcpFactory == nil {
 		t.Fatalf("workspace options/defaults mismatch: %#v", ws)
 	}
+	if ws.WorkspaceRoot() == "" || (*Workspace)(nil).WorkspaceRoot() != "" {
+		t.Fatalf("WorkspaceRoot mismatch: %q", ws.WorkspaceRoot())
+	}
 	instructions, err := ws.GetInstructions(context.Background())
 	if err != nil {
 		t.Fatalf("GetInstructions returned error: %v", err)
@@ -141,6 +144,15 @@ func TestWorkspaceOptionsNilCanceledAndBasicMethods(t *testing.T) {
 	}
 	if err := ws.RemoveSkill(canceled, "skill"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("RemoveSkill canceled error = %v", err)
+	}
+	if _, err := ws.OffloadContext(canceled, "session", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("OffloadContext canceled error = %v", err)
+	}
+	if _, err := ws.OffloadToolResult(canceled, "session", message.NewToolResultBlock("id", "Tool", message.ToolResultOutput{Raw: "x"}, message.ToolResultSuccess)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("OffloadToolResult canceled error = %v", err)
+	}
+	if _, err := ws.OffloadDataBlock(canceled, message.NewDataBlock(message.NewBase64Source("eA==", "text/plain"))); !errors.Is(err, context.Canceled) {
+		t.Fatalf("OffloadDataBlock canceled error = %v", err)
 	}
 }
 
@@ -358,19 +370,24 @@ func TestWorkspaceOffloadsContextToolResultsAndDataBranches(t *testing.T) {
 	if _, err := ws.OffloadDataBlock(ctx, message.NewDataBlock(message.NewBase64Source("not-base64", "text/plain"))); err == nil {
 		t.Fatalf("OffloadDataBlock should reject invalid base64")
 	}
-	for _, tt := range map[string]string{
+	for mediaType, want := range map[string]string{
 		"image/jpeg":       ".jpg",
+		"image/png":        ".png",
 		"image/webp":       ".webp",
 		"image/svg+xml":    ".svg",
+		"audio/mpeg":       ".mp3",
 		"audio/wav":        ".wav",
 		"audio/x-wav":      ".wav",
 		"audio/ogg":        ".ogg",
+		"video/mp4":        ".mp4",
 		"video/webm":       ".webm",
+		"application/pdf":  ".pdf",
+		"text/plain":       ".txt",
 		"application/json": ".json",
 		"unknown/type":     "",
 	} {
-		if got := mediaExtension(tt); got != "" && got[0] != '.' {
-			t.Fatalf("mediaExtension(%q) should return an extension, got %q", tt, got)
+		if got := mediaExtension(mediaType); got != want {
+			t.Fatalf("mediaExtension(%q) = %q, want %q", mediaType, got, want)
 		}
 	}
 }
@@ -397,6 +414,20 @@ func TestWorkspaceSkillIndexAndHelperBranches(t *testing.T) {
 	}
 	if index.Skills == nil {
 		t.Fatalf("loadSkillsIndex should initialize nil Skills map")
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, ".skills"), []byte("{"), 0o600); err != nil {
+		t.Fatalf("write invalid .skills returned error: %v", err)
+	}
+	index, err = ws.loadSkillsIndex(skillsDir)
+	if err != nil || len(index.Skills) != 0 {
+		t.Fatalf("invalid .skills should load as empty index, index=%#v err=%v", index, err)
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, ".skills"), nil, 0o600); err != nil {
+		t.Fatalf("write empty .skills returned error: %v", err)
+	}
+	index, err = ws.loadSkillsIndex(skillsDir)
+	if err != nil || len(index.Skills) != 0 {
+		t.Fatalf("empty .skills should load as empty index, index=%#v err=%v", index, err)
 	}
 
 	first := filepath.Join(skillsDir, "first")
@@ -463,6 +494,23 @@ func TestWorkspaceSkillIndexAndHelperBranches(t *testing.T) {
 	}
 	if insideDir(workdir, filepath.Join(filepath.Dir(workdir), "outside.txt")) {
 		t.Fatalf("insideDir should reject sibling paths")
+	}
+	if !insideDir(workdir, filepath.Join(workdir, "inside.txt")) {
+		t.Fatalf("insideDir should accept children")
+	}
+	sourceFile := filepath.Join(t.TempDir(), "source.txt")
+	if err := os.WriteFile(sourceFile, []byte("copy"), 0o600); err != nil {
+		t.Fatalf("WriteFile source returned error: %v", err)
+	}
+	destinationFile := filepath.Join(t.TempDir(), "destination.txt")
+	if err := copyFile(sourceFile, destinationFile); err != nil {
+		t.Fatalf("copyFile returned error: %v", err)
+	}
+	if err := copyFile(sourceFile, destinationFile); err == nil {
+		t.Fatalf("copyFile should fail when destination already exists")
+	}
+	if err := copyDir(filepath.Join(t.TempDir(), "missing"), filepath.Join(t.TempDir(), "out")); err == nil {
+		t.Fatalf("copyDir should fail for missing source")
 	}
 }
 

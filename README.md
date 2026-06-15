@@ -26,10 +26,6 @@ execution. It is designed for developers who want to build AI agent systems in
 Go while keeping the runtime explicit, testable, and easy to integrate with
 existing Go services.
 
-The project currently focuses on text chat agents and tool-using workflows. It
-does not claim feature parity with the Python AgentScope project yet;
-unsupported capabilities should not be documented as available APIs.
-
 ## Requirements
 
 - Go `1.26.3` or newer.

@@ -17,12 +17,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
@@ -66,13 +66,11 @@ func main() {
 		"limit":     20,
 	}, state)
 	readText := textContent(readResponse.Content)
-
-	cfg := modelconfig.DashScope("qwen3.7-max")
 	maxTokens := int64(256)
 	temperature := 0.2
 	chat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
+		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
+		"qwen3.7-max",
 		dashscope.WithStream(false),
 		dashscope.WithChatParameters(dashscope.ChatParameters{MaxTokens: &maxTokens, Temperature: &temperature}),
 	))
@@ -93,10 +91,6 @@ func main() {
 		chat.Name(),
 		tokens,
 	)
-	if !cfg.Live {
-		fmt.Println("dashscope_live=skipped")
-		return
-	}
 
 	response, err := chat.Call(ctx, request)
 	if err != nil {

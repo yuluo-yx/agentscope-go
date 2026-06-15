@@ -128,8 +128,36 @@ func WithWorkspace(ctx context.Context, workspace asworkspace.Workspace) AgentOp
 		agent.systemPrompt = appendSystemPrompt(agent.systemPrompt, resources.SystemPrompt)
 		agent.toolkit = resources.Toolkit
 		agent.offloader = resources.Offloader
+		agent.addWorkspaceRootPermission(workspace)
 
 		return nil
+	}
+}
+
+func (a *Agent) addWorkspaceRootPermission(workspace asworkspace.Workspace) {
+	rooted, ok := workspace.(asworkspace.RootedWorkspace)
+	if !ok || a == nil {
+		return
+	}
+	root := strings.TrimSpace(rooted.WorkspaceRoot())
+	if root == "" {
+		return
+	}
+	if a.state == nil {
+		a.state = NewAgentState()
+	}
+	if a.state.PermissionContext == nil {
+		a.state.PermissionContext = permission.NewContext(permission.ModeDefault)
+	}
+	if a.state.PermissionContext.WorkingDirectories == nil {
+		a.state.PermissionContext.WorkingDirectories = map[string]permission.AdditionalWorkingDirectory{}
+	}
+	if _, exists := a.state.PermissionContext.WorkingDirectories[root]; exists {
+		return
+	}
+	a.state.PermissionContext.WorkingDirectories[root] = permission.AdditionalWorkingDirectory{
+		Path:   root,
+		Source: "session",
 	}
 }
 

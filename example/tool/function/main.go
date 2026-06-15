@@ -17,10 +17,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"os"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
@@ -78,24 +78,15 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 	if err != nil {
 		panic(err)
 	}
-	cfg := modelconfig.DashScope("qwen3.7-max")
 	maxTokens := int64(256)
 	temperature := 0.2
 	chat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
+		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
+		"qwen3.7-max",
 		dashscope.WithStream(false),
 		dashscope.WithChatParameters(dashscope.ChatParameters{MaxTokens: &maxTokens, Temperature: &temperature}),
 	))
 	user := mustMessage(message.NewUserMessage("user", prompt))
-	request := asmodel.CallRequest{Messages: []*message.Message{user}, Tools: schemas}
-	tokens, err := chat.CountTokens(request)
-	if err != nil {
-		panic(err)
-	}
-	if !cfg.Live {
-		return fmt.Sprintf("chat_tool=%s mode=offline chat_model=%s estimated_tokens=%d", schemaNames(schemas), chat.Name(), tokens)
-	}
 	messages := []*message.Message{user}
 	var lastToolCall *message.ToolCallBlock
 	var lastToolResponse *tool.ToolResponse
