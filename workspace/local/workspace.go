@@ -134,6 +134,14 @@ func (w *Workspace) WorkspaceID() string {
 	return w.id
 }
 
+// WorkspaceRoot returns the local root exposed to the agent.
+func (w *Workspace) WorkspaceRoot() string {
+	if w == nil {
+		return ""
+	}
+	return w.workdir
+}
+
 // IsAlive reports whether the workspace is initialized.
 func (w *Workspace) IsAlive() bool {
 	return w != nil && w.alive

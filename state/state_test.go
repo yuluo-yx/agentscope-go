@@ -203,6 +203,29 @@ func TestToolContextEvictsByByteLimit(t *testing.T) {
 	}
 }
 
+func TestToolContextCleanFileCache(t *testing.T) {
+	t.Parallel()
+
+	var nilContext *statepkg.ToolContext
+	nilContext.CleanFileCache("ignored")
+
+	toolContext := statepkg.NewToolContext()
+	toolContext.ReadFileCache = []statepkg.ReadCacheEntry{
+		{FilePath: "keep", Lines: []string{"a"}},
+		{FilePath: "drop", Lines: []string{"b"}},
+		{FilePath: "", Lines: []string{"empty"}},
+	}
+	toolContext.CleanFileCache("", "keep")
+	if len(toolContext.ReadFileCache) != 1 || toolContext.ReadFileCache[0].FilePath != "keep" {
+		t.Fatalf("CleanFileCache should keep only reserved non-empty paths: %#v", toolContext.ReadFileCache)
+	}
+
+	toolContext.CleanFileCache()
+	if len(toolContext.ReadFileCache) != 0 {
+		t.Fatalf("CleanFileCache without reservations should clear cache: %#v", toolContext.ReadFileCache)
+	}
+}
+
 func TestAgentStateNilClone(t *testing.T) {
 	t.Parallel()
 

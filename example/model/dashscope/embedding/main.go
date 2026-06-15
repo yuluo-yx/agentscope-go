@@ -18,291 +18,40 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
-	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
+	"github.com/yuluo-yx/agentscope-go/credential"
+	asembedding "github.com/yuluo-yx/agentscope-go/embedding"
+	"github.com/yuluo-yx/agentscope-go/embedding/dashscope"
 )
 
 func main() {
-
-	// call chat
-	fmt.Println("start chat call: ------------------")
-	chat()
-
-	// call stream chat
-	fmt.Println("\nstart stream chat call: ------------------")
-	streamChat()
-}
-
-// chat. chat method use case.
-func chat() {
-
-	// get apiKey and set some params.
-	cfg := modelconfig.DashScope("qwen3.7-max")
-	temperature := 0.2
-	maxTokens := int64(256)
-
-	// create chatModel instance
-	chat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
-		dashscope.WithStream(false),
-		dashscope.WithChatParameters(dashscope.ChatParameters{
-			MaxTokens:   &maxTokens,
-			Temperature: &temperature,
-		}),
-	))
-
-	// tools
-	kit := mustToolkit(tool.NewToolkit(weatherTool()))
-	schemas, err := kit.ToolSchemas()
-	if err != nil {
-		panic(err)
-	}
-
-	// user prompt
-	visionMessage := mustMessage(message.NewUserMessage("user", message.ContentBlockList{
-		message.NewTextBlock("Describe this image in one sentence."),
-		message.NewDataBlock(message.NewURLSource("https://example.com/sample.png", "image/png"), message.WithDataBlockName("sample.png")),
-	}))
-	tokens, err := chat.CountTokens(asmodel.CallRequest{
-		Messages: []*message.Message{visionMessage},
-		Tools:    schemas,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf(
-		"chat_model=%s dashscope_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
-		chat.Name(),
-		chat.Name(),
-		len(schemas),
-		len(visionMessage.Content),
-		tokens,
+	model, err := dashscope.NewTextModel(
+		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).EmbeddingCredential(),
+		"text-embedding-v4",
+		dashscope.WithDimensions(1024),
 	)
-	if !cfg.Live {
-		fmt.Println("dashscope_live=skipped")
-		return
-	}
-
-	ctx := context.Background()
-	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
-	response, err := chat.Call(ctx, asmodel.CallRequest{
-		Messages: []*message.Message{liveMessage},
-	})
-	if err != nil {
-		panic(err)
-	}
-	responseText := ""
-	if text := response.GetTextContent(); text != nil {
-		responseText = *text
-	}
-	fmt.Printf("dashscope_live=ok response=%q\n", shorten(responseText, 120))
-
-	weatherMessage := mustMessage(message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？"))
-	toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
-		Messages: []*message.Message{weatherMessage},
-		Tools:    schemas,
-	})
-	if err != nil {
-		panic(err)
-	}
-	weatherCall := firstToolCall(toolCallResponse.Content)
-	if weatherCall == nil {
-		text := ""
-		if responseText := toolCallResponse.GetTextContent(); responseText != nil {
-			text = *responseText
-		}
-		panic(fmt.Sprintf("DashScope weather request returned no tool call: %q", text))
-	}
-	toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
 	if err != nil {
 		panic(err)
 	}
 
-	assistantMessage := mustMessage(message.NewAssistantMessage("assistant", toolCallResponse.Content))
-	toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
-		message.NewToolResultBlock(weatherCall.ID, weatherCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
-	}))
-	weatherResponse, err := chat.Call(ctx, asmodel.CallRequest{
-		Messages: []*message.Message{weatherMessage, assistantMessage, toolMessage},
+	response, err := model.Embed(context.Background(), asembedding.EmbeddingRequest{
+		Inputs: []asembedding.EmbeddingInput{
+			asembedding.NewTextInput("AgentScope Go makes agent applications easier to compose."),
+			asembedding.NewTextInput("Credential adapters keep provider examples consistent."),
+		},
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	weatherText := ""
-	if text := weatherResponse.GetTextContent(); text != nil {
-		weatherText = *text
+	firstDimensions := 0
+	if len(response.Embeddings) > 0 {
+		firstDimensions = len(response.Embeddings[0])
 	}
-	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(weatherText, 120))
-}
-
-func streamChat() {
-
-	cfg := modelconfig.DashScope("qwen3.7-max")
-	temperature := 0.2
-	maxTokens := int64(256)
-
-	streamChat := mustModel(dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
-		dashscope.WithStream(true),
-		dashscope.WithChatParameters(dashscope.ChatParameters{
-			MaxTokens:   &maxTokens,
-			Temperature: &temperature,
-		}),
-	))
-
-	// tools
-	kit := mustToolkit(tool.NewToolkit(weatherTool()))
-	schemas, err := kit.ToolSchemas()
-	if err != nil {
-		panic(err)
-	}
-
-	// user prompt
-	visionMessage := mustMessage(message.NewUserMessage("user", message.ContentBlockList{
-		message.NewTextBlock("Describe this image in one sentence."),
-		message.NewDataBlock(message.NewURLSource("https://example.com/sample.png", "image/png"), message.WithDataBlockName("sample.png")),
-	}))
-	tokens, err := streamChat.CountTokens(asmodel.CallRequest{
-		Messages: []*message.Message{visionMessage},
-		Tools:    schemas,
-	})
-	if err != nil {
-		panic(err)
-	}
-
 	fmt.Printf(
-		"chat_model=%s dashscope_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
-		streamChat.Name(),
-		streamChat.Name(),
-		len(schemas),
-		len(visionMessage.Content),
-		tokens,
+		"dashscope_embedding=ok model=%s embeddings=%d dimensions=%d\n",
+		model.Name(),
+		len(response.Embeddings),
+		firstDimensions,
 	)
-	if !cfg.Live {
-		fmt.Println("dashscope_live=skipped")
-		return
-	}
-
-	ctx := context.Background()
-	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
-	responses, err := streamChat.Stream(ctx, asmodel.CallRequest{
-		Messages: []*message.Message{liveMessage},
-		Stream:   true,
-	})
-	if err != nil {
-		panic(err)
-	}
-	var streamed strings.Builder
-	var finalText string
-	for response := range responses {
-		text := ""
-		if responseText := response.GetTextContent(); responseText != nil {
-			text = *responseText
-		}
-		if response.IsLast {
-			finalText = text
-			continue
-		}
-		if text != "" {
-			streamed.WriteString(text)
-			fmt.Printf("dashscope_stream_delta=%q\n", shorten(text, 60))
-		}
-	}
-	if finalText == "" {
-		finalText = streamed.String()
-	}
-	fmt.Printf("dashscope_stream=ok response=%q\n", shorten(finalText, 120))
-}
-
-func weatherTool() *tool.FunctionTool {
-
-	return mustTool(tool.NewFunctionTool(
-		"GetWeather",
-		"Return weather for one city.",
-		map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"city": map[string]any{"type": "string", "description": "City name."},
-			},
-			"required": []any{"city"},
-		},
-		func(context.Context, map[string]any, *asstate.AgentState) (message.ContentBlockList, error) {
-			return message.ContentBlockList{message.NewTextBlock("sunny")}, nil
-		},
-		tool.WithFunctionReadOnly(true),
-	))
-}
-
-func textContent(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
-}
-
-func getenv(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
-func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {
-	for _, block := range blocks {
-		if toolCall, ok := block.(*message.ToolCallBlock); ok {
-			return toolCall
-		}
-	}
-	return nil
-}
-
-func shorten(text string, limit int) string {
-	text = strings.TrimSpace(text)
-	runes := []rune(text)
-	if len(runes) <= limit {
-		return text
-	}
-	return string(runes[:limit]) + "..."
-}
-
-func mustModel(model asmodel.ChatModel, err error) asmodel.ChatModel {
-	if err != nil {
-		panic(err)
-	}
-	return model
-}
-
-func mustTool(tool *tool.FunctionTool, err error) *tool.FunctionTool {
-	if err != nil {
-		panic(err)
-	}
-	return tool
-}
-
-func mustToolkit(kit *tool.Toolkit, err error) *tool.Toolkit {
-	if err != nil {
-		panic(err)
-	}
-	return kit
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
 }

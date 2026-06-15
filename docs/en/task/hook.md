@@ -43,3 +43,22 @@ agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
 ```
 
 `TracingMiddleware` depends on a small `middleware.Tracer` interface. The core `agent` package does not import OpenTelemetry. Applications that want OpenTelemetry can adapt a tracer with `github.com/yuluo-yx/agentscope-go/middleware/otel`.
+
+## Optional TTS
+
+`middleware.NewTTSMiddleware` can append synthesized audio to assistant reply
+streams:
+
+```go
+speech, err := dashscopetts.NewModel(
+	dashscopetts.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+	"qwen3-tts-flash",
+)
+agent.WithMiddlewares(middleware.NewTTSMiddleware(speech))
+```
+
+The middleware preserves the original text events. For batch models it collects
+one text block and emits `DATA_BLOCK_START`, `DATA_BLOCK_DELTA`, and
+`DATA_BLOCK_END` after the text block ends. Realtime models receive text deltas
+through `Push` and are flushed with an empty `tts.Request` when the text block
+ends.

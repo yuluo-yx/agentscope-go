@@ -314,6 +314,9 @@ func newClient(name string, options clientOptions, config asworkspace.MCPClientC
 	if name == "" {
 		return nil, fmt.Errorf("mcp: client name is required")
 	}
+	if !isProviderToolNamePart(name) {
+		return nil, fmt.Errorf("mcp: client name %q contains provider-invalid characters; only letters, numbers, underscore, and hyphen are allowed", name)
+	}
 	if factory == nil {
 		return nil, fmt.Errorf("mcp: client factory is required")
 	}

@@ -385,24 +385,41 @@ type fakeRuntime struct {
 	runs       []runRequest
 	runResult  runResult
 	files      map[string]string
+	createErr  error
+	startErr   error
+	stopErr    error
+	removeErr  error
+	closeErr   error
 }
 
 func (f *fakeRuntime) Create(_ context.Context, spec containerSpec) (string, error) {
+	if f.createErr != nil {
+		return "", f.createErr
+	}
 	f.createSpec = spec
 	return "container-1", nil
 }
 
 func (f *fakeRuntime) Start(context.Context, string) error {
+	if f.startErr != nil {
+		return f.startErr
+	}
 	f.started = true
 	return nil
 }
 
 func (f *fakeRuntime) Stop(context.Context, string) error {
+	if f.stopErr != nil {
+		return f.stopErr
+	}
 	f.stopped = true
 	return nil
 }
 
 func (f *fakeRuntime) Remove(context.Context, string) error {
+	if f.removeErr != nil {
+		return f.removeErr
+	}
 	f.removed = true
 	return nil
 }
@@ -432,6 +449,9 @@ func (f *fakeRuntime) WriteFile(_ context.Context, _, path string, data []byte, 
 }
 
 func (f *fakeRuntime) Close() error {
+	if f.closeErr != nil {
+		return f.closeErr
+	}
 	f.closed = true
 	return nil
 }
@@ -490,6 +510,11 @@ type fakeGateway struct {
 	removed      []string
 	closed       bool
 	configs      map[string]asworkspace.MCPClientConfig
+	bootstrapErr error
+	addErr       error
+	removeErr    error
+	listErr      error
+	closeErr     error
 }
 
 func newFakeGateway() *fakeGateway {
@@ -497,23 +522,35 @@ func newFakeGateway() *fakeGateway {
 }
 
 func (g *fakeGateway) Bootstrap(context.Context) error {
+	if g.bootstrapErr != nil {
+		return g.bootstrapErr
+	}
 	g.bootstrapped = true
 	return nil
 }
 
 func (g *fakeGateway) AddMCP(_ context.Context, config asworkspace.MCPClientConfig) error {
+	if g.addErr != nil {
+		return g.addErr
+	}
 	g.added = append(g.added, config)
 	g.configs[config.Name] = config
 	return nil
 }
 
 func (g *fakeGateway) RemoveMCP(_ context.Context, name string) error {
+	if g.removeErr != nil {
+		return g.removeErr
+	}
 	g.removed = append(g.removed, name)
 	delete(g.configs, name)
 	return nil
 }
 
 func (g *fakeGateway) ListMCPs(context.Context) ([]asworkspace.MCPClientConfig, error) {
+	if g.listErr != nil {
+		return nil, g.listErr
+	}
 	out := make([]asworkspace.MCPClientConfig, 0, len(g.configs))
 	for _, config := range g.configs {
 		out = append(out, config)
@@ -526,6 +563,9 @@ func (g *fakeGateway) NewMCPClient(config asworkspace.MCPClientConfig, connected
 }
 
 func (g *fakeGateway) Close(context.Context) error {
+	if g.closeErr != nil {
+		return g.closeErr
+	}
 	g.closed = true
 	return nil
 }
@@ -576,6 +616,43 @@ func (c *fakeGatewayMCPClient) ListTools(context.Context) ([]tool.Tool, error) {
 
 func (c *fakeGatewayMCPClient) MCPClientConfig() (asworkspace.MCPClientConfig, error) {
 	return c.config, nil
+}
+
+type nonConfigDockerMCP struct {
+	name string
+}
+
+func (m nonConfigDockerMCP) Name() string { return m.name }
+
+func (nonConfigDockerMCP) IsStateful() bool { return false }
+
+func (nonConfigDockerMCP) IsConnected() bool { return false }
+
+func (nonConfigDockerMCP) Connect(context.Context) error { return nil }
+
+func (nonConfigDockerMCP) Close() error { return nil }
+
+func (nonConfigDockerMCP) ListTools(context.Context) ([]tool.Tool, error) { return nil, nil }
+
+type errorConfigDockerMCP struct {
+	name string
+	err  error
+}
+
+func (m errorConfigDockerMCP) Name() string { return m.name }
+
+func (errorConfigDockerMCP) IsStateful() bool { return false }
+
+func (errorConfigDockerMCP) IsConnected() bool { return false }
+
+func (errorConfigDockerMCP) Connect(context.Context) error { return nil }
+
+func (errorConfigDockerMCP) Close() error { return nil }
+
+func (errorConfigDockerMCP) ListTools(context.Context) ([]tool.Tool, error) { return nil, nil }
+
+func (m errorConfigDockerMCP) MCPClientConfig() (asworkspace.MCPClientConfig, error) {
+	return asworkspace.MCPClientConfig{}, m.err
 }
 
 func assertMCPFileNames(t *testing.T, path string, expected ...string) {

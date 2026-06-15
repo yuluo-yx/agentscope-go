@@ -132,6 +132,14 @@ func (w *Workspace) WorkspaceID() string {
 	return w.id
 }
 
+// WorkspaceRoot returns the sandbox root exposed to the agent.
+func (w *Workspace) WorkspaceRoot() string {
+	if w == nil {
+		return ""
+	}
+	return w.containerWorkdir
+}
+
 // IsAlive reports whether the sandbox has been initialized and not closed.
 func (w *Workspace) IsAlive() bool {
 	return w != nil && w.alive

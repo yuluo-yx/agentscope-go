@@ -286,6 +286,14 @@ func (w *Workspace) WorkspaceID() string {
 	return w.id
 }
 
+// WorkspaceRoot returns the container root exposed to the agent.
+func (w *Workspace) WorkspaceRoot() string {
+	if w == nil {
+		return ""
+	}
+	return w.containerWorkdir
+}
+
 // IsAlive reports whether the Docker container is initialized.
 func (w *Workspace) IsAlive() bool {
 	return w != nil && w.alive

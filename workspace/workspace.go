@@ -138,3 +138,8 @@ type Workspace interface {
 	// RemoveSkill removes a skill from the workspace by name or path, depending on the implementation.
 	RemoveSkill(context.Context, string) error
 }
+
+// RootedWorkspace optionally reports the agent-visible root for file operations.
+type RootedWorkspace interface {
+	WorkspaceRoot() string
+}

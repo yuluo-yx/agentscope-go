@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/ollama"
@@ -155,10 +156,10 @@ func streamChat() {
 func newOllamaModel(stream bool) asmodel.ChatModel {
 
 	chat, err := ollama.NewChatModel(
-		ollama.NewCredential(
+		credential.NewOllama(
 			// if not, use default. See {ollama/ollama@v0.30.7/api/client.go:74}
-			ollama.WithHost("http://127.0.0.1:11434"),
-		),
+			credential.WithHost("http://127.0.0.1:11434"),
+		).ChatCredential(),
 		"llama3.1",
 		ollama.WithStream(stream),
 		ollama.WithChatParameters(ollama.ChatParameters{

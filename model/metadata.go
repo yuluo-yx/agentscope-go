@@ -134,6 +134,10 @@ func CommonChatParameterSchema() map[string]any {
 			"parallel_tool_calls": map[string]any{
 				"type": "boolean",
 			},
+			"voice": map[string]any{
+				"type":        "string",
+				"description": "Voice used when requesting audio output from omni-style chat models.",
+			},
 		},
 		"additionalProperties": false,
 	}
@@ -262,7 +266,7 @@ func ApplyModelCardDefaults(card *ModelCard, defaults ModelCardDefaults) {
 		card.Capabilities[capability] = supported
 	}
 	if isEmptyParameterSchema(card.ParameterSchema) && defaults.ParameterSchema != nil {
-		card.ParameterSchema = utils.CloneAnyMap(defaults.ParameterSchema)
+		card.ParameterSchema = mergedParameterSchema(*card, defaults.ParameterSchema)
 	}
 	if card.Extra == nil {
 		card.Extra = map[string]any{}
@@ -380,6 +384,86 @@ func inferCapabilities(card ModelCard) ModelCapabilities {
 		}
 	}
 	return capabilities
+}
+
+func mergedParameterSchema(card ModelCard, base map[string]any) map[string]any {
+	schema := utils.CloneAnyMap(base)
+	if schema == nil {
+		schema = map[string]any{"type": "object"}
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		properties = map[string]any{}
+	}
+	schema["properties"] = properties
+	if _, ok := schema["type"]; !ok {
+		schema["type"] = "object"
+	}
+
+	applyOutputSizeMaximum(properties, card.OutputSize)
+	for name, override := range card.ParameterOverrides {
+		mergeParameterOverride(properties, name, override)
+	}
+	if !hasOutputType(card, "application/x-thinking") {
+		delete(properties, "thinking_enable")
+		delete(properties, "thinking_budget")
+	}
+	if !hasOutputPrefix(card, "audio/") {
+		delete(properties, "voice")
+	}
+	return schema
+}
+
+func applyOutputSizeMaximum(properties map[string]any, outputSize int) {
+	if outputSize <= 0 {
+		return
+	}
+	maxTokens, ok := properties["max_tokens"].(map[string]any)
+	if !ok {
+		return
+	}
+	if _, exists := maxTokens["maximum"]; !exists {
+		maxTokens["maximum"] = outputSize
+	}
+}
+
+func mergeParameterOverride(properties map[string]any, name string, override map[string]any) {
+	if override == nil {
+		return
+	}
+	if hidden, _ := override["hidden"].(bool); hidden {
+		delete(properties, name)
+		return
+	}
+	property, ok := properties[name].(map[string]any)
+	if !ok {
+		property = map[string]any{}
+	}
+	for key, value := range override {
+		if key == "hidden" {
+			continue
+		}
+		property[key] = utils.CloneAny(value)
+	}
+	properties[name] = property
+}
+
+func hasOutputType(card ModelCard, target string) bool {
+	for _, mediaType := range card.OutputTypes {
+		if mediaType == target {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOutputPrefix(card ModelCard, prefix string) bool {
+	for _, mediaType := range card.OutputTypes {
+		if strings.HasPrefix(mediaType, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func allModelCapabilities() []ModelCapability {

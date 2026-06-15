@@ -226,7 +226,39 @@ func embeddedResourceBlocks(resource gomcp.ResourceContents) message.ContentBloc
 }
 
 func qualifiedToolName(mcpName, toolName string) string {
-	return "mcp__" + mcpName + "__" + toolName
+	return "mcp__" + mcpName + "__" + sanitizeProviderToolNamePart(toolName)
+}
+
+func sanitizeProviderToolNamePart(value string) string {
+	var builder strings.Builder
+	for _, r := range value {
+		if isProviderToolNameRune(r) {
+			builder.WriteRune(r)
+			continue
+		}
+		builder.WriteByte('x')
+	}
+	return builder.String()
+}
+
+func isProviderToolNamePart(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if !isProviderToolNameRune(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isProviderToolNameRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') ||
+		(r >= 'A' && r <= 'Z') ||
+		(r >= '0' && r <= '9') ||
+		r == '_' ||
+		r == '-'
 }
 
 func inputSchemaMap(raw gomcp.Tool) map[string]any {

@@ -17,12 +17,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/example/common/modelconfig"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
+	"github.com/yuluo-yx/agentscope-go/model/moonshot"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	"github.com/yuluo-yx/agentscope-go/tool"
 )
@@ -42,16 +43,15 @@ func main() {
 func chat() {
 
 	// get apiKey and set some params.
-	cfg := modelconfig.DashScope("qwen3.7-max")
 	temperature := 0.2
 	maxTokens := int64(256)
 
 	// create chatModel instance
-	chat, err := dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
-		dashscope.WithStream(false),
-		dashscope.WithChatParameters(dashscope.ChatParameters{
+	chat, err := moonshot.NewChatModel(
+		credential.NewMoonshot(os.Getenv("AI_MOONSHOT_API_KEY")).ChatCredential(),
+		"moonshot-v1-8k",
+		moonshot.WithStream(false),
+		moonshot.WithChatParameters(moonshot.ChatParameters{
 			MaxTokens:   &maxTokens,
 			Temperature: &temperature,
 		}),
@@ -87,17 +87,13 @@ func chat() {
 	}
 
 	fmt.Printf(
-		"chat_model=%s dashscope_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
+		"chat_model=%s moonshot_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
 		chat.Name(),
 		chat.Name(),
 		len(schemas),
 		len(visionMessage.Content),
 		tokens,
 	)
-	if !cfg.Live {
-		fmt.Println("dashscope_live=skipped")
-		return
-	}
 
 	ctx := context.Background()
 	liveMessage, err := message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go.")
@@ -111,7 +107,7 @@ func chat() {
 	if text := response.GetTextContent(); text != nil {
 		responseText = *text
 	}
-	fmt.Printf("dashscope_live=ok response=%q\n", responseText)
+	fmt.Printf("moonshot_live=ok response=%q\n", responseText)
 
 	weatherMessage, err := message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？")
 	if err != nil {
@@ -130,7 +126,7 @@ func chat() {
 		if responseText := toolCallResponse.GetTextContent(); responseText != nil {
 			text = *responseText
 		}
-		panic(fmt.Sprintf("DashScope weather request returned no tool call: %q", text))
+		panic(fmt.Sprintf("Moonshot weather request returned no tool call: %q", text))
 	}
 	toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
 	if err != nil {
@@ -158,20 +154,18 @@ func chat() {
 	if text := weatherResponse.GetTextContent(); text != nil {
 		weatherText = *text
 	}
-	fmt.Printf("dashscope_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, weatherText)
+	fmt.Printf("moonshot_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, weatherText)
 }
 
 func streamChat() {
-
-	cfg := modelconfig.DashScope("qwen3.7-max")
 	temperature := 0.2
 	maxTokens := int64(256)
 
-	streamChat, err := dashscope.NewChatModel(
-		dashscope.NewCredential(cfg.APIKey),
-		cfg.Model,
-		dashscope.WithStream(true),
-		dashscope.WithChatParameters(dashscope.ChatParameters{
+	streamChat, err := moonshot.NewChatModel(
+		credential.NewMoonshot(os.Getenv("AI_MOONSHOT_API_KEY")).ChatCredential(),
+		"moonshot-v1-8k",
+		moonshot.WithStream(true),
+		moonshot.WithChatParameters(moonshot.ChatParameters{
 			MaxTokens:   &maxTokens,
 			Temperature: &temperature,
 		}),
@@ -207,17 +201,13 @@ func streamChat() {
 	}
 
 	fmt.Printf(
-		"chat_model=%s dashscope_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
+		"chat_model=%s moonshot_model=%s tools=%d multimodal_blocks=%d estimated_tokens=%d\n",
 		streamChat.Name(),
 		streamChat.Name(),
 		len(schemas),
 		len(visionMessage.Content),
 		tokens,
 	)
-	if !cfg.Live {
-		fmt.Println("dashscope_live=skipped")
-		return
-	}
 
 	ctx := context.Background()
 	liveMessage, err := message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go.")
@@ -244,13 +234,13 @@ func streamChat() {
 		}
 		if text != "" {
 			streamed.WriteString(text)
-			fmt.Printf("dashscope_stream_delta=%q\n", text)
+			fmt.Printf("moonshot_stream_delta=%q\n", text)
 		}
 	}
 	if finalText == "" {
 		finalText = streamed.String()
 	}
-	fmt.Printf("dashscope_stream=ok response=%q\n", finalText)
+	fmt.Printf("moonshot_stream=ok response=%q\n", finalText)
 }
 
 func weatherTool() *tool.FunctionTool {

@@ -20,6 +20,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
@@ -44,7 +45,7 @@ func chat() {
 	// create chatModel instance
 	chat := mustModel(dashscope.NewChatModel(
 		// tips: need update.
-		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
 		"qwen3.7-max",
 		dashscope.WithStream(false),
 		dashscope.WithChatParameters(dashscope.ChatParameters{
@@ -139,7 +140,7 @@ func streamChat() {
 
 	streamChat := mustModel(dashscope.NewChatModel(
 		// tips: need update.
-		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
 		"qwen3.7-max",
 		dashscope.WithStream(true),
 		dashscope.WithChatParameters(dashscope.ChatParameters{

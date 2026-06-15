@@ -14,7 +14,10 @@
 
 package openai
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ChatParameters stores OpenAI Chat Completions generation parameters.
 type ChatParameters struct {
@@ -24,6 +27,7 @@ type ChatParameters struct {
 	Temperature       *float64
 	TopP              *float64
 	ParallelToolCalls *bool
+	Voice             *string
 }
 
 // Validate validates Chat Completions parameter ranges.
@@ -36,6 +40,9 @@ func (p ChatParameters) Validate() error {
 	}
 	if p.TopP != nil && (*p.TopP <= 0 || *p.TopP > 1) {
 		return fmt.Errorf("openai: top_p must be > 0 and <= 1")
+	}
+	if p.Voice != nil && strings.TrimSpace(*p.Voice) == "" {
+		return fmt.Errorf("openai: voice must not be empty")
 	}
 	switch p.ReasoningEffort {
 	case "", "none", "minimal", "low", "medium", "high", "xhigh":
@@ -63,6 +70,10 @@ func (p ChatParameters) Clone() ChatParameters {
 	if p.ParallelToolCalls != nil {
 		value := *p.ParallelToolCalls
 		cp.ParallelToolCalls = &value
+	}
+	if p.Voice != nil {
+		value := *p.Voice
+		cp.Voice = &value
 	}
 	return cp
 }

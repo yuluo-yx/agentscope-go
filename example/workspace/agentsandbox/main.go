@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"os"
 	"path/filepath"
 	"strings"
@@ -253,7 +254,7 @@ func agentSandboxOption(dir string) []asw.Option {
 func newChatModel(stream bool) model.ChatModel {
 
 	dashscopeModel, err := dashscope.NewChatModel(
-		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
 		"qwen3.7-max",
 		dashscope.WithStream(stream),
 	)

@@ -43,3 +43,19 @@ agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
 ```
 
 `TracingMiddleware` 只依赖很小的 `middleware.Tracer` 接口。核心 `agent` 包不导入 OpenTelemetry。需要接入 OpenTelemetry 的应用可以通过 `github.com/yuluo-yx/agentscope-go/middleware/otel` 适配 tracer。
+
+## 可选 TTS
+
+`middleware.NewTTSMiddleware` 可以为 assistant reply 流追加合成音频：
+
+```go
+speech, err := dashscopetts.NewModel(
+	dashscopetts.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+	"qwen3-tts-flash",
+)
+agent.WithMiddlewares(middleware.NewTTSMiddleware(speech))
+```
+
+该 middleware 会保留原始文本事件。对于批处理模型，它会收集一个文本块，并在文本块结束后追加
+`DATA_BLOCK_START`、`DATA_BLOCK_DELTA` 和 `DATA_BLOCK_END`。实时模型会通过
+`Push` 接收文本增量，并在文本块结束时用空 `tts.Request` 做收尾读取。

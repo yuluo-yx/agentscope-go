@@ -32,6 +32,29 @@ import (
 	"github.com/yuluo-yx/agentscope-go/types"
 )
 
+func TestListModelsIncludesPythonAudioModelCard(t *testing.T) {
+	t.Parallel()
+
+	cards, err := asopenai.ListModels()
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	audioMini := findOpenAICard(cards, "gpt-audio-mini")
+	if audioMini.Name == "" || !audioMini.Supports(asmodel.ModelCapabilityAudio) || audioMini.Extra["api"] != "chat_completions" {
+		t.Fatalf("OpenAI gpt-audio-mini should be loaded from Python model cards: %#v", audioMini)
+	}
+	audioProperties := modelCardProperties(t, audioMini)
+	voice := audioProperties["voice"].(map[string]any)
+	if voice["default"] != "alloy" {
+		t.Fatalf("OpenAI audio model voice schema not merged: %#v", voice)
+	}
+	gpt41 := findOpenAICard(cards, "gpt-4.1")
+	textProperties := modelCardProperties(t, gpt41)
+	if _, exists := textProperties["voice"]; exists {
+		t.Fatalf("non-audio OpenAI chat model should hide voice: %#v", textProperties["voice"])
+	}
+}
+
 func TestChatModelCallFormatsRequestAndParsesResponse(t *testing.T) {
 	t.Parallel()
 
@@ -118,6 +141,72 @@ func TestChatModelCallFormatsRequestAndParsesResponse(t *testing.T) {
 
 	assertCallRequest(t, <-requestCh)
 	assertCallResponse(t, resp)
+}
+
+func TestChatModelVoiceParameterRequestsAudioModalities(t *testing.T) {
+	t.Parallel()
+
+	requestCh := make(chan map[string]any, 1)
+	server := newChatCompletionServer(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		requestCh <- body
+		writeJSON(t, w, map[string]any{
+			"id":      "chatcmpl-voice",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   "gpt-audio-mini",
+			"choices": []any{map[string]any{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+		})
+	})
+	defer server.Close()
+
+	model, err := asopenai.NewChatModel(
+		asopenai.NewCredential("test-key", asopenai.WithBaseURL(server.URL)),
+		"gpt-audio-mini",
+		asopenai.WithChatParameters(asopenai.ChatParameters{Voice: stringPtr("alloy")}),
+		asopenai.WithStream(false),
+	)
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "say hello")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	if _, err := model.Call(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}}); err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+
+	body := <-requestCh
+	audio := body["audio"].(map[string]any)
+	if audio["voice"] != "alloy" || audio["format"] != "pcm16" {
+		t.Fatalf("voice should request pcm16 audio output: %#v", audio)
+	}
+	modalities := body["modalities"].([]any)
+	if len(modalities) != 2 || modalities[0] != "text" || modalities[1] != "audio" {
+		t.Fatalf("voice should request text and audio modalities: %#v", modalities)
+	}
+}
+
+func findOpenAICard(cards []asmodel.ModelCard, name string) asmodel.ModelCard {
+	for _, card := range cards {
+		if card.Name == name {
+			return card
+		}
+	}
+	return asmodel.ModelCard{}
+}
+
+func modelCardProperties(t *testing.T, card asmodel.ModelCard) map[string]any {
+	t.Helper()
+	properties, ok := card.ParameterSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("model card schema properties missing for %s: %#v", card.Name, card.ParameterSchema)
+	}
+	return properties
 }
 
 func TestChatModelStreamAccumulatesDeltas(t *testing.T) {
@@ -462,6 +551,71 @@ func TestChatModelFormatsMultimodalUserContentAndOptions(t *testing.T) {
 	}
 }
 
+func TestChatModelExtraBodyDefaultsAndPerCallOverride(t *testing.T) {
+	t.Parallel()
+
+	requestCh := make(chan map[string]any, 3)
+	server := newChatCompletionServer(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		requestCh <- body
+		writeJSON(t, w, map[string]any{
+			"id":      "chatcmpl-extra-body",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   "custom-model",
+			"choices": []any{map[string]any{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+		})
+	})
+	defer server.Close()
+
+	defaultModel, err := asopenai.NewChatModel(
+		asopenai.NewCredential("test-key", asopenai.WithBaseURL(server.URL)),
+		"custom-model",
+		asopenai.WithStream(false),
+	)
+	if err != nil {
+		t.Fatalf("NewChatModel default returned error: %v", err)
+	}
+	if _, err := defaultModel.Call(context.Background(), asmodel.CallRequest{}); err != nil {
+		t.Fatalf("default Call returned error: %v", err)
+	}
+	if _, exists := (<-requestCh)["enable_thinking"]; exists {
+		t.Fatal("default model should not send provider-specific extra body fields")
+	}
+
+	model, err := asopenai.NewChatModel(
+		asopenai.NewCredential("test-key", asopenai.WithBaseURL(server.URL)),
+		"custom-model",
+		asopenai.WithStream(false),
+		asopenai.WithExtraBody(map[string]any{"enable_thinking": false}),
+	)
+	if err != nil {
+		t.Fatalf("NewChatModel with extra body returned error: %v", err)
+	}
+	if _, err := model.Call(context.Background(), asmodel.CallRequest{}); err != nil {
+		t.Fatalf("constructor extra body Call returned error: %v", err)
+	}
+	if got := (<-requestCh)["enable_thinking"]; got != false {
+		t.Fatalf("constructor extra body mismatch: %#v", got)
+	}
+
+	if _, err := model.Call(context.Background(), asmodel.CallRequest{
+		Parameters: map[string]any{"extra_body": map[string]any{"custom_option": "value"}},
+	}); err != nil {
+		t.Fatalf("per-call extra body Call returned error: %v", err)
+	}
+	body := <-requestCh
+	if got := body["custom_option"]; got != "value" {
+		t.Fatalf("per-call extra body should be forwarded, got %#v", got)
+	}
+	if _, exists := body["enable_thinking"]; exists {
+		t.Fatalf("per-call extra body should override constructor default, got %#v", body)
+	}
+}
+
 func TestChatModelParsesAudioOutputAndRejectsVideoInput(t *testing.T) {
 	t.Parallel()
 
@@ -617,6 +771,7 @@ func TestChatModelValidationBranches(t *testing.T) {
 		{name: "temperature", parameters: asopenai.ChatParameters{Temperature: floatPtr(3)}},
 		{name: "top p", parameters: asopenai.ChatParameters{TopP: floatPtr(0)}},
 		{name: "reasoning", parameters: asopenai.ChatParameters{ReasoningEffort: "extreme"}},
+		{name: "voice", parameters: asopenai.ChatParameters{Voice: stringPtr(" ")}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -757,5 +912,9 @@ func boolPtr(value bool) *bool {
 }
 
 func int64Ptr(value int64) *int64 {
+	return &value
+}
+
+func stringPtr(value string) *string {
 	return &value
 }

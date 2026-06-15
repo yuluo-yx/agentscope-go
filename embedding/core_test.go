@@ -41,6 +41,15 @@ func TestEmbeddingInputConstructorsAndValidation(t *testing.T) {
 	if request.Inputs[0].Text != "hello" || request.Inputs[1].Source.URL == "" || request.Inputs[2].Source.Data == "" {
 		t.Fatalf("constructors produced unexpected inputs: %#v", request.Inputs)
 	}
+
+	clone := request.Clone()
+	clone.Inputs[1].Source.URL = "https://example.com/changed.png"
+	if request.Inputs[1].Source.URL == clone.Inputs[1].Source.URL {
+		t.Fatalf("Clone should deep-copy input sources")
+	}
+	if (*asembedding.EmbeddingSource)(nil).Clone() != nil {
+		t.Fatalf("nil source clone should stay nil")
+	}
 }
 
 func TestEmbeddingRequestRejectsUnsupportedAndMalformedInputs(t *testing.T) {
@@ -73,6 +82,26 @@ func TestEmbeddingRequestRejectsUnsupportedAndMalformedInputs(t *testing.T) {
 	if err := emptyText.Validate(asembedding.ModalityText); !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
 		t.Fatalf("empty text should be invalid, got %v", err)
 	}
+
+	cases := []struct {
+		name    string
+		request asembedding.EmbeddingRequest
+	}{
+		{name: "empty", request: asembedding.EmbeddingRequest{}},
+		{name: "image missing source", request: asembedding.EmbeddingRequest{Inputs: []asembedding.EmbeddingInput{{Type: asembedding.ModalityImage}}}},
+		{name: "url missing value", request: asembedding.EmbeddingRequest{Inputs: []asembedding.EmbeddingInput{{Type: asembedding.ModalityImage, Source: &asembedding.EmbeddingSource{Type: asembedding.SourceURL}}}}},
+		{name: "base64 missing media type", request: asembedding.EmbeddingRequest{Inputs: []asembedding.EmbeddingInput{{Type: asembedding.ModalityImage, Source: &asembedding.EmbeddingSource{Type: asembedding.SourceBase64, Data: "AAAA"}}}}},
+		{name: "bad source type", request: asembedding.EmbeddingRequest{Inputs: []asembedding.EmbeddingInput{{Type: asembedding.ModalityImage, Source: &asembedding.EmbeddingSource{Type: "file"}}}}},
+		{name: "bad modality", request: asembedding.EmbeddingRequest{Inputs: []asembedding.EmbeddingInput{{Type: "audio"}}}},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := tt.request.Validate(asembedding.ModalityText, asembedding.ModalityImage, asembedding.ModalityVideo); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
 }
 
 func TestEmbeddingResponseDefaultsCloneAndCacheSource(t *testing.T) {
@@ -83,6 +112,7 @@ func TestEmbeddingResponseDefaultsCloneAndCacheSource(t *testing.T) {
 		[]types.Embedding{{0.1, 0.2, 0.3}},
 		asembedding.WithEmbeddingUsage(&asembedding.EmbeddingUsage{Time: 2 * time.Second, Tokens: &tokens}),
 		asembedding.WithEmbeddingSource(asembedding.SourceCache),
+		asembedding.WithEmbeddingMetadata(map[string]any{"source": "unit"}),
 	)
 
 	if resp.ID == "" || resp.CreatedAt == "" || resp.Type != asembedding.ResponseTypeEmbedding {
@@ -94,12 +124,37 @@ func TestEmbeddingResponseDefaultsCloneAndCacheSource(t *testing.T) {
 	if resp.Usage == nil || resp.Usage.Type != asembedding.UsageTypeEmbedding || *resp.Usage.Tokens != 12 {
 		t.Fatalf("usage defaults not set: %#v", resp.Usage)
 	}
+	if resp.Metadata["source"] != "unit" {
+		t.Fatalf("metadata not set: %#v", resp.Metadata)
+	}
 
 	clone := resp.Clone()
 	clone.Embeddings[0][0] = 9
 	*clone.Usage.Tokens = 99
+	clone.Metadata["source"] = "clone"
 	if resp.Embeddings[0][0] == 9 || *resp.Usage.Tokens == 99 {
 		t.Fatalf("Clone should deep-copy embeddings and usage")
+	}
+	if resp.Metadata["source"] == "clone" {
+		t.Fatalf("Clone should deep-copy metadata")
+	}
+	if (*asembedding.EmbeddingUsage)(nil).Clone() != nil || (*asembedding.EmbeddingResponse)(nil).Clone() != nil {
+		t.Fatalf("nil clone receivers should stay nil")
+	}
+
+	blanked := asembedding.NewEmbeddingResponse(nil, func(resp *asembedding.EmbeddingResponse) {
+		resp.ID = ""
+		resp.CreatedAt = ""
+		resp.Type = ""
+		resp.Source = ""
+		resp.Metadata = nil
+		resp.Usage = &asembedding.EmbeddingUsage{}
+	})
+	if blanked.ID == "" || blanked.CreatedAt == "" || blanked.Type != asembedding.ResponseTypeEmbedding || blanked.Source != asembedding.SourceAPI {
+		t.Fatalf("NewEmbeddingResponse should restore blank defaults: %#v", blanked)
+	}
+	if blanked.Metadata == nil || blanked.Usage.Type != asembedding.UsageTypeEmbedding {
+		t.Fatalf("NewEmbeddingResponse should normalize nil metadata and usage type: %#v", blanked)
 	}
 }
 

@@ -49,6 +49,8 @@ type TeamWorkerRequest struct {
 	Prompt         string
 	SystemPrompt   string
 	PermissionMode permission.PermissionMode
+	// PermissionContext is the worker permission context after inheriting the leader session.
+	PermissionContext *permission.Context
 }
 
 // TeamWorkerFactory creates a worker agent for AgentCreate.
@@ -336,13 +338,14 @@ func (m *Manager) createAgent(ctx context.Context, state *asstate.AgentState, na
 	}
 	snapshot, _ := m.snapshotLocked(team.ID)
 	request := TeamWorkerRequest{
-		Team:           *snapshot,
-		Leader:         caller.Agent,
-		Name:           name,
-		Description:    description,
-		Prompt:         prompt,
-		SystemPrompt:   buildWorkerSystemPrompt(team.Name, team.Description, name, description),
-		PermissionMode: mode,
+		Team:              *snapshot,
+		Leader:            caller.Agent,
+		Name:              name,
+		Description:       description,
+		Prompt:            prompt,
+		SystemPrompt:      buildWorkerSystemPrompt(team.Name, team.Description, name, description),
+		PermissionMode:    mode,
+		PermissionContext: inheritLeaderPermissionContext(state.PermissionContext, mode),
 	}
 	factory := m.workerFactory
 	if factory == nil {
@@ -442,10 +445,66 @@ func (m *Manager) defaultWorkerFactory(ctx context.Context, request TeamWorkerRe
 	if err != nil {
 		return nil, err
 	}
-	if request.PermissionMode != "" && worker.AgentState() != nil {
-		worker.AgentState().PermissionContext = permission.NewContext(request.PermissionMode)
+	if worker.AgentState() != nil {
+		switch {
+		case request.PermissionContext != nil:
+			worker.AgentState().PermissionContext = mergeWorkerPermissionContext(worker.AgentState().PermissionContext, request.PermissionContext)
+		case request.PermissionMode != "":
+			worker.AgentState().PermissionContext = permission.NewContext(request.PermissionMode)
+		}
 	}
 	return worker, nil
+}
+
+func inheritLeaderPermissionContext(leader *permission.Context, mode permission.PermissionMode) *permission.Context {
+	var inherited *permission.Context
+	if leader == nil {
+		inherited = permission.NewContext(permission.ModeDefault)
+	} else {
+		inherited = leader.Clone()
+	}
+	if inherited == nil {
+		inherited = permission.NewContext(permission.ModeDefault)
+	}
+	if mode != "" {
+		inherited.Mode = mode
+	}
+	if inherited.Mode == "" {
+		inherited.Mode = permission.ModeDefault
+	}
+	return inherited
+}
+
+func mergeWorkerPermissionContext(base, inherited *permission.Context) *permission.Context {
+	if inherited == nil {
+		if base == nil {
+			return permission.NewContext(permission.ModeDefault)
+		}
+		return base.Clone()
+	}
+	if base == nil {
+		return inherited.Clone()
+	}
+	merged := base.Clone()
+	if merged == nil {
+		merged = permission.NewContext(inherited.Mode)
+	}
+	merged.Mode = inherited.Mode
+	for key, dir := range inherited.WorkingDirectories {
+		if _, exists := merged.WorkingDirectories[key]; !exists {
+			merged.WorkingDirectories[key] = dir
+		}
+	}
+	appendRuleMap(merged.AllowRules, inherited.AllowRules)
+	appendRuleMap(merged.DenyRules, inherited.DenyRules)
+	appendRuleMap(merged.AskRules, inherited.AskRules)
+	return merged
+}
+
+func appendRuleMap(dst, src map[string][]permission.Rule) {
+	for toolName, rules := range src {
+		dst[toolName] = append(dst[toolName], rules...)
+	}
 }
 
 func (m *Manager) callerLocked(state *asstate.AgentState) (*teamParticipant, error) {
@@ -595,9 +654,6 @@ func (m *Manager) agentCreateTool() astool.Tool {
 		}, []any{"name", "description", "prompt"}),
 		func(ctx context.Context, input map[string]any, state *asstate.AgentState) (message.ContentBlockList, error) {
 			mode := permission.PermissionMode(stringInput(input, "permission_mode"))
-			if mode == "" {
-				mode = permission.ModeDefault
-			}
 			text, err := m.createAgent(ctx, state, stringInput(input, "name"), stringInput(input, "description"), stringInput(input, "prompt"), mode)
 			return toolText(text, err), nil
 		},

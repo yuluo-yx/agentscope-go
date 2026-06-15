@@ -16,6 +16,8 @@ package openai
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -27,7 +29,9 @@ import (
 	agenterrors "github.com/yuluo-yx/agentscope-go/errors"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/tts"
 	"github.com/yuluo-yx/agentscope-go/types"
+	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
 // ChatModel is a Chat Completions provider based on openai-go.
@@ -36,6 +40,7 @@ type ChatModel struct {
 	credential   Credential
 	model        string
 	parameters   ChatParameters
+	extraBody    map[string]any
 	stream       bool
 	contextSize  int
 	client       sdk.Client
@@ -47,6 +52,7 @@ type ChatModelOption func(*chatModelOptions)
 type chatModelOptions struct {
 	providerName string
 	parameters   ChatParameters
+	extraBody    map[string]any
 	stream       bool
 	contextSize  int
 	maxRetries   int
@@ -63,6 +69,13 @@ func WithProviderName(providerName string) ChatModelOption {
 func WithChatParameters(parameters ChatParameters) ChatModelOption {
 	return func(options *chatModelOptions) {
 		options.parameters = parameters.Clone()
+	}
+}
+
+// WithExtraBody sets provider-specific request body fields for OpenAI-compatible APIs.
+func WithExtraBody(extraBody map[string]any) ChatModelOption {
+	return func(options *chatModelOptions) {
+		options.extraBody = utils.CloneAnyMap(extraBody)
 	}
 }
 
@@ -129,6 +142,7 @@ func NewChatModel(credential Credential, model string, opts ...ChatModelOption) 
 		credential:   credential,
 		model:        model,
 		parameters:   options.parameters.Clone(),
+		extraBody:    utils.CloneAnyMap(options.extraBody),
 		stream:       options.stream,
 		contextSize:  options.contextSize,
 		client:       sdk.NewClient(clientOptions...),
@@ -187,7 +201,7 @@ func (m *ChatModel) buildParams(request asmodel.CallRequest) (sdk.ChatCompletion
 	if m == nil {
 		return sdk.ChatCompletionNewParams{}, agenterrors.NewDeveloperError("nil OpenAI chat model")
 	}
-	messages, err := formatMessages(request.Messages)
+	messages, err := formatMessages(request.Messages, m.providerName)
 	if err != nil {
 		return sdk.ChatCompletionNewParams{}, agenterrors.NewDeveloperError("failed to format OpenAI messages", agenterrors.WithErrorCause(err))
 	}
@@ -214,13 +228,32 @@ func (m *ChatModel) buildParams(request asmodel.CallRequest) (sdk.ChatCompletion
 	if m.parameters.TopP != nil {
 		params.TopP = sdk.Float(*m.parameters.TopP)
 	}
+	if m.parameters.Voice != nil {
+		params.Audio = sdk.ChatCompletionAudioParam{
+			Format: sdk.ChatCompletionAudioParamFormatPcm16,
+			Voice:  sdk.ChatCompletionAudioParamVoice(*m.parameters.Voice),
+		}
+		params.Modalities = []string{"text", "audio"}
+	}
 	if m.parameters.ThinkingEnable && m.parameters.ReasoningEffort != "" && m.parameters.ReasoningEffort != "none" && m.parameters.ReasoningEffort != "minimal" && m.parameters.ReasoningEffort != "xhigh" {
 		params.ReasoningEffort = shared.ReasoningEffort(m.parameters.ReasoningEffort)
 	}
 	if m.parameters.ParallelToolCalls != nil {
 		params.ParallelToolCalls = sdk.Bool(*m.parameters.ParallelToolCalls)
 	}
+	if extraBody := m.requestExtraBody(request); len(extraBody) > 0 {
+		params.SetExtraFields(extraBody)
+	}
 	return params, nil
+}
+
+func (m *ChatModel) requestExtraBody(request asmodel.CallRequest) map[string]any {
+	if request.Parameters != nil {
+		if extra, ok := request.Parameters["extra_body"].(map[string]any); ok {
+			return utils.CloneAnyMap(extra)
+		}
+	}
+	return utils.CloneAnyMap(m.extraBody)
 }
 
 func formatTools(tools []asmodel.ToolSchema, choice *types.ToolChoice) ([]sdk.ChatCompletionToolParam, *sdk.ChatCompletionToolChoiceOptionUnionParam, error) {
@@ -310,8 +343,16 @@ type streamAccumulator struct {
 	usage      *asmodel.ChatUsage
 	textID     string
 	text       string
+	audioID    string
+	audioPCM   []byte
 	toolCalls  map[int64]*accumulatedToolCall
 	toolOrder  []int64
+}
+
+type streamAudioDelta struct {
+	ID         string `json:"id"`
+	Data       string `json:"data"`
+	Transcript string `json:"transcript"`
 }
 
 func newStreamAccumulator(start time.Time) *streamAccumulator {
@@ -365,11 +406,19 @@ func (acc *streamAccumulator) captureMetadata(chunk sdk.ChatCompletionChunk) {
 
 func (acc *streamAccumulator) consumeDelta(delta sdk.ChatCompletionChunkChoiceDelta) message.ContentBlockList {
 	content := message.ContentBlockList{}
-	if delta.Content != "" {
-		content = append(content, acc.consumeTextDelta(delta.Content))
+	audioBlock, transcript := acc.consumeAudioDelta(delta)
+	deltaText := delta.Content
+	if transcript != "" {
+		deltaText += transcript
+	}
+	if deltaText != "" {
+		content = append(content, acc.consumeTextDelta(deltaText))
 	}
 	for _, toolCall := range delta.ToolCalls {
 		content = append(content, acc.consumeToolCallDelta(toolCall))
+	}
+	if audioBlock != nil {
+		content = append(content, audioBlock)
 	}
 	return content
 }
@@ -399,6 +448,62 @@ func (acc *streamAccumulator) consumeToolCallDelta(toolCall sdk.ChatCompletionCh
 	return message.NewToolCallBlock(call.id, call.name, toolCall.Function.Arguments)
 }
 
+func (acc *streamAccumulator) consumeAudioDelta(delta sdk.ChatCompletionChunkChoiceDelta) (*message.DataBlock, string) {
+	raw := audioDeltaRaw(delta)
+	if raw == "" {
+		return nil, ""
+	}
+	var audio streamAudioDelta
+	if err := json.Unmarshal([]byte(raw), &audio); err != nil {
+		return nil, ""
+	}
+	if audio.ID != "" && acc.audioID == "" {
+		acc.audioID = audio.ID
+	}
+	if audio.Data == "" {
+		return nil, audio.Transcript
+	}
+	pcm, err := base64.StdEncoding.DecodeString(audio.Data)
+	if err != nil {
+		return nil, audio.Transcript
+	}
+	if acc.audioID == "" {
+		acc.audioID = newResponseBlockID()
+	}
+	firstChunk := len(acc.audioPCM) == 0
+	acc.audioPCM = append(acc.audioPCM, pcm...)
+	payload := pcm
+	if firstChunk {
+		header := tts.StreamingWAVHeader(24000, 1, 16)
+		payload = make([]byte, 0, len(header)+len(pcm))
+		payload = append(payload, header...)
+		payload = append(payload, pcm...)
+	}
+	return audioDataBlock(acc.audioID, payload), audio.Transcript
+}
+
+func audioDeltaRaw(delta sdk.ChatCompletionChunkChoiceDelta) string {
+	if delta.JSON.ExtraFields != nil {
+		if field, ok := delta.JSON.ExtraFields["audio"]; ok && field.Raw() != "" && field.Raw() != "null" {
+			return field.Raw()
+		}
+	}
+	raw := delta.RawJSON()
+	if raw == "" {
+		return ""
+	}
+	var payload struct {
+		Audio json.RawMessage `json:"audio"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return ""
+	}
+	if len(payload.Audio) == 0 || string(payload.Audio) == "null" {
+		return ""
+	}
+	return string(payload.Audio)
+}
+
 func (acc *streamAccumulator) finalResponse() *asmodel.ChatResponse {
 	finalContent := message.ContentBlockList{}
 	if acc.text != "" {
@@ -408,7 +513,18 @@ func (acc *streamAccumulator) finalResponse() *asmodel.ChatResponse {
 		call := acc.toolCalls[index]
 		finalContent = append(finalContent, message.NewToolCallBlock(call.id, call.name, call.input))
 	}
+	if len(acc.audioPCM) > 0 {
+		finalContent = append(finalContent, audioDataBlock(acc.audioID, tts.WrapPCMAsWAV(acc.audioPCM, 24000, 1, 16)))
+	}
 	return asmodel.NewChatResponse(finalContent, true, asmodel.WithChatResponseID(acc.responseID), asmodel.WithChatResponseUsage(acc.usage))
+}
+
+func audioDataBlock(id string, payload []byte) *message.DataBlock {
+	return message.NewDataBlock(
+		message.NewBase64Source(base64.StdEncoding.EncodeToString(payload), "audio/wav"),
+		message.WithDataBlockID(id),
+		message.WithDataBlockName("audio"),
+	)
 }
 
 func sendStreamResponse(ctx context.Context, out chan<- asmodel.ChatResponse, response *asmodel.ChatResponse) bool {

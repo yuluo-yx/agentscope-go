@@ -71,7 +71,7 @@ func TestChatModelDelegatesCompatibleCallStreamAndTokenCounting(t *testing.T) {
 	model, err := NewChatModel(
 		NewCredential("test-key", WithBaseURL(server.URL+"/")),
 		"qwen-plus",
-		WithChatParameters(ChatParameters{Temperature: dashscopeFloatPtr(0.2)}),
+		WithChatParameters(ChatParameters{Temperature: dashscopeFloatPtr(0.2), Voice: dashscopeStringPtr("Tina")}),
 		WithStream(false),
 		WithContextSize(2048),
 		WithMaxRetries(1),
@@ -95,6 +95,11 @@ func TestChatModelDelegatesCompatibleCallStreamAndTokenCounting(t *testing.T) {
 	}
 	if body := <-requests; body["model"] != "qwen-plus" || body["stream"] != false {
 		t.Fatalf("Call request mismatch: %#v", body)
+	} else {
+		audio := body["audio"].(map[string]any)
+		if audio["voice"] != "Tina" || audio["format"] != "pcm16" {
+			t.Fatalf("DashScope voice should request pcm16 compatible audio: %#v", audio)
+		}
 	}
 
 	stream, err := model.Stream(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}})
@@ -121,6 +126,70 @@ func TestChatModelDelegatesCompatibleCallStreamAndTokenCounting(t *testing.T) {
 	}
 }
 
+func TestChatModelFormatsDashScopeVideoAndAudioURLInput(t *testing.T) {
+	t.Parallel()
+
+	requests := make(chan map[string]any, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode request body returned error: %v", err)
+		}
+		requests <- body
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"id":      "dashscope-multimodal",
+			"object":  "chat.completion",
+			"created": int64(1),
+			"model":   body["model"],
+			"choices": []any{map[string]any{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+		}); err != nil {
+			t.Fatalf("Encode response returned error: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	model, err := NewChatModel(
+		NewCredential("test-key", WithBaseURL(server.URL)),
+		"qwen3.5-omni-plus",
+		WithStream(false),
+		WithMaxRetries(1),
+	)
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("user", []message.ContentBlock{
+		message.NewTextBlock("inspect"),
+		message.NewDataBlock(message.NewURLSource("https://example.com/movie.mp4", "video/mp4")),
+		message.NewDataBlock(message.NewURLSource("https://example.com/speech.wav", "audio/wav")),
+	})
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+
+	if _, err := model.Call(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}}); err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+	content := (<-requests)["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	if content[0].(map[string]any)["text"] != "inspect" {
+		t.Fatalf("text content part mismatch: %#v", content[0])
+	}
+	if videoURL := content[1].(map[string]any)["video_url"].(map[string]any)["url"]; videoURL != "https://example.com/movie.mp4" {
+		t.Fatalf("DashScope video URL not formatted: %#v", content[1])
+	}
+	audio := content[2].(map[string]any)["input_audio"].(map[string]any)
+	if audio["data"] != "https://example.com/speech.wav" || audio["format"] != "wav" {
+		t.Fatalf("DashScope audio URL should be passed through: %#v", content[2])
+	}
+}
+
 func TestNilChatModelReportsDashScopeErrors(t *testing.T) {
 	t.Parallel()
 
@@ -140,5 +209,9 @@ func TestNilChatModelReportsDashScopeErrors(t *testing.T) {
 }
 
 func dashscopeFloatPtr(value float64) *float64 {
+	return &value
+}
+
+func dashscopeStringPtr(value string) *string {
 	return &value
 }
