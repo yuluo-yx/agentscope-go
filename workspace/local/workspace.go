@@ -959,6 +959,9 @@ func copyDir(source, destination string) error {
 		if err != nil {
 			return err
 		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("workspace: skill source contains symlink %s", path)
+		}
 		rel, err := filepath.Rel(source, path)
 		if err != nil {
 			return err

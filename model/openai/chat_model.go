@@ -34,6 +34,8 @@ import (
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
+const defaultProviderName = "openai"
+
 // ChatModel is a Chat Completions provider based on openai-go.
 type ChatModel struct {
 	providerName string
@@ -104,7 +106,7 @@ func WithMaxRetries(maxRetries int) ChatModelOption {
 // NewChatModel creates an OpenAI Chat Completions model.
 func NewChatModel(credential Credential, model string, opts ...ChatModelOption) (*ChatModel, error) {
 	options := chatModelOptions{
-		providerName: "openai",
+		providerName: defaultProviderName,
 		stream:       true,
 		contextSize:  128000,
 		maxRetries:   3,
@@ -119,7 +121,7 @@ func NewChatModel(credential Credential, model string, opts ...ChatModelOption) 
 		return nil, agenterrors.NewDeveloperError("invalid OpenAI model", agenterrors.WithErrorCause(fmt.Errorf("model is empty")))
 	}
 	if options.providerName == "" {
-		options.providerName = "openai"
+		options.providerName = defaultProviderName
 	}
 	if err := options.parameters.Validate(); err != nil {
 		return nil, agenterrors.NewDeveloperError("invalid OpenAI chat parameters", agenterrors.WithErrorCause(err))
@@ -156,7 +158,7 @@ func (m *ChatModel) Name() string {
 	}
 	providerName := m.providerName
 	if providerName == "" {
-		providerName = "openai"
+		providerName = defaultProviderName
 	}
 	return providerName + ":" + m.model
 }
@@ -219,6 +221,11 @@ func (m *ChatModel) buildParams(request asmodel.CallRequest) (sdk.ChatCompletion
 	if toolChoice != nil {
 		params.ToolChoice = *toolChoice
 	}
+	m.applyOptionalParams(&params, request)
+	return params, nil
+}
+
+func (m *ChatModel) applyOptionalParams(params *sdk.ChatCompletionNewParams, request asmodel.CallRequest) {
 	if m.parameters.MaxTokens != nil {
 		params.MaxTokens = sdk.Int(*m.parameters.MaxTokens)
 	}
@@ -235,7 +242,7 @@ func (m *ChatModel) buildParams(request asmodel.CallRequest) (sdk.ChatCompletion
 		}
 		params.Modalities = []string{"text", "audio"}
 	}
-	if m.parameters.ThinkingEnable && m.parameters.ReasoningEffort != "" && m.parameters.ReasoningEffort != "none" && m.parameters.ReasoningEffort != "minimal" && m.parameters.ReasoningEffort != "xhigh" {
+	if m.shouldSetReasoningEffort() {
 		params.ReasoningEffort = shared.ReasoningEffort(m.parameters.ReasoningEffort)
 	}
 	if m.parameters.ParallelToolCalls != nil {
@@ -244,7 +251,11 @@ func (m *ChatModel) buildParams(request asmodel.CallRequest) (sdk.ChatCompletion
 	if extraBody := m.requestExtraBody(request); len(extraBody) > 0 {
 		params.SetExtraFields(extraBody)
 	}
-	return params, nil
+}
+
+func (m *ChatModel) shouldSetReasoningEffort() bool {
+	effort := m.parameters.ReasoningEffort
+	return m.parameters.ThinkingEnable && effort != "" && effort != "none" && effort != "minimal" && effort != "xhigh"
 }
 
 func (m *ChatModel) requestExtraBody(request asmodel.CallRequest) map[string]any {
@@ -558,7 +569,7 @@ func chatUsage(usage sdk.CompletionUsage, elapsed time.Duration) *asmodel.ChatUs
 
 func normalizeError(providerName string, err error) error {
 	if providerName == "" {
-		providerName = "openai"
+		providerName = defaultProviderName
 	}
 	var apiErr *sdk.Error
 	if errors.As(err, &apiErr) {

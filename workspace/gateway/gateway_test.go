@@ -56,6 +56,7 @@ func TestGatewayServerServesToolsMCPRegistrationToolCallsAndClose(t *testing.T) 
 	var registeredMCP *recordingRawMCP
 	server := httptest.NewServer(gateway.NewServer(
 		gateway.WithServerTools(echo),
+		gateway.WithServerBearerToken("secret"),
 		gateway.WithServerMCPClientFactory(func(config workspace.MCPClientConfig) (workspace.MCPClient, error) {
 			registeredMCP = &recordingRawMCP{config: config}
 			return registeredMCP, nil
@@ -63,7 +64,7 @@ func TestGatewayServerServesToolsMCPRegistrationToolCallsAndClose(t *testing.T) 
 	))
 	defer server.Close()
 
-	client, err := gateway.NewHTTPClient(server.URL)
+	client, err := gateway.NewHTTPClient(server.URL, gateway.WithBearerToken("secret"))
 	if err != nil {
 		t.Fatalf("NewHTTPClient returned error: %v", err)
 	}

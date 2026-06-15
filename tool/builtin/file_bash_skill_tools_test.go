@@ -168,6 +168,16 @@ func TestValuePathAndFilePermissionHelpers(t *testing.T) {
 	if err != nil || decision.Behavior != permission.BehaviorAsk {
 		t.Fatalf("default write decision mismatch: %#v err=%v", decision, err)
 	}
+	outside := t.TempDir()
+	link := filepath.Join(dir, "outside-link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("Symlink returned error: %v", err)
+	}
+	linkTarget := filepath.Join(link, "escape.txt")
+	decision, err = writableFilePermission("Write", "write", map[string]any{"file_path": linkTarget}, ctx)
+	if err != nil || decision.Behavior != permission.BehaviorAsk {
+		t.Fatalf("symlink escape decision mismatch: %#v err=%v", decision, err)
+	}
 
 	if !globMatch("**/*.go", "cmd/main.go") || !globMatch("*.go", "main.go") || globMatch("*.go", "README.md") {
 		t.Fatal("globMatch should handle recursive and basename patterns")

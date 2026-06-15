@@ -350,12 +350,18 @@ func pathInAllowedWorkingDir(filePath string, ctx *permission.Context) bool {
 	if ctx == nil {
 		return false
 	}
-	candidate := filepath.Clean(filePath)
+	candidate, err := resolvePermissionPath(filePath)
+	if err != nil {
+		return false
+	}
 	for _, workingDir := range ctx.WorkingDirectories {
 		if workingDir.Path == "" {
 			continue
 		}
-		base := filepath.Clean(workingDir.Path)
+		base, err := resolvePermissionPath(workingDir.Path)
+		if err != nil {
+			continue
+		}
 		rel, err := filepath.Rel(base, candidate)
 		if err != nil {
 			continue
@@ -365,6 +371,38 @@ func pathInAllowedWorkingDir(filePath string, ctx *permission.Context) bool {
 		}
 	}
 	return false
+}
+
+func resolvePermissionPath(filePath string) (string, error) {
+	cleaned := filepath.Clean(strings.TrimSpace(filePath))
+	if cleaned == "." || !filepath.IsAbs(cleaned) {
+		return "", fmt.Errorf("file_path must be absolute")
+	}
+	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
+		return filepath.Clean(resolved), nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	missing := []string{}
+	current := cleaned
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for i := len(missing) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, missing[i])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
 }
 
 func writableFilePermission(toolName, action string, input map[string]any, ctx *permission.Context) (*permission.Decision, error) {
