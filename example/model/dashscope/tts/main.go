@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 
@@ -42,8 +43,15 @@ func main() {
 		panic(err)
 	}
 
+	outFile := "output.wav"
+	f, err := os.Create(outFile)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+
 	chunks := 0
-	base64Bytes := 0
+	totalBytes := 0
 	for response := range responses {
 		if response.Error != nil {
 			panic(response.Error)
@@ -55,9 +63,16 @@ func main() {
 		if !ok {
 			continue
 		}
+		pcm, err := base64.StdEncoding.DecodeString(source.Data)
+		if err != nil {
+			panic(fmt.Errorf("decode audio chunk: %w", err))
+		}
+		if _, err := f.Write(pcm); err != nil {
+			panic(fmt.Errorf("write audio chunk: %w", err))
+		}
 		chunks++
-		base64Bytes += len(source.Data)
+		totalBytes += len(pcm)
 	}
 
-	fmt.Printf("dashscope_tts=ok model=%s chunks=%d base64_bytes=%d\n", model.Name(), chunks, base64Bytes)
+	fmt.Printf("dashscope_tts=ok model=%s chunks=%d audio_bytes=%d file=%s\n", model.Name(), chunks, totalBytes, outFile)
 }
