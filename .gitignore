@@ -49,3 +49,5 @@ __pycache__/
 .venv/
 tools/node/node_modules/
 /.playwright-mcp/
+
+/example/model/dashscope/tts/output.wav

@@ -35,19 +35,26 @@ const (
 
 // Task represents one task tracked during Agent execution.
 type Task struct {
-	Subject     string         `json:"subject"`
-	Description string         `json:"description"`
-	Metadata    map[string]any `json:"metadata,omitempty"`
-	CreatedAt   string         `json:"created_at"`
-	State       TaskState      `json:"state"`
-	ID          string         `json:"id"`
-	Owner       *string        `json:"owner,omitempty"`
-	Blocks      []string       `json:"blocks,omitempty"`
-	BlockedBy   []string       `json:"blocked_by,omitempty"`
+	ID          string `json:"id"`
+	Subject     string `json:"subject"`
+	Description string `json:"description"`
+
+	// Metadata, carrying custom information from other tools.
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	CreatedAt string         `json:"created_at"`
+	// Pending -> In_Progress -> Completed
+	State TaskState `json:"state"`
+	// In multi-agent scenarios, identifies which agent is responsible.
+	Owner *string `json:"owner,omitempty"`
+	// IDs of tasks that can only start after this task is completed; used to enforce task ordering.
+	Blocks []string `json:"blocks,omitempty"`
+	// IDs of tasks that must be completed before this task can start.
+	BlockedBy []string `json:"blocked_by,omitempty"`
 }
 
 // NewTask creates a task with the default pending state.
 func NewTask(subject, description string, metadata map[string]any) Task {
+
 	return Task{
 		Subject:     subject,
 		Description: description,
