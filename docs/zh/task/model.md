@@ -18,24 +18,28 @@ type ChatModel interface {
 | 包 | 说明 |
 | --- | --- |
 | `model/openai` | OpenAI SDK 集成 |
+| `model/openairesponse` | OpenAI Responses API 集成 |
 | `model/anthropic` | Anthropic SDK 集成 |
 | `model/dashscope` | DashScope OpenAI 兼容端点 |
 | `model/deepseek` | OpenAI 兼容包装 |
+| `model/gemini` | Gemini 官方 Go SDK 集成 |
 | `model/moonshot` | OpenAI 兼容包装 |
 | `model/xai` | OpenAI 兼容包装 |
+| `model/zhipu` | 智谱 OpenAI 兼容包装 |
 | `model/ollama` | Ollama 官方 Go API |
 
 ## Embedding
 
-`embedding` 包定义 embedding 请求、响应、缓存辅助能力和供应商模型元数据。存在
-Python 源定义的 provider 会内嵌 Python-compatible embedding model card：
+`embedding` 包定义 embedding 请求、响应、缓存辅助能力和供应商模型元数据。Go
+实现会为已覆盖的同类 provider 内嵌与 Python AgentScope 能力定义对齐的
+embedding model card：
 
 ```go
 cards, err := dashscopeembedding.ListModels()
 ```
 
-当前已从 Python AgentScope 同步 `embedding/dashscope`、`embedding/gemini` 和
-`embedding/openai` 的 embedding model card。
+当前已覆盖 `embedding/dashscope`、`embedding/gemini`、`embedding/openai` 和
+`embedding/ollama`。
 
 ## 文本转语音
 
@@ -60,7 +64,7 @@ for chunk := range chunks {
 }
 ```
 
-DashScope TTS model card 同样从 Python AgentScope 同步，并通过
+DashScope TTS model card 与 Python AgentScope 的同类 provider 能力定义保持对齐，并通过
 `dashscopetts.ListModels()` 暴露，包含普通和 realtime 两类模型定义。
 
 `WithStream(true)` 会输出兼容 WAV 的流式分块：首个分块包含 streaming WAV

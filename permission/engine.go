@@ -39,6 +39,12 @@ type Tool interface {
 	GenerateSuggestions(map[string]any) []Rule
 }
 
+// InputReadOnlyTool is implemented by tools whose read-only status depends on
+// the current input, such as Bash commands that may be read-only or mutating.
+type InputReadOnlyTool interface {
+	IsReadOnlyInput(map[string]any) bool
+}
+
 // Engine decides in deny, ask, tool check, allow, bypass, then default order.
 type Engine struct {
 	context *Context
@@ -83,7 +89,7 @@ func (e *Engine) CheckPermission(ctx context.Context, tool Tool, input map[strin
 		return decision, nil
 	}
 
-	if decision := e.checkExploreModes(tool); decision != nil {
+	if decision := e.checkExploreModes(tool, input); decision != nil {
 		return decision, nil
 	}
 
@@ -118,13 +124,13 @@ func (e *Engine) CheckPermission(ctx context.Context, tool Tool, input map[strin
 	return decision, nil
 }
 
-func (e *Engine) checkExploreModes(tool Tool) *Decision {
+func (e *Engine) checkExploreModes(tool Tool, input map[string]any) *Decision {
 	switch e.context.Mode {
 	case ModeExplore:
-		if tool.IsReadOnly() {
+		if isReadOnlyInvocation(tool, input) {
 			return &Decision{
 				Behavior:       BehaviorAllow,
-				Message:        fmt.Sprintf("Permission granted for %s (explore mode - read-only tool)", tool.Name()),
+				Message:        fmt.Sprintf("Permission granted for %s (explore mode - read-only invocation)", tool.Name()),
 				DecisionReason: "Explore mode allows read-only operations",
 			}
 		}
@@ -134,15 +140,22 @@ func (e *Engine) checkExploreModes(tool Tool) *Decision {
 			DecisionReason: "Explore mode does not allow modifications",
 		}
 	case ModeAcceptEdits:
-		if tool.IsReadOnly() {
+		if isReadOnlyInvocation(tool, input) {
 			return &Decision{
 				Behavior:       BehaviorAllow,
-				Message:        fmt.Sprintf("Permission granted for %s (accept edits mode - read-only tool)", tool.Name()),
+				Message:        fmt.Sprintf("Permission granted for %s (accept edits mode - read-only invocation)", tool.Name()),
 				DecisionReason: "Accept edits mode allows read-only operations",
 			}
 		}
 	}
 	return nil
+}
+
+func isReadOnlyInvocation(tool Tool, input map[string]any) bool {
+	if inputAware, ok := tool.(InputReadOnlyTool); ok && inputAware.IsReadOnlyInput(input) {
+		return true
+	}
+	return tool.IsReadOnly()
 }
 
 func (e *Engine) checkRules(tool Tool, input map[string]any, rulesByTool map[string][]Rule, behavior Behavior) *Decision {

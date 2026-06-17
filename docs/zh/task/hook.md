@@ -59,3 +59,35 @@ agent.WithMiddlewares(middleware.NewTTSMiddleware(speech))
 该 middleware 会保留原始文本事件。对于批处理模型，它会收集一个文本块，并在文本块结束后追加
 `DATA_BLOCK_START`、`DATA_BLOCK_DELTA` 和 `DATA_BLOCK_END`。实时模型会通过
 `Push` 接收文本增量，并在文本块结束时用空 `tts.Request` 做收尾读取。
+
+## 可选长期记忆
+
+`middleware.NewLongTermMemoryMiddleware` 通过很小的 `MemoryStore` 接口接入长期记忆存储：
+
+```go
+memory := middleware.NewLongTermMemoryMiddleware(
+	"alice",
+	store,
+	middleware.WithMemoryMode(middleware.MemoryModeBoth),
+)
+agent.WithMiddlewares(memory)
+```
+
+`static_control` 会在回复开始时检索相关记忆并注入 `HintBlock`，在回复结束后写回本轮输入和输出。
+`agent_control` 会暴露 `search_memory` 和 `add_memory` 两个工具，并在系统提示词中补充工具使用说明。
+`both` 同时启用两种方式。Mem0 或其他后端可以通过实现 `MemoryStore` 适配进来。
+
+## 可选回复预算控制
+
+`middleware.NewReplyBudgetControlMiddleware` 会按回复维度累计 `ModelCallEndEvent` 中的 token 使用量：
+
+```go
+budget := middleware.NewReplyBudgetControlMiddleware(
+	10000,
+	middleware.WithReplyBudgetWeights(1, 2),
+)
+agent.WithMiddlewares(budget)
+```
+
+累计成本达到预算后，middleware 会在下一次 reasoning 前注入 wrap-up 提示，并在后续模型调用中把
+`tool_choice` 强制设为 `none`，让模型停止继续调用工具并输出最终回复。回复结束后预算状态会自动清理。

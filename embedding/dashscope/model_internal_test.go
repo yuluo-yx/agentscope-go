@@ -82,6 +82,41 @@ func TestTextModelConstructorsMetadataValidationAndCache(t *testing.T) {
 	}
 }
 
+func TestListModelsAndMultiModalCacheBranches(t *testing.T) {
+	t.Parallel()
+
+	cards, err := ListModels()
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(cards) == 0 {
+		t.Fatal("ListModels should load embedded DashScope model cards")
+	}
+
+	cache := &fakeEmbeddingCache{embeddings: []types.Embedding{{0.3, 0.4}}, ok: true}
+	model, err := NewMultiModalModel(
+		NewCredential("dash-key"),
+		"multimodal-embedding-v1",
+		WithCache(cache),
+		WithHTTPClient(nil),
+	)
+	if err != nil {
+		t.Fatalf("NewMultiModalModel returned error: %v", err)
+	}
+	resp, err := model.Embed(context.Background(), asembedding.EmbeddingRequest{Inputs: []asembedding.EmbeddingInput{
+		asembedding.NewTextInput("cached"),
+	}})
+	if err != nil {
+		t.Fatalf("cached multimodal Embed returned error: %v", err)
+	}
+	if resp.Source != asembedding.SourceCache || len(resp.Embeddings) != 1 || cache.retrieveCalls != 1 {
+		t.Fatalf("cached multimodal response mismatch: resp=%#v cache=%#v", resp, cache)
+	}
+	if _, err := (*MultiModalModel)(nil).Embed(context.Background(), asembedding.EmbeddingRequest{}); !errors.Is(err, asembedding.ErrInvalidEmbeddingInput) {
+		t.Fatalf("nil multimodal Embed should return invalid input, got %v", err)
+	}
+}
+
 func TestMultiModalDefaultsFormattingAndValidationBranches(t *testing.T) {
 	t.Parallel()
 

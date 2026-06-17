@@ -178,4 +178,23 @@ func TestCacheIdentifierIsStableAndProviderQualified(t *testing.T) {
 	if first == otherProvider {
 		t.Fatalf("cache identifier should include provider name")
 	}
+
+	unmarshalable := asembedding.EmbeddingRequest{
+		Inputs:   []asembedding.EmbeddingInput{asembedding.NewTextInput("hello")},
+		Metadata: map[string]any{"bad": func() {}},
+	}
+	if got := asembedding.CacheIdentifier("mock", "bad-metadata", 0, unmarshalable); got == "" {
+		t.Fatal("cache identifier should fall back for unmarshalable request metadata")
+	}
+}
+
+func TestEmbeddingValidationWithoutSupportedModalityFilter(t *testing.T) {
+	t.Parallel()
+
+	request := asembedding.EmbeddingRequest{
+		Inputs: []asembedding.EmbeddingInput{asembedding.NewVideoURLInput("https://example.com/movie.mp4", "video/mp4")},
+	}
+	if err := request.Validate(); err != nil {
+		t.Fatalf("Validate without modality filter should accept a valid video input: %v", err)
+	}
 }

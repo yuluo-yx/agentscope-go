@@ -77,6 +77,22 @@ func NewBash(opts ...BashOption) *Bash {
 	return bash
 }
 
+// IsReadOnlyInput reports whether the current Bash command is read-only.
+func (b *Bash) IsReadOnlyInput(input map[string]any) bool {
+	command := strings.TrimSpace(stringValue(input, "command"))
+	if command == "" {
+		return b.IsReadOnly()
+	}
+	file, err := parseBash(command)
+	if err != nil {
+		return false
+	}
+	if injectionRisk(file) != "" {
+		return false
+	}
+	return isReadOnlyCommand(file)
+}
+
 // CheckPermissions performs safety checks for Bash command execution.
 func (b *Bash) CheckPermissions(_ context.Context, input map[string]any, ctx *permission.Context) (*permission.Decision, error) {
 	command := strings.TrimSpace(stringValue(input, "command"))
@@ -670,8 +686,8 @@ func callMatchesPrefix(words []string, prefix string) bool {
 	if len(prefixWords) == 0 || len(words) < len(prefixWords) {
 		return false
 	}
-	for i, prefixWord := range prefixWords {
-		if words[i] != prefixWord {
+	for i := 0; i < len(prefixWords); i++ {
+		if words[i] != prefixWords[i] {
 			return false
 		}
 	}

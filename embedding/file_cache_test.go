@@ -201,6 +201,12 @@ func TestFileCacheErrorBranches(t *testing.T) {
 	if err := cache.Clear(context.Background()); err != nil {
 		t.Fatalf("Clear empty cache returned error: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(cache.Dir(), "ignored.tmp"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile non-cache fixture returned error: %v", err)
+	}
+	if size, err := cache.SizeBytes(); err != nil || size != 0 {
+		t.Fatalf("SizeBytes should ignore non-json files, size=%d err=%v", size, err)
+	}
 	if err := cache.Store(context.Background(), "corrupt", []types.Embedding{{1}}, asembedding.StoreOptions{}); err != nil {
 		t.Fatalf("Store corrupt seed returned error: %v", err)
 	}
