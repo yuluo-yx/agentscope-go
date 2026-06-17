@@ -22,14 +22,6 @@ export AI_DASHSCOPE_API_KEY=your-dashscope-api-key
 
 ## Run
 
-运行简化入口：
-
-```shell
-go run .
-```
-
-服务监听 `127.0.0.1:8000`。
-
 运行 Kratos 应用入口，同时启动 HTTP 和 gRPC：
 
 ```shell

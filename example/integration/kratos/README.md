@@ -22,15 +22,7 @@ export AI_DASHSCOPE_API_KEY=your-dashscope-api-key
 
 ## Run
 
-For the compact example entry:
-
-```shell
-go run .
-```
-
-The server listens on `127.0.0.1:8000`.
-
-For the Kratos app entry with both HTTP and gRPC servers:
+Run the Kratos app entry with both HTTP and gRPC servers:
 
 ```shell
 go run ./cmd/kratos -conf ./configs
