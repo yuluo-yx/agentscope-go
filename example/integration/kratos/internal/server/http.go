@@ -3,12 +3,11 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	stdhttp "net/http"
-	"strings"
-
 	v1 "kratos/api/chat/v1"
 	"kratos/internal/conf"
 	"kratos/internal/service"
+	stdhttp "net/http"
+	"strings"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"

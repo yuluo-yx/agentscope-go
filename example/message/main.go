@@ -20,7 +20,6 @@ import (
 	"os"
 
 	"github.com/yuluo-yx/agentscope-go/credential"
-
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"

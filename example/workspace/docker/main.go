@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/yuluo-yx/agentscope-go/credential"
-
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"

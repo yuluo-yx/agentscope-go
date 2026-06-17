@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yuluo-yx/agentscope-go/credential"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	asagent "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/middleware"
 	oteltracer "github.com/yuluo-yx/agentscope-go/middleware/otel"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func initTracer() func(context.Context) {
