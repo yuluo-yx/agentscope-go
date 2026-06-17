@@ -22,44 +22,63 @@ import (
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
-// SummaryContent represents a compressed context summary as text or blocks.
+// SummaryContent When the current conversation history becomes too long and approaches the context
+// window limit, the Agent's contextStrategy compresses messages and generates summary digests.
+// Compression workflow:
+//
+//	Messages in the context are compressed and summarized
+//		→ written to the summary field
+//		→ the context retains only recent messages.
+//	On the next construction, the summary is injected into the system prompt or prepended to the context.
 type SummaryContent struct {
-	Text   string                   `json:"text,omitempty"`
+	// Plain-text summary
+	Text string `json:"text,omitempty"`
+	// A structured list of content blocks that preserves
+	// multimodal messages, such as text and images.
 	Blocks message.ContentBlockList `json:"blocks,omitempty"`
 }
 
-// Clone returns a deep copy of the summary content.
 func (s SummaryContent) Clone() SummaryContent {
 	return SummaryContent{Text: s.Text, Blocks: s.Blocks.Clone()}
 }
 
-// ReadCacheEntry stores file-read cache data used by Read/Edit/Write tools.
+// ReadCacheEntry a simple file cache implementation that
+// serves file editing tools such as Read and Edit.
 type ReadCacheEntry struct {
-	Lines     []string `json:"lines"`
-	UpdatedAt int64    `json:"updated_at"`
-	Bytes     float64  `json:"bytes"`
-	FilePath  string   `json:"file_path"`
+	// Lines of the file content; Edit/Read tools operate directly on line numbers.
+	Lines []string `json:"lines"`
+	// Timestamp of the file's last modification, used to determine whether the current cache is stale.
+	UpdatedAt int64 `json:"updated_at"`
+	// Size of the file content in bytes.
+	Bytes float64 `json:"bytes"`
+	// File path, used as the cache key.
+	FilePath string `json:"file_path"`
 }
 
-// Clone returns a deep copy of the file cache entry.
 func (e ReadCacheEntry) Clone() ReadCacheEntry {
 	cp := e
 	cp.Lines = append([]string(nil), e.Lines...)
 	return cp
 }
 
-// ToolContext stores tool execution caches and active groups.
+// ToolContext stores runtime caches and group state during tool execution.
 type ToolContext struct {
-	MaxCacheFiles   int              `json:"max_cache_files"`
-	MaxCacheBytes   float64          `json:"max_cache_bytes"`
-	ReadFileCache   []ReadCacheEntry `json:"read_file_cache"`
-	ActivatedGroups []string         `json:"activated_groups"`
+	// Maximum number of files to cache.
+	MaxCacheFiles int `json:"max_cache_files"`
+	// Total cache size limit; entries are evicted when exceeded.
+	MaxCacheBytes float64 `json:"max_cache_bytes"`
+	// Cached file list; new files are appended.
+	ReadFileCache []ReadCacheEntry `json:"read_file_cache"`
+	// List of activated tool groups.
+	ActivatedGroups []string `json:"activated_groups"`
 }
 
 // NewToolContext creates a tool context with default limits.
 func NewToolContext() *ToolContext {
+
 	return &ToolContext{
-		MaxCacheFiles:   100,
+		MaxCacheFiles: 100,
+		// 25000KB，25MB
 		MaxCacheBytes:   25000,
 		ReadFileCache:   []ReadCacheEntry{},
 		ActivatedGroups: []string{},
@@ -68,80 +87,103 @@ func NewToolContext() *ToolContext {
 
 // GetCache returns a cache entry when the file mtime has not changed.
 func (c *ToolContext) GetCache(filePath string) (*ReadCacheEntry, bool) {
+
 	if c == nil {
 		return nil, false
 	}
+
 	info, err := os.Stat(filePath)
 	if err != nil {
+		// cache is invalid, remove it.
 		c.removeCache(filePath)
 		return nil, false
 	}
+
 	for index := range c.ReadFileCache {
 		entry := &c.ReadFileCache[index]
 		if entry.FilePath != filePath {
 			continue
 		}
+
+		// Current already modify for outer, so remove file cache.
 		if entry.UpdatedAt != info.ModTime().UnixNano() {
 			c.removeCache(filePath)
 			return nil, false
 		}
 		return entry, true
 	}
+
 	return nil, false
 }
 
 // CacheFile caches file content and evicts old entries by LRU limits.
 func (c *ToolContext) CacheFile(filePath string, lines []string) error {
+
 	if c == nil {
 		return nil
 	}
+
 	if c.MaxCacheFiles <= 0 {
 		c.MaxCacheFiles = 100
 	}
+
 	if c.MaxCacheBytes <= 0 {
 		c.MaxCacheBytes = 25000
 	}
+
 	info, err := os.Stat(filePath)
 	if err != nil {
 		return err
 	}
+
 	c.removeCache(filePath)
 	newBytes := cacheLinesBytes(lines)
+
+	// FIFO (First-In-First-Out) file cache eviction.
+	// if the file count exceeds the limit, drop the oldest entry.
 	for len(c.ReadFileCache) >= c.MaxCacheFiles {
 		c.ReadFileCache = c.ReadFileCache[1:]
 	}
+
 	currentBytes := c.cacheBytes()
+	// Byte limit exceeded; apply the same eviction strategy.
 	for len(c.ReadFileCache) > 0 && currentBytes+newBytes > c.MaxCacheBytes {
 		currentBytes -= c.ReadFileCache[0].Bytes
 		c.ReadFileCache = c.ReadFileCache[1:]
 	}
+
 	c.ReadFileCache = append(c.ReadFileCache, ReadCacheEntry{
 		Lines:     append([]string(nil), lines...),
 		UpdatedAt: info.ModTime().UnixNano(),
 		Bytes:     newBytes,
 		FilePath:  filePath,
 	})
+
 	return nil
 }
 
 // CleanFileCache drops read caches whose paths are not in reservedFilePaths.
 // Passing no reserved paths clears the read cache.
 func (c *ToolContext) CleanFileCache(reservedFilePaths ...string) {
+
 	if c == nil {
 		return
 	}
+
 	reserved := make(map[string]struct{}, len(reservedFilePaths))
 	for _, path := range reservedFilePaths {
 		if path != "" {
 			reserved[path] = struct{}{}
 		}
 	}
+
 	filtered := c.ReadFileCache[:0]
 	for _, entry := range c.ReadFileCache {
 		if _, ok := reserved[entry.FilePath]; ok {
 			filtered = append(filtered, entry)
 		}
 	}
+
 	c.ReadFileCache = filtered
 }
 
@@ -161,18 +203,25 @@ func (c *ToolContext) Clone() *ToolContext {
 
 // AgentState is the Agent runtime state that can be persisted and restored.
 type AgentState struct {
-	SessionID         string              `json:"session_id"`
-	Summary           SummaryContent      `json:"summary"`
-	Context           []*message.Message  `json:"context"`
-	ReplyID           string              `json:"reply_id"`
-	CurIter           int                 `json:"cur_iter"`
+	SessionID string `json:"session_id"`
+	// Compressed summary of conversation messages.
+	Summary SummaryContent `json:"summary"`
+	// Context message list; the Reasoning component builds the prompt from this.
+	Context []*message.Message `json:"context"`
+	ReplyID string             `json:"reply_id"`
+	// Current agent iteration count, used to prevent infinite loops.
+	CurIter int `json:"cur_iter"`
+	// Permission rules; used to build the permission engine for pre-execution checks before tool invocation.
 	PermissionContext *permission.Context `json:"permission_context"`
-	ToolContext       *ToolContext        `json:"tool_context"`
-	TaskContext       *TaskContext        `json:"tasks_context"`
+	// Tool context: file caches and activated tool groups.
+	ToolContext *ToolContext `json:"tool_context"`
+	// Task list tracked by the agent.
+	TaskContext *TaskContext `json:"tasks_context"`
 }
 
 // NewAgentState creates a fully initialized Agent state.
 func NewAgentState() *AgentState {
+
 	return &AgentState{
 		SessionID:         utils.NewID(),
 		Context:           []*message.Message{},
