@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/yuluo-yx/agentscope-go/credential"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/yuluo-yx/agentscope-go/credential"
 
 	"github.com/yuluo-yx/agentscope-go/agent"
 	"github.com/yuluo-yx/agentscope-go/message"

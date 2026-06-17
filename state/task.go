@@ -54,7 +54,6 @@ type Task struct {
 
 // NewTask creates a task with the default pending state.
 func NewTask(subject, description string, metadata map[string]any) Task {
-
 	return Task{
 		Subject:     subject,
 		Description: description,

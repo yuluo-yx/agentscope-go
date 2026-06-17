@@ -17,9 +17,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/yuluo-yx/agentscope-go/credential"
 	"os"
 	"strings"
+
+	"github.com/yuluo-yx/agentscope-go/credential"
 
 	gomcp "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"

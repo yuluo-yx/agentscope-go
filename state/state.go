@@ -75,7 +75,6 @@ type ToolContext struct {
 
 // NewToolContext creates a tool context with default limits.
 func NewToolContext() *ToolContext {
-
 	return &ToolContext{
 		MaxCacheFiles: 100,
 		// 25000KB，25MB
@@ -87,7 +86,6 @@ func NewToolContext() *ToolContext {
 
 // GetCache returns a cache entry when the file mtime has not changed.
 func (c *ToolContext) GetCache(filePath string) (*ReadCacheEntry, bool) {
-
 	if c == nil {
 		return nil, false
 	}
@@ -118,7 +116,6 @@ func (c *ToolContext) GetCache(filePath string) (*ReadCacheEntry, bool) {
 
 // CacheFile caches file content and evicts old entries by LRU limits.
 func (c *ToolContext) CacheFile(filePath string, lines []string) error {
-
 	if c == nil {
 		return nil
 	}
@@ -165,7 +162,6 @@ func (c *ToolContext) CacheFile(filePath string, lines []string) error {
 // CleanFileCache drops read caches whose paths are not in reservedFilePaths.
 // Passing no reserved paths clears the read cache.
 func (c *ToolContext) CleanFileCache(reservedFilePaths ...string) {
-
 	if c == nil {
 		return
 	}
@@ -221,7 +217,6 @@ type AgentState struct {
 
 // NewAgentState creates a fully initialized Agent state.
 func NewAgentState() *AgentState {
-
 	return &AgentState{
 		SessionID:         utils.NewID(),
 		Context:           []*message.Message{},

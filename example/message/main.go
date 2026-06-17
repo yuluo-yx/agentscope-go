@@ -17,8 +17,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/yuluo-yx/agentscope-go/credential"
 	"os"
+
+	"github.com/yuluo-yx/agentscope-go/credential"
 
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/model"

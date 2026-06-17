@@ -18,9 +18,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/yuluo-yx/agentscope-go/credential"
 	"os"
 	"strings"
+
+	"github.com/yuluo-yx/agentscope-go/credential"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	"github.com/yuluo-yx/agentscope-go/message"

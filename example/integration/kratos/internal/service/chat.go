@@ -20,8 +20,9 @@ import (
 	v1 "kratos/api/chat/v1"
 	"kratos/internal/biz"
 
-	"github.com/yuluo-yx/agentscope-go/message"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/yuluo-yx/agentscope-go/message"
 )
 
 // ChatService adapts the AgentScope Go usecase to the Kratos proto contract.
