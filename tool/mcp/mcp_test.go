@@ -17,6 +17,7 @@ package mcp
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -209,8 +210,219 @@ func TestCapabilityBoundariesMatchPythonMCPImplementation(t *testing.T) {
 	boundaries := CapabilityBoundaries()
 	assertFeatureBoundary(t, boundaries, FeatureOAuthAuth, FeatureStatusPartial, "runtime OAuthConfig")
 	assertFeatureBoundary(t, boundaries, FeatureToolListChangedNotification, FeatureStatusPartial, "clears cached raw tools")
-	assertFeatureBoundary(t, boundaries, FeatureDeferredLoading, FeatureStatusUnsupported, "explicit ListTools")
-	assertFeatureBoundary(t, boundaries, FeatureTaskAugmentedTools, FeatureStatusUnsupported, "normal CallTool")
+	assertFeatureBoundary(t, boundaries, FeatureDeferredLoading, FeatureStatusSupported, "DeferredToolkit")
+	assertFeatureBoundary(t, boundaries, FeatureTaskAugmentedTools, FeatureStatusSupported, "WithTaskTTL")
+}
+
+func TestDeferredToolkitLoadsToolsOnDemandAndCanInvalidate(t *testing.T) {
+	t.Parallel()
+
+	echo, err := astool.NewFunctionTool(
+		"Echo",
+		"Echo one value.",
+		map[string]any{"type": "object"},
+		func(_ context.Context, input map[string]any, _ *asstate.AgentState) (message.ContentBlockList, error) {
+			value, _ := input["value"].(string)
+			return message.ContentBlockList{message.NewTextBlock(value)}, nil
+		},
+		astool.WithFunctionReadOnly(true),
+	)
+	if err != nil {
+		t.Fatalf("NewFunctionTool returned error: %v", err)
+	}
+	loader := &recordingToolLoader{name: "lazy", tools: []astool.Tool{echo}}
+	kit, err := NewDeferredToolkit(loader)
+	if err != nil {
+		t.Fatalf("NewDeferredToolkit returned error: %v", err)
+	}
+	if loader.ListCount() != 0 {
+		t.Fatalf("deferred toolkit should not list tools during construction, got %d", loader.ListCount())
+	}
+
+	schemas, err := kit.ToolSchemas()
+	if err != nil {
+		t.Fatalf("ToolSchemas returned error: %v", err)
+	}
+	if len(schemas) != 1 || schemas[0].Function.Name != "Echo" {
+		t.Fatalf("unexpected deferred schemas: %#v", schemas)
+	}
+	if loader.ListCount() != 1 {
+		t.Fatalf("first ToolSchemas should list once, got %d", loader.ListCount())
+	}
+	if found, ok := kit.FindTool("Echo"); !ok || found.Name() != "Echo" {
+		t.Fatalf("FindTool should use cached tools, got %#v %v", found, ok)
+	}
+	if loader.ListCount() != 1 {
+		t.Fatalf("FindTool should not reload cached tools, got %d", loader.ListCount())
+	}
+
+	response, err := kit.RunTool(context.Background(), message.NewToolCallBlock("call-echo", "Echo", `{"value":"hello"}`), asstate.NewAgentState())
+	if err != nil {
+		t.Fatalf("RunTool returned error: %v", err)
+	}
+	if text := response.GetTextContent(""); text == nil || *text != "hello" {
+		t.Fatalf("deferred toolkit response mismatch: %#v", response)
+	}
+	chunks, err := kit.CallTool(context.Background(), message.NewToolCallBlock("call-echo-2", "Echo", `{"value":"again"}`), asstate.NewAgentState())
+	if err != nil {
+		t.Fatalf("CallTool returned error: %v", err)
+	}
+	if chunks == nil {
+		t.Fatal("CallTool should return chunks")
+	}
+	for range chunks {
+	}
+
+	kit.Invalidate()
+	if _, err := kit.ToolSchemas(); err != nil {
+		t.Fatalf("ToolSchemas after invalidate returned error: %v", err)
+	}
+	if loader.ListCount() != 2 {
+		t.Fatalf("ToolSchemas after invalidate should reload, got %d", loader.ListCount())
+	}
+}
+
+func TestDeferredToolkitErrorBranches(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewDeferredToolkit(nil); err == nil {
+		t.Fatal("nil deferred loader should fail")
+	}
+	var nilKit *DeferredToolkit
+	nilKit.Invalidate()
+	if _, err := nilKit.CallTool(context.Background(), message.NewToolCallBlock("call", "Missing", "{}"), asstate.NewAgentState()); err == nil {
+		t.Fatal("nil deferred toolkit CallTool should fail")
+	}
+
+	loader := &recordingToolLoader{name: "broken", err: context.Canceled}
+	kit, err := NewDeferredToolkit(loader)
+	if err != nil {
+		t.Fatalf("NewDeferredToolkit returned error: %v", err)
+	}
+	if _, err := kit.ToolSchemas(); err == nil {
+		t.Fatal("deferred ToolSchemas should return loader errors")
+	}
+	if found, ok := kit.FindTool("Missing"); ok || found != nil {
+		t.Fatalf("FindTool should miss when loading fails, got %#v %v", found, ok)
+	}
+	if _, err := kit.RunTool(context.Background(), message.NewToolCallBlock("call", "Missing", "{}"), asstate.NewAgentState()); err == nil {
+		t.Fatal("RunTool should return loader errors")
+	}
+}
+
+func TestClientCallToolIncludesTaskTTL(t *testing.T) {
+	t.Parallel()
+
+	captured := make(chan *gomcp.TaskParams, 1)
+	server := mcpserver.NewMCPServer("task-server", "1.0.0", mcpserver.WithToolCapabilities(false))
+	server.AddTool(
+		gomcp.NewTool(
+			"capture_task",
+			gomcp.WithDescription("Capture task parameters."),
+			gomcp.WithString("name", gomcp.Required(), gomcp.Description("Name to echo.")),
+		),
+		func(_ context.Context, request gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
+			captured <- request.Params.Task
+			return gomcp.NewToolResultText("task:" + request.GetString("name", "AgentScope")), nil
+		},
+	)
+	client, err := NewInProcessClient("tasks", server, WithTaskTTL(5*time.Second))
+	if err != nil {
+		t.Fatalf("NewInProcessClient returned error: %v", err)
+	}
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	})
+
+	result, err := client.CallTool(context.Background(), "capture_task", map[string]any{"name": "Ada"})
+	if err != nil {
+		t.Fatalf("CallTool returned error: %v", err)
+	}
+	if text := ConvertToolResult(result).GetTextContent(""); text == nil || *text != "task:Ada" {
+		t.Fatalf("unexpected tool result: %#v", result)
+	}
+	select {
+	case task := <-captured:
+		if task == nil || task.TTL == nil || *task.TTL != 5000 {
+			t.Fatalf("task TTL was not sent in MCP call: %#v", task)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for captured task params")
+	}
+}
+
+func TestClientTaskTTLValidationAndZeroTTL(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewInProcessClient("badttl", newTestMCPServer(), WithTaskTTL(-time.Second)); err == nil {
+		t.Fatal("negative task TTL should be rejected")
+	}
+
+	captured := make(chan *gomcp.TaskParams, 1)
+	server := mcpserver.NewMCPServer("task-server", "1.0.0", mcpserver.WithToolCapabilities(false))
+	server.AddTool(
+		gomcp.NewTool("capture_task", gomcp.WithString("name")),
+		func(_ context.Context, request gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
+			captured <- request.Params.Task
+			return gomcp.NewToolResultText("ok"), nil
+		},
+	)
+	client, err := NewInProcessClient("taskszero", server, WithTaskTTL(0))
+	if err != nil {
+		t.Fatalf("NewInProcessClient returned error: %v", err)
+	}
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := client.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	})
+	if _, err := client.CallTool(context.Background(), "capture_task", map[string]any{"name": "Ada"}); err != nil {
+		t.Fatalf("CallTool returned error: %v", err)
+	}
+	select {
+	case task := <-captured:
+		if task == nil || task.TTL != nil {
+			t.Fatalf("zero TTL should send task params without TTL, got %#v", task)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for captured task params")
+	}
+}
+
+type recordingToolLoader struct {
+	mu    sync.Mutex
+	name  string
+	tools []astool.Tool
+	err   error
+	calls int
+}
+
+func (l *recordingToolLoader) Name() string {
+	return l.name
+}
+
+func (l *recordingToolLoader) ListTools(context.Context) ([]astool.Tool, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls++
+	if l.err != nil {
+		return nil, l.err
+	}
+	return append([]astool.Tool(nil), l.tools...), nil
+}
+
+func (l *recordingToolLoader) ListCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.calls
 }
 
 func newTestMCPServer() *mcpserver.MCPServer {

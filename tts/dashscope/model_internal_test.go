@@ -147,6 +147,87 @@ func TestParsingAggregationAndProviderErrorBranches(t *testing.T) {
 	}
 }
 
+func TestRealtimeInternalErrorAndNoopBranches(t *testing.T) {
+	t.Parallel()
+
+	cards, err := ListModels()
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(cards) == 0 {
+		t.Fatal("ListModels should load embedded DashScope TTS model cards")
+	}
+
+	model, err := NewRealtimeModel(
+		NewCredential("dash-key"),
+		" qwen3-tts-flash-realtime ",
+		WithRealtimeDialer(nil),
+		WithRealtimeEndpoint("ftp://example.com/realtime"),
+		WithRealtimeConnectTimeout(-time.Second),
+	)
+	if err != nil {
+		t.Fatalf("NewRealtimeModel returned error: %v", err)
+	}
+	if model.dialer == nil || model.connectTimeout != defaultConnectTimeout || model.Name() != "dashscope:qwen3-tts-flash-realtime" {
+		t.Fatalf("realtime defaults mismatch: dialer=%#v timeout=%v name=%s", model.dialer, model.connectTimeout, model.Name())
+	}
+	if _, err := model.realtimeURL(); err == nil {
+		t.Fatal("unsupported realtime endpoint scheme should fail")
+	}
+	if response, err := model.Push(context.Background(), ""); err != nil || response == nil || response.IsLast {
+		t.Fatalf("empty Push should return non-terminal empty response, response=%#v err=%v", response, err)
+	}
+	if _, err := model.Push(context.Background(), "hello"); err == nil {
+		t.Fatal("Push with text should fail when websocket is not connected")
+	}
+	if _, err := model.Synthesize(context.Background(), tts.Request{}); err == nil {
+		t.Fatal("Synthesize should fail when websocket is not connected")
+	}
+	if _, err := (*RealtimeModel)(nil).Push(context.Background(), "hello"); err == nil {
+		t.Fatal("nil realtime Push should fail")
+	}
+	if _, err := (*RealtimeModel)(nil).Synthesize(context.Background(), tts.Request{}); err == nil {
+		t.Fatal("nil realtime Synthesize should fail")
+	}
+
+	state := &RealtimeModel{
+		parameters:  defaultParameters(),
+		audioSignal: make(chan struct{}, 1),
+	}
+	if err := state.handleRealtimeEvent([]byte("{")); err == nil {
+		t.Fatal("invalid realtime event JSON should fail")
+	}
+	if err := state.handleRealtimeEvent([]byte(`{"type":"session.created","session":{"id":"sess-1"}}`)); err != nil {
+		t.Fatalf("session.created event failed: %v", err)
+	}
+	if state.sessionID != "sess-1" {
+		t.Fatalf("session id mismatch: %q", state.sessionID)
+	}
+	if err := state.handleRealtimeEvent([]byte(`{"type":"response.created","response":{"id":"resp-1"}}`)); err != nil {
+		t.Fatalf("response.created event failed: %v", err)
+	}
+	if err := state.handleRealtimeEvent([]byte(`{"type":"response.audio.delta"}`)); err != nil {
+		t.Fatalf("empty audio delta should be ignored: %v", err)
+	}
+	if err := state.handleRealtimeEvent([]byte(`{"type":"response.audio.delta","delta":"bad"}`)); err != nil {
+		t.Fatalf("bad audio delta records read error but does not return it: %v", err)
+	}
+	errorResponse := state.takeAudioResponseLocked(true)
+	if errorResponse.Error == nil || !strings.Contains(errorResponse.Error.Error(), "decode audio delta") {
+		t.Fatalf("bad delta should surface as terminal audio error response: %#v", errorResponse)
+	}
+	state.resetAudio()
+	if err := state.handleRealtimeEvent([]byte(`{"type":"error","error":{"code":"Nested","message":"nested error"}}`)); err != nil {
+		t.Fatalf("nested provider error event failed: %v", err)
+	}
+	if state.readErr == nil || !strings.Contains(state.readErr.Error(), "nested error") {
+		t.Fatalf("nested provider error not captured: %v", state.readErr)
+	}
+	if isClosedWebSocketError(nil) || !isClosedWebSocketError(errors.New("websocket: close 1000 normal")) {
+		t.Fatal("closed websocket error detection mismatch")
+	}
+}
+
 func collectInternalTTSResponses(responses <-chan tts.Response) []tts.Response {
 	out := []tts.Response{}
 	for response := range responses {

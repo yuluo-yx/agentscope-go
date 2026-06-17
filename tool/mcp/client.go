@@ -41,6 +41,7 @@ type clientOptions struct {
 	toolListChangedHandler ToolListChangedHandler
 	continuousListening    bool
 	oauthConfig            *OAuthConfig
+	taskTTL                *time.Duration
 }
 
 // ToolListChangedEvent describes a server notification that invalidated the
@@ -109,6 +110,7 @@ type Client struct {
 	executionTimeout time.Duration
 	clientInfo       gomcp.Implementation
 	toolListChanged  ToolListChangedHandler
+	taskTTL          *time.Duration
 	factory          clientFactory
 	config           asworkspace.MCPClientConfig
 
@@ -279,6 +281,7 @@ func (c *Client) CallTool(ctx context.Context, rawName string, input map[string]
 		Params: gomcp.CallToolParams{
 			Name:      rawName,
 			Arguments: input,
+			Task:      c.taskParams(),
 		},
 	}
 	if !c.stateful {
@@ -339,6 +342,14 @@ func newClient(name string, options clientOptions, config asworkspace.MCPClientC
 	if strings.TrimSpace(options.clientInfo.Version) == "" {
 		options.clientInfo.Version = "0.0.0"
 	}
+	if options.taskTTL != nil && *options.taskTTL < 0 {
+		return nil, fmt.Errorf("mcp: task TTL must be non-negative")
+	}
+	var taskTTL *time.Duration
+	if options.taskTTL != nil {
+		ttl := *options.taskTTL
+		taskTTL = &ttl
+	}
 	return &Client{
 		name:             name,
 		stateful:         options.stateful,
@@ -348,9 +359,22 @@ func newClient(name string, options clientOptions, config asworkspace.MCPClientC
 		executionTimeout: options.executionTimeout,
 		clientInfo:       options.clientInfo,
 		toolListChanged:  options.toolListChangedHandler,
+		taskTTL:          taskTTL,
 		factory:          factory,
 		config:           config,
 	}, nil
+}
+
+func (c *Client) taskParams() *gomcp.TaskParams {
+	if c == nil || c.taskTTL == nil {
+		return nil
+	}
+	task := &gomcp.TaskParams{}
+	if *c.taskTTL > 0 {
+		ttl := c.taskTTL.Milliseconds()
+		task.TTL = &ttl
+	}
+	return task
 }
 
 func (c *Client) listRawToolsLocked(ctx context.Context) ([]gomcp.Tool, error) {

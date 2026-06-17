@@ -22,6 +22,10 @@ decision, err := engine.CheckPermission(context.Background(), readTool, input)
 ```
 
 权限引擎按顺序检查拒绝规则、询问规则、模式行为、工具特定决策、允许规则和最终默认值。
+在 `explore` 和 `accept_edits` 模式下，工具可以实现可选的
+`permission.InputReadOnlyTool` 接口，让只读判定基于当前输入完成。例如
+`Bash` 的静态 `IsReadOnly()` 是 `false`，但 `pwd`、`git status` 等当前命令会被
+识别为只读调用并放行；写入类命令仍会被拒绝或进入后续权限检查。
 
 ## 规则
 

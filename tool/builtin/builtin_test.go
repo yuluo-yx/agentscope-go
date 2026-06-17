@@ -154,6 +154,53 @@ func TestBashExecutesAndChecksDangerousCommands(t *testing.T) {
 	}
 }
 
+func TestBashExploreModeAllowsInputAwareReadOnlyCommands(t *testing.T) {
+	t.Parallel()
+
+	engine := permission.NewEngine(permission.NewContext(permission.ModeExplore))
+	decision, err := engine.CheckPermission(context.Background(), builtin.NewBash(), map[string]any{"command": "pwd"})
+	if err != nil {
+		t.Fatalf("CheckPermission returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorAllow {
+		t.Fatalf("read-only bash command should be allowed in explore mode, got %#v", decision)
+	}
+
+	decision, err = engine.CheckPermission(context.Background(), builtin.NewBash(), map[string]any{"command": "touch created.txt"})
+	if err != nil {
+		t.Fatalf("CheckPermission returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorDeny {
+		t.Fatalf("write bash command should be denied in explore mode, got %#v", decision)
+	}
+}
+
+func TestBashInputAwareReadOnlyBranches(t *testing.T) {
+	t.Parallel()
+
+	bash := builtin.NewBash()
+	tests := []struct {
+		name    string
+		command string
+		want    bool
+	}{
+		{name: "empty", command: "", want: false},
+		{name: "parse error", command: "echo 'unterminated", want: false},
+		{name: "command substitution", command: "echo $(pwd)", want: false},
+		{name: "git status", command: "git status --short", want: true},
+		{name: "docker ps", command: "docker ps", want: true},
+		{name: "output redirection", command: "pwd > out.txt", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := bash.IsReadOnlyInput(map[string]any{"command": tt.command}); got != tt.want {
+				t.Fatalf("IsReadOnlyInput(%q)=%v, want %v", tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBashRunsCommandsInConfiguredWorkingDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -167,6 +214,94 @@ func TestBashRunsCommandsInConfiguredWorkingDirectory(t *testing.T) {
 	}
 	if got := filepath.Clean(strings.TrimSpace(*text)); got != filepath.Clean(dir) {
 		t.Fatalf("Bash should run in configured cwd: got %q want %q", got, filepath.Clean(dir))
+	}
+}
+
+func TestGlobExecuteBranches(t *testing.T) {
+	t.Parallel()
+
+	glob := builtin.NewGlob()
+	if resp := runTool(t, glob, map[string]any{"pattern": ""}, nil); resp.State != message.ToolResultError {
+		t.Fatalf("empty glob pattern should fail, got %#v", resp)
+	}
+	if resp := runTool(t, glob, map[string]any{"pattern": "*.go", "path": filepath.Join(t.TempDir(), "missing")}, nil); resp.State != message.ToolResultError {
+		t.Fatalf("missing glob directory should fail, got %#v", resp)
+	}
+	filePath := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(filePath, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	if resp := runTool(t, glob, map[string]any{"pattern": "*.go", "path": filePath}, nil); resp.State != message.ToolResultError {
+		t.Fatalf("file glob path should fail, got %#v", resp)
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatalf("write go fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# readme\n"), 0o600); err != nil {
+		t.Fatalf("write md fixture: %v", err)
+	}
+	if resp := runTool(t, glob, map[string]any{"pattern": "*.py", "path": dir}, nil); resp.State != message.ToolResultSuccess || !strings.Contains(*resp.GetTextContent(""), "No files found") {
+		t.Fatalf("no-match glob response mismatch: %#v", resp)
+	}
+	resp := runTool(t, glob, map[string]any{"pattern": "*.go", "path": dir}, nil)
+	if text := resp.GetTextContent(""); resp.State != message.ToolResultSuccess || text == nil || !strings.Contains(*text, "a.go") {
+		t.Fatalf("glob match response mismatch: %#v", resp)
+	}
+}
+
+func TestFileToolExecuteErrorBranches(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(filePath, []byte("alpha\nalpha\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	if resp := runTool(t, builtin.NewRead(), map[string]any{"file_path": filepath.Join(dir, "missing.txt")}, nil); resp.State != message.ToolResultError {
+		t.Fatalf("missing read should fail, got %#v", resp)
+	}
+	if resp := runTool(t, builtin.NewRead(), map[string]any{"file_path": dir}, nil); resp.State != message.ToolResultError {
+		t.Fatalf("directory read should fail, got %#v", resp)
+	}
+	longFile := filepath.Join(dir, "long.txt")
+	if err := os.WriteFile(longFile, []byte(strings.Repeat("x", 2100)+"\n"), 0o600); err != nil {
+		t.Fatalf("write long fixture: %v", err)
+	}
+	resp := runTool(t, builtin.NewRead(), map[string]any{"file_path": longFile, "offset": -5, "limit": 0}, astate.NewAgentState())
+	if text := resp.GetTextContent(""); resp.State != message.ToolResultSuccess || text == nil || !strings.Contains(*text, "[truncated]") {
+		t.Fatalf("long read should truncate and normalize bounds, got %#v", resp)
+	}
+
+	if resp := runTool(t, builtin.NewWrite(), map[string]any{"file_path": filePath, "content": "changed\n"}, nil); resp.State != message.ToolResultError {
+		t.Fatalf("write existing file without state should fail, got %#v", resp)
+	}
+	newPath := filepath.Join(dir, "nested", "created.txt")
+	if resp := runTool(t, builtin.NewWrite(), map[string]any{"file_path": newPath, "content": "created\n"}, astate.NewAgentState()); resp.State != message.ToolResultSuccess {
+		t.Fatalf("write new file should succeed, got %#v", resp)
+	}
+
+	if resp := runTool(t, builtin.NewEdit(), map[string]any{"file_path": filepath.Join(dir, "missing-edit.txt"), "old_string": "a", "new_string": "b"}, astate.NewAgentState()); resp.State != message.ToolResultError {
+		t.Fatalf("edit missing file should fail, got %#v", resp)
+	}
+	if resp := runTool(t, builtin.NewEdit(), map[string]any{"file_path": filePath, "old_string": "same", "new_string": "same"}, astate.NewAgentState()); resp.State != message.ToolResultError {
+		t.Fatalf("edit identical strings should fail, got %#v", resp)
+	}
+	if resp := runTool(t, builtin.NewEdit(), map[string]any{"file_path": filePath, "old_string": "alpha", "new_string": "beta"}, nil); resp.State != message.ToolResultError {
+		t.Fatalf("edit without state should fail, got %#v", resp)
+	}
+	state := astate.NewAgentState()
+	_ = runTool(t, builtin.NewRead(), map[string]any{"file_path": filePath}, state)
+	if resp := runTool(t, builtin.NewEdit(), map[string]any{"file_path": filePath, "old_string": "missing", "new_string": "beta"}, state); resp.State != message.ToolResultError {
+		t.Fatalf("edit missing old string should fail, got %#v", resp)
+	}
+	if resp := runTool(t, builtin.NewEdit(), map[string]any{"file_path": filePath, "old_string": "alpha", "new_string": "beta"}, state); resp.State != message.ToolResultError {
+		t.Fatalf("edit duplicate old string should fail without replace_all, got %#v", resp)
+	}
+	if resp := runTool(t, builtin.NewEdit(), map[string]any{"file_path": filePath, "old_string": "alpha", "new_string": "beta", "replace_all": true}, state); resp.State != message.ToolResultSuccess {
+		t.Fatalf("edit replace_all should succeed, got %#v", resp)
 	}
 }
 

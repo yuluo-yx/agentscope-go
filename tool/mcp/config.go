@@ -84,6 +84,14 @@ func WithOAuthConfig(config OAuthConfig) ClientOption {
 	}
 }
 
+// WithTaskTTL enables MCP task augmentation for tool calls and sets the
+// requested task retention TTL. A zero TTL sends task parameters without a TTL.
+func WithTaskTTL(ttl time.Duration) ClientOption {
+	return func(options *clientOptions) {
+		options.taskTTL = &ttl
+	}
+}
+
 type clientFactory func(context.Context) (*goclient.Client, error)
 
 // NewStdioClient creates an MCP client backed by a stdio subprocess.

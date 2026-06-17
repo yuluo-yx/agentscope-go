@@ -22,9 +22,10 @@ import (
 )
 
 type fakeTool struct {
-	name     string
-	readOnly bool
-	decision *permission.Decision
+	name          string
+	readOnly      bool
+	inputReadOnly *bool
+	decision      *permission.Decision
 }
 
 func (f fakeTool) Name() string {
@@ -33,6 +34,10 @@ func (f fakeTool) Name() string {
 
 func (f fakeTool) IsReadOnly() bool {
 	return f.readOnly
+}
+
+func (f fakeTool) IsReadOnlyInput(map[string]any) bool {
+	return f.inputReadOnly != nil && *f.inputReadOnly
 }
 
 func (f fakeTool) CheckPermissions(context.Context, map[string]any, *permission.Context) (*permission.Decision, error) {
@@ -119,6 +124,7 @@ func TestEngineAllowAndAskRules(t *testing.T) {
 func TestEngineModes(t *testing.T) {
 	t.Parallel()
 
+	inputReadOnly := true
 	tests := []struct {
 		name string
 		ctx  *permission.Context
@@ -148,6 +154,18 @@ func TestEngineModes(t *testing.T) {
 			ctx:  permission.NewContext(permission.ModeExplore),
 			tool: fakeTool{name: "Write"},
 			want: permission.BehaviorDeny,
+		},
+		{
+			name: "explore allows input-aware read-only invocations",
+			ctx:  permission.NewContext(permission.ModeExplore),
+			tool: fakeTool{name: "Bash", inputReadOnly: &inputReadOnly},
+			want: permission.BehaviorAllow,
+		},
+		{
+			name: "accept edits allows input-aware read-only invocations",
+			ctx:  permission.NewContext(permission.ModeAcceptEdits),
+			tool: fakeTool{name: "Bash", inputReadOnly: &inputReadOnly},
+			want: permission.BehaviorAllow,
 		},
 	}
 

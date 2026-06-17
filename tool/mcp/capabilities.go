@@ -57,13 +57,13 @@ func CapabilityBoundaries() map[Feature]FeatureBoundary {
 		},
 		FeatureDeferredLoading: {
 			Feature: FeatureDeferredLoading,
-			Status:  FeatureStatusUnsupported,
-			Detail:  "Toolkit MCP integration eagerly performs explicit ListTools during construction rather than deferring schema loading.",
+			Status:  FeatureStatusSupported,
+			Detail:  "DeferredToolkit postpones MCP ListTools until schema lookup, tool lookup, or tool execution, and supports explicit cache invalidation.",
 		},
 		FeatureTaskAugmentedTools: {
 			Feature: FeatureTaskAugmentedTools,
-			Status:  FeatureStatusUnsupported,
-			Detail:  "Task-augmented MCP tools are not implemented; wrapped tools use the normal CallTool request/response path.",
+			Status:  FeatureStatusSupported,
+			Detail:  "WithTaskTTL sends standard MCP task parameters on CallTool requests so task-capable servers can route tool calls through task augmentation.",
 		},
 	}
 }

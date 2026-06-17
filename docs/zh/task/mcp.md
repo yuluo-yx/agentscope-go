@@ -11,6 +11,8 @@
 - 工具启用和禁用过滤。
 - MCP 工具包装为 AgentScope `tool.Tool`。
 - MCP 内容转换为 `message.TextBlock` 和 `message.DataBlock`。
+- `DeferredToolkit` 延迟加载 MCP 工具 Schema，首次读取 Schema、查找工具或执行工具时才调用 `ListTools`。
+- `WithTaskTTL` 会在 MCP `tools/call` 请求中写入标准 `task` 参数，让支持 task augmentation 的服务端按任务方式执行。
 
 ## 工具命名
 
@@ -45,6 +47,37 @@ if err != nil {
 
 kit, err := tool.NewToolkit(tools...)
 ```
+
+## 延迟加载
+
+需要避免启动时立即拉取 MCP 工具列表时，可以使用 `DeferredToolkit`：
+
+```go
+kit, err := mcp.NewDeferredToolkit(client)
+if err != nil {
+	panic(err)
+}
+
+schemas, err := kit.ToolSchemas()
+```
+
+`DeferredToolkit` 会缓存包装后的工具。收到 MCP `tools/list_changed` 通知或应用层确认工具集变化后，可以调用
+`kit.Invalidate()`，下一次读取 Schema、查找工具或执行工具时会重新加载。
+
+## Task augmentation
+
+需要让支持 task augmentation 的 MCP 服务端按任务方式处理工具调用时，创建客户端时传入 TTL：
+
+```go
+client, err := mcp.NewHTTPClient(
+	"tasks",
+	mcp.HTTPConfig{URL: "https://example.com/mcp"},
+	mcp.WithTaskTTL(5*time.Minute),
+)
+```
+
+`WithTaskTTL` 会把 TTL 转成毫秒并写入 `CallToolRequest.Params.Task`。如果服务端工具声明
+`TaskSupportOptional` 或 `TaskSupportRequired`，服务端可以据此走任务执行路径；普通工具仍按常规工具调用返回。
 
 ## 权限行为
 
