@@ -1,70 +1,93 @@
-# DashScope ChatModel 示例
+# DashScope Embedding 示例
 
-项目主页：[README-zh.md](../../../../README-zh.md)。
+本示例展示 `embedding/dashscope` 的文本向量调用。代码覆盖 DashScope embedding credential、模型初始化、多输入 embedding、维度配置和输出维度检查。
 
-英文文档：[README.md](README.md)。
+## 功能点总览
 
-本示例覆盖当前 Go 实现中的 DashScope 能力边界：
+| 功能点 | 代码位置 | 说明 |
+| --- | --- | --- |
+| 模型初始化 | `main()` | 使用 `AI_DASHSCOPE_API_KEY` 创建 `text-embedding-v4` 模型。 |
+| 维度配置 | `dashscope.WithDimensions(1024)` | 请求 1,024 维文本向量。 |
+| 多输入请求 | `EmbeddingRequest.Inputs` | 一次提交多个文本输入。 |
+| 响应检查 | `len(response.Embeddings[0])` | 读取第一条向量维度，确认返回结构。 |
+| 结果输出 | `fmt.Printf` | 输出模型名、向量条数和维度。 |
 
-- 通过 `model/dashscope` 构造 OpenAI-compatible Chat Completions 模型。
-- 默认模型为 `qwen3.7-max`，可用 `AI_DASHSCOPE_MODEL` 覆盖。
-- 配置非流式与流式模型实例。
-- 生成 Function Calling 工具 schema。
-- 真实运行 `GetWeather` Function Calling 回合，并把工具结果回填给模型。
-- 真实运行 `ChatModel.Stream` 并输出流式增量。
-- 构造文本 + 图片 URL 的数据块输入并做本地 token 估算。
-- 可选使用 `AI_DASHSCOPE_API_KEY` 发起真实文本调用。
-
-根据阿里云官方文档，百炼文本生成提供 OpenAI 兼容 Chat Completions。本 Go provider 示例演示已实现的 OpenAI-compatible ChatModel 路径。
-
-## 前置条件
-
-- Go 1.26.3。
-- 默认离线运行不需要 API Key。
-- 真实调用需要设置 `AI_DASHSCOPE_API_KEY`；未设置时示例走离线路径。
-
-## 运行
-
-离线运行：
+## 运行前提
 
 ```bash
-cd example/model/dashscope
+export AI_DASHSCOPE_API_KEY="your-dashscope-key"
+```
+
+该示例会发起真实 DashScope embedding 请求。未设置 API Key 时，模型创建或调用会失败。
+
+## 快速运行
+
+```bash
+cd example/model/dashscope/embedding
+export AI_DASHSCOPE_API_KEY="your-dashscope-key"
 go run .
 ```
 
-真实调用：
-
-```bash
-cd example/model/dashscope
-AI_DASHSCOPE_API_KEY=your-key go run .
-```
-
-指定模型：
-
-```bash
-AI_DASHSCOPE_MODEL=qwen3.6-plus AI_DASHSCOPE_API_KEY=your-key go run .
-```
-
-## 预期输出
-
-离线输出包含：
+输出示例：
 
 ```text
-chat_model=dashscope:
-dashscope_live=skipped
+dashscope_embedding=ok model=dashscope:text-embedding-v4 embeddings=2 dimensions=1024
 ```
 
-真实调用成功时输出包含：
+## 代码功能解读
 
-```text
-chat_model=dashscope:
-dashscope_live=ok
-dashscope_weather=ok
-dashscope_stream=ok
+### 创建文本向量模型
+
+示例创建 `text-embedding-v4` 模型，并指定返回维度：
+
+```go
+model, err := dashscope.NewTextModel(
+    credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).EmbeddingCredential(),
+    "text-embedding-v4",
+    dashscope.WithDimensions(1024),
+)
 ```
 
-## 官方参考
+`EmbeddingCredential()` 会从统一 DashScope credential 中生成 embedding provider 所需的 credential。`WithDimensions(1024)` 表示请求 1,024 维向量。
 
-- API 参考：https://help.aliyun.com/zh/model-studio/model-api-reference/
-- 文本生成：https://help.aliyun.com/zh/model-studio/qwen-api-reference/
-- 模型列表：https://help.aliyun.com/zh/model-studio/models
+### 构造多输入请求
+
+请求体使用 `EmbeddingRequest`：
+
+```go
+response, err := model.Embed(context.Background(), asembedding.EmbeddingRequest{
+    Inputs: []asembedding.EmbeddingInput{
+        asembedding.NewTextInput("AgentScope Go makes agent applications easier to compose."),
+        asembedding.NewTextInput("Credential adapters keep provider examples consistent."),
+    },
+})
+```
+
+每个 `NewTextInput` 会生成一条文本输入。返回值中的 `Embeddings` 与输入顺序对应。
+
+### 检查输出维度
+
+示例读取第一条向量的长度：
+
+```go
+firstDimensions := 0
+if len(response.Embeddings) > 0 {
+    firstDimensions = len(response.Embeddings[0])
+}
+```
+
+这能确认服务端返回的向量维度是否符合 `WithDimensions` 的配置。
+
+## 常见问题
+
+### 认证失败
+
+确认 `AI_DASHSCOPE_API_KEY` 是否设置，并确认账号有 embedding 模型调用权限。
+
+### 返回维度不符合预期
+
+先确认模型是否支持自定义维度，再检查 `dashscope.WithDimensions(1024)` 是否被保留在模型初始化参数中。
+
+### 输入文本为空
+
+生产代码应在调用前校验输入内容。空文本可能导致 provider 返回参数错误，或者生成无意义向量。

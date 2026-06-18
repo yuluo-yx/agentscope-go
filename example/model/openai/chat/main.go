@@ -17,8 +17,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
@@ -27,6 +30,8 @@ import (
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	"github.com/yuluo-yx/agentscope-go/tool"
 )
+
+const openAIRequestTimeout = 90 * time.Second
 
 func main() {
 
@@ -155,10 +160,15 @@ func streamChat() {
 }
 
 func newOpenAIModel(stream bool) asmodel.ChatModel {
+	httpClient, proxyURL := newOpenAIHTTPClient()
+	if proxyURL != "" {
+		fmt.Printf("openai_proxy=%s\n", proxyURL)
+	}
 
 	chat, err := openai.NewChatModel(
 		credential.NewOpenAI(os.Getenv("AI_OPENAI_API_KEY")).ChatCredential(),
-		"gpt5.5",
+		"gpt-5.4",
+		openai.WithHTTPClient(httpClient),
 		openai.WithStream(stream),
 		openai.WithChatParameters(openai.ChatParameters{
 			MaxTokens:   func() *int64 { v := int64(256); return &v }(),
@@ -170,6 +180,26 @@ func newOpenAIModel(stream bool) asmodel.ChatModel {
 	}
 
 	return chat
+}
+
+func newOpenAIHTTPClient() (*http.Client, string) {
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	proxyURL := strings.TrimSpace(os.Getenv("AI_OPENAI_PROXY_URL"))
+	if proxyURL == "" {
+		return &http.Client{Transport: transport, Timeout: openAIRequestTimeout}, ""
+	}
+
+	parsedProxyURL, err := url.Parse(proxyURL)
+	if err != nil {
+		panic(fmt.Sprintf("invalid AI_OPENAI_PROXY_URL %q: %v", proxyURL, err))
+	}
+	if parsedProxyURL.Scheme == "" || parsedProxyURL.Host == "" {
+		panic(fmt.Sprintf("invalid AI_OPENAI_PROXY_URL %q: expected scheme://host", proxyURL))
+	}
+	transport.Proxy = http.ProxyURL(parsedProxyURL)
+
+	return &http.Client{Transport: transport, Timeout: openAIRequestTimeout}, parsedProxyURL.Redacted()
 }
 
 func weatherTool() *tool.FunctionTool {

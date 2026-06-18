@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	sdk "github.com/openai/openai-go"
@@ -58,6 +59,7 @@ type chatModelOptions struct {
 	stream       bool
 	contextSize  int
 	maxRetries   int
+	httpClient   *http.Client
 }
 
 // WithProviderName sets the logical provider name for OpenAI-compatible wrappers.
@@ -103,6 +105,13 @@ func WithMaxRetries(maxRetries int) ChatModelOption {
 	}
 }
 
+// WithHTTPClient sets the HTTP client used by the OpenAI SDK.
+func WithHTTPClient(client *http.Client) ChatModelOption {
+	return func(options *chatModelOptions) {
+		options.httpClient = client
+	}
+}
+
 // NewChatModel creates an OpenAI Chat Completions model.
 func NewChatModel(credential Credential, model string, opts ...ChatModelOption) (*ChatModel, error) {
 	options := chatModelOptions{
@@ -138,6 +147,9 @@ func NewChatModel(credential Credential, model string, opts ...ChatModelOption) 
 	}
 	if credential.Organization != "" {
 		clientOptions = append(clientOptions, option.WithOrganization(credential.Organization))
+	}
+	if options.httpClient != nil {
+		clientOptions = append(clientOptions, option.WithHTTPClient(options.httpClient))
 	}
 	return &ChatModel{
 		providerName: options.providerName,

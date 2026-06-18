@@ -14,15 +14,27 @@ Each subdirectory is an independent module. Enter the directory you want to try 
 go run .
 ```
 
-Model and tool examples demonstrate ChatModel tool-call loops where that matches the module purpose. Without an API key, those examples stay on an offline path and print tool schema/token information. With one global API key, they run the full model -> tool call -> local tool execution -> tool result -> final model response loop.
+Model examples are split by provider and demonstrate live `ChatModel`, embedding, text-to-speech, and speech-to-text calls. Most ChatModel examples run the full model tool loop: the model requests a tool call, the local toolkit executes it, the tool result is sent back to the model, and the final answer is printed.
+
+These model examples make real provider requests by default. Set the matching provider API key before running them; the Ollama example requires a local Ollama service and a pulled model.
 
 ## Example List
 
 | Directory | Feature |
 | --- | --- |
 | `message` | Conversation history with system, user, and assistant messages |
-| `model/providers` | Provider construction and token estimation |
-| `model/dashscope` | DashScope OpenAI-compatible ChatModel, tool schemas, data-block input, and optional live call |
+| `model/anthropic/chat` | Anthropic ChatModel non-streaming call, streaming call, token estimation, and tool loop |
+| `model/dashscope/chat` | DashScope OpenAI-compatible ChatModel, multimodal message, token estimation, and tool loop |
+| `model/dashscope/embedding` | DashScope text embedding model with batched inputs and dimension configuration |
+| `model/dashscope/stt` | DashScope speech-to-text model reading a local WAV file and printing recognized text |
+| `model/dashscope/tts` | DashScope text-to-speech model streaming audio chunks into `output.wav` |
+| `model/deepseek/chat` | DeepSeek ChatModel non-streaming call, streaming call, and tool loop |
+| `model/gemini/chat` | Gemini ChatModel multimodal message, token estimation, non-streaming call, streaming call, and tool loop |
+| `model/moonshot/chat` | Moonshot ChatModel multimodal message, token estimation, non-streaming call, streaming call, and tool loop |
+| `model/ollama/chat` | Local Ollama ChatModel non-streaming call, streaming call, and tool loop |
+| `model/openai/chat` | OpenAI ChatModel non-streaming call, streaming call, proxy HTTP client, and tool loop |
+| `model/xai/chat` | xAI ChatModel multimodal message, token estimation, non-streaming call, streaming call, and tool loop |
+| `model/zhipu/chat` | Zhipu AI ChatModel non-streaming call, streaming call, token estimation, and tool loop |
 | `agent/basic` | Agent + scripted model + task tool end-to-end ReAct flow |
 | `agent/team` | Process-local leader/worker Agent team tools and inbox delivery |
 | `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
@@ -43,16 +55,17 @@ Model and tool examples demonstrate ChatModel tool-call loops where that matches
 
 ## External Services
 
-The examples use locally verifiable paths by default. To make real DashScope requests in model/tool examples, set one key once:
+Model examples use provider-specific environment variables:
 
 ```bash
-export AI_API_KEY=your-key
+export AI_OPENAI_API_KEY=your-openai-key
+export AI_ANTHROPIC_API_KEY=your-anthropic-key
+export AI_DASHSCOPE_API_KEY=your-dashscope-key
+export AI_DEEPSEEK_API_KEY=your-deepseek-key
+export AI_GEMINI_API_KEY=your-gemini-key
+export AI_MOONSHOT_API_KEY=your-moonshot-key
+export AI_XAI_API_KEY=your-xai-key
+export AI_ZHIPU_API_KEY=your-zhipu-key
 ```
 
-Optional overrides:
-
-```bash
-export AI_DASHSCOPE_API_KEY=your-dashscope-key  # provider-specific key (higher priority)
-export AI_MODEL=qwen3.7-max                     # global model override
-export AI_DASHSCOPE_MODEL=qwen3.7-max           # provider-specific model (higher priority)
-```
+The OpenAI example also supports `AI_OPENAI_PROXY_URL` for local proxy access. The Ollama example uses `http://127.0.0.1:11434`; start Ollama and pull `llama3.1` before running it.

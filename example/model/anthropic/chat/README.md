@@ -1,65 +1,140 @@
 # Anthropic ChatModel Example
 
-Project home: [README.md](../../../../README.md).
+This example demonstrates live `model/anthropic` ChatModel usage. It covers model construction, token estimation, non-streaming responses, local tool-call execution, tool-result follow-up, and streaming output.
 
-Chinese documentation: [README-zh.md](README-zh.md).
+## Feature Map
 
-This example shows live Anthropic `ChatModel` usage:
-
-- Construct an Anthropic Messages model through `model/anthropic`.
-- Use `claude-sonnet-4-5` by default, or override it with `AI_ANTHROPIC_MODEL`.
-- Use the SDK default Anthropic API base URL, or override it with `AI_ANTHROPIC_BASE_URL`.
-- Run a local token estimate without making a network request.
-- When an API key is set, run a real non-streaming `ChatModel.Call`.
-- When an API key is set, run a real tool-call round trip with a local `GetWeather` tool.
-- When an API key is set, run a real streaming `ChatModel.Stream` and print streamed deltas.
+| Feature | Code | Description |
+| --- | --- | --- |
+| Entry point | `main()` | Runs `chat()` and then `streamChat()`. |
+| Model setup | `newAnthropicModel()` | Creates `claude-sonnet-4-5` from `AI_ANTHROPIC_API_KEY`. |
+| Token estimation | `chat()`, `streamChat()` | Calls `CountTokens` before live requests. |
+| Non-streaming call | `chat()` | Uses `ChatModel.Call` to get a complete response. |
+| Tool loop | `weatherTool()`, `chat()` | Registers `GetWeather`, executes it locally, and sends the result back to the model. |
+| Streaming call | `streamChat()` | Uses `ChatModel.Stream` and checks `response.Error` while reading chunks. |
 
 ## Prerequisites
 
-- Go 1.26.3.
-- The default offline run does not require an API key.
-- A live call requires `AI_ANTHROPIC_API_KEY`, `ANTHROPIC_API_KEY`, or `AI_API_KEY`.
+```bash
+export AI_ANTHROPIC_API_KEY="your-anthropic-key"
+```
+
+This example makes real Anthropic API requests. Model construction or calls will fail when the key is missing or invalid.
 
 ## Run
 
-Offline run:
-
 ```bash
 cd example/model/anthropic/chat
+export AI_ANTHROPIC_API_KEY="your-anthropic-key"
 go run .
 ```
 
-Live call:
+Important output lines:
 
-```bash
-cd example/model/anthropic/chat
-AI_ANTHROPIC_API_KEY=your-key go run .
+- `chat_model=anthropic:claude-sonnet-4-5`: the model adapter was created.
+- `estimated_tokens=...`: request token estimate.
+- `anthropic_live=ok`: non-streaming call completed.
+- `anthropic_weather=ok`: tool call and tool-result follow-up completed.
+- `anthropic_stream_delta=...`: streaming text delta.
+
+## Code Walkthrough
+
+### Model Construction
+
+`newAnthropicModel()` keeps credential, model name, and generation parameters in one place:
+
+```go
+chat, err := anthropic.NewChatModel(
+    credential.NewAnthropic(os.Getenv("AI_ANTHROPIC_API_KEY")).ChatCredential(),
+    "claude-sonnet-4-5",
+    anthropic.WithStream(stream),
+    anthropic.WithChatParameters(anthropic.ChatParameters{
+        MaxTokens:   &maxTokens,
+        Temperature: &temperature,
+    }),
+)
 ```
 
-Choose a model:
+The caller controls the `stream` flag. `chat()` passes `false`; `streamChat()` passes `true`.
 
-```bash
-AI_ANTHROPIC_MODEL=claude-sonnet-4-5 AI_ANTHROPIC_API_KEY=your-key go run .
+### Token Estimation
+
+The example calls `CountTokens` before making a live request:
+
+```go
+tokens, err := chat.CountTokens(liveRequest)
 ```
 
-Override the base URL for a proxy endpoint:
+Applications can use this value for logging, context trimming, and budget checks.
 
-```bash
-AI_ANTHROPIC_BASE_URL=https://your-proxy.example.com AI_ANTHROPIC_API_KEY=your-key go run .
+### Non-Streaming Call
+
+`Call` waits until the full model response is available:
+
+```go
+response, err := chat.Call(ctx, liveRequest)
+fmt.Printf("anthropic_live=ok response=%q\n", shorten(textContent(response), 120))
 ```
 
-## Expected Output
+Use this path for CLIs, batch jobs, and service handlers that do not need incremental rendering.
 
-Offline output includes:
+### Tool-Call Loop
 
-```text
-anthropic_live=skipped
+The local tool is registered through a toolkit:
+
+```go
+kit, err := tool.NewToolkit(weatherTool())
+schemas, err := kit.ToolSchemas()
 ```
 
-Live success output includes:
+The model receives those schemas in `CallRequest.Tools`:
 
-```text
-anthropic_live=ok
-anthropic_weather=ok
-anthropic_stream=ok
+```go
+toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{weatherMessage},
+    Tools:    schemas,
+})
 ```
+
+After extracting the tool call, the Go process executes it and sends a `ToolResultBlock` back:
+
+```go
+toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
+toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
+    message.NewToolResultBlock(weatherCall.ID, weatherCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
+}))
+```
+
+The model decides which tool to call; local code owns execution and state.
+
+### Streaming Call
+
+`streamChat()` consumes a response channel:
+
+```go
+for response := range responses {
+    if response.Error != nil {
+        panic(response.Error)
+    }
+    if response.IsLast {
+        finalText = textContent(&response)
+        continue
+    }
+}
+```
+
+Always check `response.Error` while reading. Streaming errors may appear after the stream has already been created.
+
+## Troubleshooting
+
+### Authentication Error
+
+Check that `AI_ANTHROPIC_API_KEY` is set and that the key can access the configured model.
+
+### No Tool Call Returned
+
+If the model returns plain text instead of a `ToolCallBlock`, the example panics and prints the model text. Tighten the prompt if deterministic tool usage is required.
+
+### Empty Streaming Output
+
+First confirm that `chat()` succeeds. If non-streaming works but streaming is empty, inspect streaming permissions, proxy settings, and `response.Error` values.

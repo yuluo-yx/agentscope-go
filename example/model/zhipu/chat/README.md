@@ -1,65 +1,140 @@
 # Zhipu AI ChatModel Example
 
-Project home: [README.md](../../../../README.md).
+This example demonstrates live `model/zhipu` ChatModel usage. It covers model construction, token estimation, non-streaming responses, local tool-call execution, tool-result follow-up, and streaming output.
 
-Chinese documentation: [README-zh.md](README-zh.md).
+## Feature Map
 
-This example shows live Zhipu AI `ChatModel` usage:
-
-- Construct a Zhipu AI OpenAI-compatible Chat Completions model through `model/zhipu`.
-- Use `glm-5.1` by default, or override it with `AI_ZHIPU_MODEL`.
-- Use the default base URL `https://open.bigmodel.cn/api/paas/v4`, or override it with `AI_ZHIPU_BASE_URL`.
-- Run a local token estimate without making a network request.
-- When an API key is set, run a real non-streaming `ChatModel.Call`.
-- When an API key is set, run a real tool-call round trip with a local `GetWeather` tool.
-- When an API key is set, run a real streaming `ChatModel.Stream` and print streamed deltas.
+| Feature | Code | Description |
+| --- | --- | --- |
+| Entry point | `main()` | Runs `chat()` and then `streamChat()`. |
+| Model setup | `newZhipuModel()` | Creates `glm-5.1` from `AI_ZHIPU_API_KEY`. |
+| Token estimation | `chat()`, `streamChat()` | Calls `CountTokens` before live requests. |
+| Non-streaming call | `chat()` | Uses `ChatModel.Call` to get a complete response. |
+| Tool loop | `weatherTool()`, `chat()` | Registers `GetWeather`, executes it locally, and sends the result back to the model. |
+| Streaming call | `streamChat()` | Uses `ChatModel.Stream` and checks stream errors. |
 
 ## Prerequisites
 
-- Go 1.26.3.
-- The default offline run does not require an API key.
-- A live call requires `AI_ZHIPU_API_KEY`, `ZHIPU_API_KEY`, `ZHIPUAI_API_KEY`, `BIGMODEL_API_KEY`, or `AI_API_KEY`.
+```bash
+export AI_ZHIPU_API_KEY="your-zhipu-key"
+```
+
+This example makes real Zhipu AI requests. Model construction or calls will fail when the key is missing or invalid.
 
 ## Run
 
-Offline run:
-
 ```bash
 cd example/model/zhipu/chat
+export AI_ZHIPU_API_KEY="your-zhipu-key"
 go run .
 ```
 
-Live call:
+Important output lines:
 
-```bash
-cd example/model/zhipu/chat
-AI_ZHIPU_API_KEY=your-key go run .
+- `chat_model=zhipu:glm-5.1`: the model adapter was created.
+- `estimated_tokens=...`: request token estimate.
+- `zhipu_live=ok`: non-streaming call completed.
+- `zhipu_weather=ok`: tool call and tool-result follow-up completed.
+- `zhipu_stream_delta=...`: streaming text delta.
+
+## Code Walkthrough
+
+### Model Construction
+
+`newZhipuModel()` keeps credential, model name, and generation parameters together:
+
+```go
+chat, err := zhipu.NewChatModel(
+    zhipu.NewCredential(os.Getenv("AI_ZHIPU_API_KEY")),
+    "glm-5.1",
+    zhipu.WithStream(stream),
+    zhipu.WithChatParameters(zhipu.ChatParameters{
+        MaxTokens:   &maxTokens,
+        Temperature: &temperature,
+    }),
+)
 ```
 
-Choose a model:
+The same helper creates both non-streaming and streaming models so the configuration stays aligned.
 
-```bash
-AI_ZHIPU_MODEL=glm-5.1 AI_ZHIPU_API_KEY=your-key go run .
+### Token Estimation
+
+The example calls `CountTokens` before the live request:
+
+```go
+tokens, err := chat.CountTokens(liveRequest)
 ```
 
-Override the base URL for a proxy endpoint:
+Applications can use this value for context trimming, logs, and budget estimation.
 
-```bash
-AI_ZHIPU_BASE_URL=https://your-proxy.example.com/api/paas/v4 AI_ZHIPU_API_KEY=your-key go run .
+### Non-Streaming Call
+
+`Call` sends a user message and waits for the full response:
+
+```go
+response, err := chat.Call(ctx, liveRequest)
+fmt.Printf("zhipu_live=ok response=%q\n", shorten(textContent(response), 120))
 ```
 
-## Expected Output
+Use this path when the caller does not need incremental rendering.
 
-Offline output includes:
+### Tool-Call Loop
 
-```text
-zhipu_live=skipped
+The toolkit exposes a local tool schema:
+
+```go
+kit, err := tool.NewToolkit(weatherTool())
+schemas, err := kit.ToolSchemas()
 ```
 
-Live success output includes:
+The model receives the schemas in `CallRequest.Tools`:
 
-```text
-zhipu_live=ok
-zhipu_weather=ok
-zhipu_stream=ok
+```go
+toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{weatherMessage},
+    Tools:    schemas,
+})
 ```
+
+After local execution, the tool result is sent back:
+
+```go
+toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
+toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
+    message.NewToolResultBlock(weatherCall.ID, weatherCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
+}))
+```
+
+The model chooses a tool and arguments; the Go process performs execution and state handling.
+
+### Streaming Call
+
+`streamChat()` consumes a response channel:
+
+```go
+for response := range responses {
+    if response.Error != nil {
+        panic(response.Error)
+    }
+    if response.IsLast {
+        finalText = textContent(&response)
+        continue
+    }
+}
+```
+
+Check `response.Error` inside the loop because stream errors may arrive after stream creation.
+
+## Troubleshooting
+
+### Authentication Error
+
+Check that `AI_ZHIPU_API_KEY` is set and that the key can access `glm-5.1`.
+
+### No Tool Call Returned
+
+If the model returns plain text instead of a tool call, the example panics and prints the model text. Tighten the prompt when deterministic tool usage is required.
+
+### Empty Streaming Output
+
+First confirm that `chat()` succeeds. If non-streaming works but streaming is empty, inspect streaming permissions, proxy settings, and `response.Error`.
