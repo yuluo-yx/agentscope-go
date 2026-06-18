@@ -27,6 +27,7 @@ type Context struct {
 	AllowRules         map[string][]Rule                     `json:"allow_rules,omitempty"`
 	DenyRules          map[string][]Rule                     `json:"deny_rules,omitempty"`
 	AskRules           map[string][]Rule                     `json:"ask_rules,omitempty"`
+	AutoDenialState    AutoDenialState                       `json:"auto_denial_state,omitempty"`
 }
 
 type PermissionContext = Context
@@ -42,6 +43,7 @@ func NewContext(mode PermissionMode) *Context {
 		AllowRules:         map[string][]Rule{},
 		DenyRules:          map[string][]Rule{},
 		AskRules:           map[string][]Rule{},
+		AutoDenialState:    AutoDenialState{},
 	}
 }
 
@@ -60,6 +62,7 @@ func (c *Context) Clone() *Context {
 		AllowRules:         cloneRuleMap(c.AllowRules),
 		DenyRules:          cloneRuleMap(c.DenyRules),
 		AskRules:           cloneRuleMap(c.AskRules),
+		AutoDenialState:    c.AutoDenialState,
 	}
 	for key, value := range c.WorkingDirectories {
 		cp.WorkingDirectories[key] = value

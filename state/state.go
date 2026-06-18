@@ -213,6 +213,8 @@ type AgentState struct {
 	ToolContext *ToolContext `json:"tool_context"`
 	// Task list tracked by the agent.
 	TaskContext *TaskContext `json:"tasks_context"`
+	// Latest context window pressure, updated by context strategies.
+	ContextStatus *ContextStatus `json:"context_status,omitempty"`
 }
 
 // NewAgentState creates a fully initialized Agent state.
@@ -245,6 +247,7 @@ func (s *AgentState) Clone() *AgentState {
 	cp.PermissionContext = clonePermissionContext(s.PermissionContext)
 	cp.ToolContext = s.ToolContext.Clone()
 	cp.TaskContext = s.TaskContext.Clone()
+	cp.ContextStatus = s.ContextStatus.Clone()
 	return &cp
 }
 
@@ -284,6 +287,7 @@ func clonePermissionContext(ctx *permission.Context) *permission.Context {
 		AllowRules:         cloneRuleMap(ctx.AllowRules),
 		DenyRules:          cloneRuleMap(ctx.DenyRules),
 		AskRules:           cloneRuleMap(ctx.AskRules),
+		AutoDenialState:    ctx.AutoDenialState,
 	}
 	for key, value := range ctx.WorkingDirectories {
 		cp.WorkingDirectories[key] = value

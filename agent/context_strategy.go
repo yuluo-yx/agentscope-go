@@ -26,6 +26,12 @@ import (
 	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
 )
 
+const (
+	DefaultContextWarningThreshold  = 20000
+	DefaultContextCompactThreshold  = 13000
+	DefaultContextBlockingThreshold = 3000
+)
+
 // ContextStrategy applies one context compression or offload step.
 type ContextStrategy interface {
 	// ContextStrategyName returns a stable strategy name for diagnostics.
@@ -105,6 +111,7 @@ func (i *ContextStrategyInput) CurrentModelRequest(ctx context.Context) (CallReq
 func DefaultContextStrategies() []ContextStrategy {
 	return []ContextStrategy{
 		NewToolResultContextStrategy(),
+		NewThresholdContextStrategy(),
 		NewSummaryContextStrategy(),
 	}
 }
@@ -159,19 +166,192 @@ func (SummaryContextStrategy) ApplyContextStrategy(ctx context.Context, input *C
 	if !needed {
 		return nil
 	}
-	tools, err := input.ToolSchemas()
+	_, err = compactContextWithSummary(ctx, input)
+	return err
+}
+
+// ThresholdContextStrategy tracks context pressure and progressively warns, compacts, or blocks.
+type ThresholdContextStrategy struct {
+	WarningThreshold  int
+	CompactThreshold  int
+	BlockingThreshold int
+}
+
+// NewThresholdContextStrategy creates the default threshold-based context strategy.
+func NewThresholdContextStrategy() ContextStrategy {
+	return ThresholdContextStrategy{}
+}
+
+// ContextStrategyName returns the strategy name.
+func (ThresholdContextStrategy) ContextStrategyName() string {
+	return "threshold"
+}
+
+// ApplyContextStrategy applies warning, auto-compact, and blocking thresholds.
+func (s ThresholdContextStrategy) ApplyContextStrategy(ctx context.Context, input *ContextStrategyInput) error {
+	if !thresholdPreconditionsMet(input) {
+		return nil
+	}
+	strategy, usingDefaults := s.normalized()
+	if usingDefaults && input.Config.MaxTokens <= strategy.WarningThreshold {
+		return nil
+	}
+	if err := strategy.validate(); err != nil {
+		return err
+	}
+
+	usedTokens, remainingTokens, err := currentContextTokens(ctx, input)
 	if err != nil {
 		return err
+	}
+	strategy.updateStatus(input, statusLevelForRemaining(remainingTokens, strategy), usedTokens, remainingTokens, "")
+	if remainingTokens > strategy.CompactThreshold {
+		return nil
+	}
+
+	compacted, err := compactContextWithSummary(ctx, input)
+	if err != nil {
+		return err
+	}
+	if compacted {
+		usedTokens, remainingTokens, err = currentContextTokens(ctx, input)
+		if err != nil {
+			return err
+		}
+	}
+	if remainingTokens <= strategy.BlockingThreshold {
+		message := fmt.Sprintf("context window has %d tokens remaining, below blocking threshold %d", remainingTokens, strategy.BlockingThreshold)
+		strategy.updateStatus(input, ContextStatusBlocking, usedTokens, remainingTokens, message)
+		return &ContextWindowError{
+			Strategy:          strategy.ContextStrategyName(),
+			MaxTokens:         input.Config.MaxTokens,
+			UsedTokens:        usedTokens,
+			RemainingTokens:   remainingTokens,
+			BlockingThreshold: strategy.BlockingThreshold,
+		}
+	}
+	if compacted {
+		level := statusLevelForRemaining(remainingTokens, strategy)
+		if level == ContextStatusWarning {
+			level = ContextStatusCompact
+		}
+		strategy.updateStatus(input, level, usedTokens, remainingTokens, "")
+	}
+	return nil
+}
+
+func (s ThresholdContextStrategy) normalized() (ThresholdContextStrategy, bool) {
+	usingDefaults := s.WarningThreshold == 0 && s.CompactThreshold == 0 && s.BlockingThreshold == 0
+	if s.WarningThreshold <= 0 {
+		s.WarningThreshold = DefaultContextWarningThreshold
+	}
+	if s.CompactThreshold <= 0 {
+		s.CompactThreshold = DefaultContextCompactThreshold
+	}
+	if s.BlockingThreshold <= 0 {
+		s.BlockingThreshold = DefaultContextBlockingThreshold
+	}
+	return s, usingDefaults
+}
+
+func (s ThresholdContextStrategy) validate() error {
+	if s.WarningThreshold <= 0 || s.CompactThreshold <= 0 || s.BlockingThreshold <= 0 {
+		return fmt.Errorf("agentscope: context thresholds must be positive")
+	}
+	if s.WarningThreshold <= s.CompactThreshold {
+		return fmt.Errorf("agentscope: warning threshold must be greater than compact threshold")
+	}
+	if s.CompactThreshold <= s.BlockingThreshold {
+		return fmt.Errorf("agentscope: compact threshold must be greater than blocking threshold")
+	}
+	return nil
+}
+
+func thresholdPreconditionsMet(input *ContextStrategyInput) bool {
+	return input != nil && input.State != nil && input.Model != nil && input.Config.MaxTokens > 0
+}
+
+func currentContextTokens(ctx context.Context, input *ContextStrategyInput) (int, int, error) {
+	currentRequest, err := input.CurrentModelRequest(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	usedTokens, err := input.Model.CountTokens(currentRequest)
+	if err != nil {
+		return 0, 0, err
+	}
+	return usedTokens, input.Config.MaxTokens - usedTokens, nil
+}
+
+func statusLevelForRemaining(remainingTokens int, strategy ThresholdContextStrategy) ContextStatusLevel {
+	switch {
+	case remainingTokens <= strategy.BlockingThreshold:
+		return ContextStatusCompact
+	case remainingTokens <= strategy.CompactThreshold:
+		return ContextStatusCompact
+	case remainingTokens <= strategy.WarningThreshold:
+		return ContextStatusWarning
+	default:
+		return ContextStatusNormal
+	}
+}
+
+func (s ThresholdContextStrategy) updateStatus(input *ContextStrategyInput, level ContextStatusLevel, usedTokens, remainingTokens int, message string) {
+	if input == nil || input.State == nil {
+		return
+	}
+	input.State.ContextStatus = &ContextStatus{
+		Level:             level,
+		Strategy:          s.ContextStrategyName(),
+		MaxTokens:         input.Config.MaxTokens,
+		UsedTokens:        usedTokens,
+		RemainingTokens:   remainingTokens,
+		WarningThreshold:  s.WarningThreshold,
+		CompactThreshold:  s.CompactThreshold,
+		BlockingThreshold: s.BlockingThreshold,
+		Message:           message,
+	}
+}
+
+// ContextWindowError reports that the context is too full to send safely.
+type ContextWindowError struct {
+	Strategy          string
+	MaxTokens         int
+	UsedTokens        int
+	RemainingTokens   int
+	BlockingThreshold int
+}
+
+func (e *ContextWindowError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("agentscope: context window blocked by %s strategy: used=%d max=%d remaining=%d blocking_threshold=%d",
+		e.Strategy,
+		e.UsedTokens,
+		e.MaxTokens,
+		e.RemainingTokens,
+		e.BlockingThreshold,
+	)
+}
+
+func compactContextWithSummary(ctx context.Context, input *ContextStrategyInput) (bool, error) {
+	if !summaryPreconditionsMet(input) {
+		return false, nil
+	}
+	tools, err := input.ToolSchemas()
+	if err != nil {
+		return false, err
 	}
 	reserveLimit := int(float64(input.Config.MaxTokens) * input.Config.ReserveRatio)
 	toCompress, toReserve, err := splitContextForSummary(ctx, input.Model, input.State.Context, tools, reserveLimit)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(toCompress) == 0 {
-		return nil
+		return false, nil
 	}
-	return executeSummary(ctx, input, toCompress, toReserve)
+	return true, executeSummary(ctx, input, toCompress, toReserve)
 }
 
 // summaryPreconditionsMet checks whether the input and config allow summary compression.

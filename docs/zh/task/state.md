@@ -11,6 +11,7 @@
 | `PermissionContext` | 权限模式、工作目录和规则 |
 | `ToolContext` | 文件读取缓存和已启用工具组 |
 | `TaskContext` | 任务工具使用的任务列表 |
+| `ContextStatus` | 最近一次上下文窗口压力等级和阈值计数 |
 
 ## 创建状态
 
@@ -36,4 +37,4 @@ _ = agentState.TaskContext.UpdateTaskState(task.ID, state.TaskInProgress)
 copy := agentState.Clone()
 ```
 
-克隆会深拷贝消息、权限规则、工具缓存条目和任务。
+克隆会深拷贝消息、权限规则、工具缓存条目、任务和上下文状态。
