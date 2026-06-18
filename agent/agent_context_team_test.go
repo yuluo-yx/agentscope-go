@@ -52,6 +52,7 @@ func TestAgentOptionsInputAndObservationBranches(t *testing.T) {
 		{name: "context config", opt: WithContextConfig(ContextConfig{}), want: "invalid context config"},
 		{name: "react config", opt: WithReActConfig(ReActConfig{}), want: "invalid ReAct config"},
 		{name: "strategy", opt: WithContextStrategies(nil), want: "context strategy is nil"},
+		{name: "auto classifier", opt: WithAutoPermissionClassifier(nil), want: "auto permission classifier is nil"},
 		{name: "middleware", opt: WithMiddlewares(nil), want: "middleware is nil"},
 	}
 	for _, tt := range invalidOptions {
@@ -337,7 +338,9 @@ func TestContextStrategyInputAndSummaryBranches(t *testing.T) {
 		t.Fatalf("nil CurrentModelRequest = %#v, %v", request, err)
 	}
 
-	if NewToolResultContextStrategy().ContextStrategyName() != "tool-result" || NewSummaryContextStrategy().ContextStrategyName() != "summary" {
+	if NewToolResultContextStrategy().ContextStrategyName() != "tool-result" ||
+		NewThresholdContextStrategy().ContextStrategyName() != "threshold" ||
+		NewSummaryContextStrategy().ContextStrategyName() != "summary" {
 		t.Fatalf("strategy names mismatch")
 	}
 	if err := (ToolResultContextStrategy{}).ApplyContextStrategy(context.Background(), nil); err != nil {
@@ -388,6 +391,131 @@ func TestContextStrategyInputAndSummaryBranches(t *testing.T) {
 	if len(cloned) != 2 || cloned[1].GetTextContent("") == nil {
 		t.Fatalf("cloneMessages should preserve nil and clone messages: %#v", cloned)
 	}
+}
+
+func TestBuildAutoPermissionTranscriptFiltersUnsafeContext(t *testing.T) {
+	t.Parallel()
+
+	user, err := message.NewUserMessage("Tony", "please write the report")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	assistant, err := message.NewAssistantMessage("Friday", []message.ContentBlock{
+		message.NewTextBlock("assistant text should not be classified"),
+		message.NewToolCallBlock("call-read", "Read", `{"file_path":"README.md"}`),
+		message.NewToolCallBlock("call-current", "WriteThing", `{"value":"draft"}`),
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage returned error: %v", err)
+	}
+
+	transcript := buildAutoPermissionTranscript([]*message.Message{user, assistant}, "call-current")
+
+	if !strings.Contains(transcript, "please write the report") {
+		t.Fatalf("transcript should include user text, got %q", transcript)
+	}
+	if !strings.Contains(transcript, "Read") || !strings.Contains(transcript, "README.md") {
+		t.Fatalf("transcript should include previous tool call, got %q", transcript)
+	}
+	if strings.Contains(transcript, "assistant text should not be classified") {
+		t.Fatalf("transcript should exclude assistant text, got %q", transcript)
+	}
+	if strings.Contains(transcript, "WriteThing") || strings.Contains(transcript, "draft") {
+		t.Fatalf("transcript should exclude current tool call, got %q", transcript)
+	}
+}
+
+func TestThresholdContextStrategyWarningCompactAndBlocking(t *testing.T) {
+	t.Parallel()
+
+	config := DefaultContextConfig()
+	config.MaxTokens = 100
+	config.TriggerRatio = 0.8
+	config.ReserveRatio = 0.1
+	config.SummaryTemplate = "{task_overview}"
+	strategy := ThresholdContextStrategy{
+		WarningThreshold:  20,
+		CompactThreshold:  10,
+		BlockingThreshold: 3,
+	}
+
+	warningState := NewAgentState()
+	warningState.Context = testUserMessages(t, "one", "two")
+	warningInput := &ContextStrategyInput{
+		State:  warningState,
+		Model:  &coverageChatModel{countTokens: 85},
+		Config: config,
+	}
+	if err := strategy.ApplyContextStrategy(context.Background(), warningInput); err != nil {
+		t.Fatalf("warning ApplyContextStrategy returned error: %v", err)
+	}
+	if warningState.ContextStatus == nil || warningState.ContextStatus.Level != ContextStatusWarning {
+		t.Fatalf("warning status mismatch: %#v", warningState.ContextStatus)
+	}
+	if warningState.Summary.Text != "" {
+		t.Fatalf("warning should not summarize context, got %q", warningState.Summary.Text)
+	}
+
+	compactState := NewAgentState()
+	compactState.Context = testUserMessages(t, "old", "middle", "latest")
+	compactModel := &coverageChatModel{
+		countTokens: 95,
+		responses: []*ChatResponse{asmodel.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock(`{"task_overview":"threshold summary"}`)},
+			true,
+		)},
+	}
+	compactInput := &ContextStrategyInput{
+		State:  compactState,
+		Model:  compactModel,
+		Config: config,
+	}
+	if err := strategy.ApplyContextStrategy(context.Background(), compactInput); err != nil {
+		t.Fatalf("compact ApplyContextStrategy returned error: %v", err)
+	}
+	if compactState.Summary.Text != "threshold summary" {
+		t.Fatalf("compact should write summary, got %q", compactState.Summary.Text)
+	}
+	if compactState.ContextStatus == nil || compactState.ContextStatus.Level != ContextStatusCompact {
+		t.Fatalf("compact status mismatch: %#v", compactState.ContextStatus)
+	}
+
+	blockingState := NewAgentState()
+	blockingState.Context = testUserMessages(t, "old", "latest")
+	blockingModel := &coverageChatModel{
+		countTokens: 99,
+		responses: []*ChatResponse{asmodel.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock(`{"task_overview":"still too large"}`)},
+			true,
+		)},
+	}
+	blockingInput := &ContextStrategyInput{
+		State:  blockingState,
+		Model:  blockingModel,
+		Config: config,
+	}
+	err := strategy.ApplyContextStrategy(context.Background(), blockingInput)
+	var windowErr *ContextWindowError
+	if !errors.As(err, &windowErr) {
+		t.Fatalf("blocking should return ContextWindowError, got %v", err)
+	}
+	if blockingState.ContextStatus == nil || blockingState.ContextStatus.Level != ContextStatusBlocking {
+		t.Fatalf("blocking status mismatch: %#v", blockingState.ContextStatus)
+	}
+}
+
+func testUserMessages(t *testing.T, texts ...string) []*message.Message {
+	t.Helper()
+
+	messages := make([]*message.Message, 0, len(texts))
+	for _, text := range texts {
+		msg, err := message.NewUserMessage("Tony", text)
+		if err != nil {
+			t.Fatalf("NewUserMessage returned error: %v", err)
+		}
+		messages = append(messages, msg)
+	}
+	return messages
 }
 
 func TestReasoningEventEmissionBranches(t *testing.T) {

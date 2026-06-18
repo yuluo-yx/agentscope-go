@@ -120,7 +120,15 @@ func (a *Agent) prepareToolCall(ctx context.Context, assistant *message.Message,
 	decision := &permission.Decision{Behavior: permission.BehaviorAllow, Message: "Already allowed by user confirmation."}
 	// Optimize: if user allow tool exec, skip premission check and execute tools.
 	if toolCall.State != message.ToolCallAllowed {
-		decision, err = permission.NewEngine(a.state.PermissionContext).CheckPermission(ctx, tool, input)
+		engineOptions := []permission.EngineOption{}
+		if a.autoPermissionClassifier != nil {
+			engineOptions = append(
+				engineOptions,
+				permission.WithAutoPermissionClassifier(a.autoPermissionClassifier),
+				permission.WithAutoPermissionTranscript(buildAutoPermissionTranscript(a.state.Context, toolCall.ID)),
+			)
+		}
+		decision, err = permission.NewEngine(a.state.PermissionContext, engineOptions...).CheckPermission(ctx, tool, input)
 		if err != nil {
 			return nil, false, err
 		}

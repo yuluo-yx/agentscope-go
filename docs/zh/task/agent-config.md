@@ -60,7 +60,35 @@ agent.WithContextConfig(agent.ContextConfig{
 })
 ```
 
-`MaxTokens` 用于启用摘要压缩。为 `0` 时，默认策略链只保留既有的轻量清理行为：在配置 offloader 时卸载 base64 `DataBlock`，再截断或卸载超长工具结果。为正数且当前请求超过 `TriggerRatio * MaxTokens` 时，摘要策略会保留最新上下文，让模型生成结构化摘要，并通过已配置的 offloader 或 workspace 卸载被压缩的旧消息。
+`MaxTokens` 用于启用上下文压力跟踪和摘要压缩。为 `0` 时，默认策略链只保留既有的轻量清理行为：在配置 offloader 时卸载 base64 `DataBlock`，再截断或卸载超长工具结果。
+
+为正数时，默认策略链会包含 `ThresholdContextStrategy`。该策略会写入
+`AgentState.ContextStatus`，并按剩余 token 数执行三档渐进响应：
+
+| 阈值 | 默认值 | 行为 |
+| --- | ---: | --- |
+| Warning | `20000` | 记录 `warning` 状态 |
+| Compact | `13000` | 自动摘要压缩旧上下文 |
+| Blocking | `3000` | 压缩后仍不足时返回 `ContextWindowError` |
+
+内置绝对阈值仅在 `MaxTokens` 大于 Warning 阈值时自动生效。较小模型窗口或测试场景需要三档行为时，应显式配置更小的
+`ThresholdContextStrategy` 阈值。
+
+既有摘要策略仍作为基于比例的兜底：当前请求超过 `TriggerRatio * MaxTokens` 时，摘要策略会保留最新上下文，让模型生成结构化摘要，并通过已配置的 offloader 或 workspace 卸载被压缩的旧消息。
+
+替换策略链时可以自定义三档阈值：
+
+```go
+agent.WithContextStrategies(
+	agent.NewToolResultContextStrategy(),
+	agent.ThresholdContextStrategy{
+		WarningThreshold:  20000,
+		CompactThreshold:  13000,
+		BlockingThreshold: 3000,
+	},
+	agent.NewSummaryContextStrategy(),
+)
+```
 
 应用需要自定义存储或压缩策略时，可以替换上下文策略链：
 

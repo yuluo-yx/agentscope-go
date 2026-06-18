@@ -81,6 +81,19 @@ func (m *scriptedChatModel) CountTokens(request modelpkg.CallRequest) (int, erro
 	return modelpkg.ApproximateTokenCount(request.Messages, request.Tools), nil
 }
 
+type recordingAutoPermissionClassifier struct {
+	decision *permission.Decision
+	calls    []permission.ClassifierRequest
+}
+
+func (c *recordingAutoPermissionClassifier) Classify(_ context.Context, request permission.ClassifierRequest) (*permission.Decision, error) {
+	c.calls = append(c.calls, request)
+	if c.decision != nil {
+		return c.decision, nil
+	}
+	return &permission.Decision{Behavior: permission.BehaviorDeny, Message: "denied in test"}, nil
+}
+
 type streamOnlyChatModel struct {
 	chunks      []*modelpkg.ChatResponse
 	callCount   int
@@ -653,6 +666,124 @@ func TestAgentStopsForToolPermissionConfirmation(t *testing.T) {
 	}
 	if !hasEventType(eventTypes, message.ReplyEndType) {
 		t.Fatalf("waiting reply should still emit ReplyEnd event, got %#v", eventTypes)
+	}
+}
+
+func TestAgentAutoPermissionClassifierExecutesToolCall(t *testing.T) {
+	t.Parallel()
+
+	executed := false
+	write, err := tool.NewFunctionTool(
+		"WriteThing",
+		"Write a value.",
+		map[string]any{"type": "object"},
+		func(context.Context, map[string]any, *statepkg.AgentState) (message.ContentBlockList, error) {
+			executed = true
+			return message.ContentBlockList{message.NewTextBlock("written")}, nil
+		},
+		tool.WithFunctionSuggestedRule("WriteThing"),
+	)
+	if err != nil {
+		t.Fatalf("NewFunctionTool returned error: %v", err)
+	}
+	kit, err := tool.NewToolkit(write)
+	if err != nil {
+		t.Fatalf("NewToolkit returned error: %v", err)
+	}
+	state := agentpkg.NewAgentState()
+	state.PermissionContext = permission.NewContext(permission.ModeAuto)
+	classifier := &recordingAutoPermissionClassifier{
+		decision: &permission.Decision{Behavior: permission.BehaviorAllow, Message: "safe automated write"},
+	}
+	model := &scriptedChatModel{responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewToolCallBlock("call-auto", "WriteThing", `{}`)},
+			true,
+		),
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock("done")},
+			true,
+		),
+	}}
+	agent, err := agentpkg.NewAgent(
+		"Friday",
+		"Use auto permissions.",
+		model,
+		agentpkg.WithAgentState(state),
+		agentpkg.WithToolkit(kit),
+		agentpkg.WithAutoPermissionClassifier(classifier),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "Write the value")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+
+	reply, err := agent.Reply(context.Background(), userMsg)
+	if err != nil {
+		t.Fatalf("Reply returned error: %v", err)
+	}
+
+	if !executed {
+		t.Fatal("auto permission allow should execute the tool call")
+	}
+	if text := reply.GetTextContent(""); text == nil || *text != "done" {
+		t.Fatalf("final reply text mismatch: %#v", reply)
+	}
+	if len(classifier.calls) != 1 {
+		t.Fatalf("classifier should be called once, got %d", len(classifier.calls))
+	}
+	call := classifier.calls[0]
+	if call.ToolName != "WriteThing" || !strings.Contains(call.Action, "WriteThing") {
+		t.Fatalf("classifier request missing action metadata: %#v", call)
+	}
+	if !strings.Contains(call.Transcript, "Write the value") {
+		t.Fatalf("classifier transcript should include user request, got %q", call.Transcript)
+	}
+}
+
+func TestModelAutoPermissionClassifierParsesJSONAndFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptedChatModel{responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock(`{"behavior":"allow","reason":"bounded request"}`)},
+			true,
+		),
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock(`not json`)},
+			true,
+		),
+	}}
+	classifier, err := agentpkg.NewModelAutoPermissionClassifier(model)
+	if err != nil {
+		t.Fatalf("NewModelAutoPermissionClassifier returned error: %v", err)
+	}
+	request := permission.ClassifierRequest{
+		ToolName:   "WriteThing",
+		Action:     `{"tool_name":"WriteThing","input":{}}`,
+		Transcript: `{"user":"Write the file"}`,
+	}
+
+	decision, err := classifier.Classify(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Classify allow returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorAllow || decision.DecisionReason != "bounded request" {
+		t.Fatalf("allow decision mismatch: %#v", decision)
+	}
+	if len(model.requests) != 1 || model.requests[0].Metadata["agentscope.permission_classifier"] != "auto" {
+		t.Fatalf("classifier request metadata mismatch: %#v", model.requests)
+	}
+
+	decision, err = classifier.Classify(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Classify invalid JSON returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorDeny || !strings.Contains(decision.Message, "invalid JSON") {
+		t.Fatalf("invalid JSON should fail closed, got %#v", decision)
 	}
 }
 

@@ -35,12 +35,16 @@ func TestAgentStateDefaultsAndClone(t *testing.T) {
 	state := statepkg.NewAgentState()
 	state.Context = append(state.Context, msg)
 	state.PermissionContext.AllowRules["Bash"] = []permission.Rule{{ToolName: "Bash", RuleContent: "go test:*", Behavior: permission.BehaviorAllow}}
+	state.PermissionContext.AutoDenialState = permission.AutoDenialState{ConsecutiveDenials: 1, TotalDenials: 2}
 	state.TaskContext.AddTask(statepkg.NewTask("Translate", "port python docs", map[string]any{"phase": 2}))
+	state.ContextStatus = &statepkg.ContextStatus{Level: statepkg.ContextStatusWarning, RemainingTokens: 100}
 
 	cloned := state.Clone()
 	cloned.Context[0].Content[0].(*message.TextBlock).Text = "changed"
 	cloned.PermissionContext.AllowRules["Bash"][0].RuleContent = "changed"
+	cloned.PermissionContext.AutoDenialState.ConsecutiveDenials = 9
 	cloned.TaskContext.Tasks[0].Subject = "changed"
+	cloned.ContextStatus.Level = statepkg.ContextStatusBlocking
 
 	if state.SessionID == "" || state.ReplyID == "" {
 		t.Fatalf("state should create ids: %#v", state)
@@ -59,6 +63,12 @@ func TestAgentStateDefaultsAndClone(t *testing.T) {
 	}
 	if got := state.TaskContext.Tasks[0].Subject; got != "Translate" {
 		t.Fatalf("task clone mutated original: %q", got)
+	}
+	if got := state.PermissionContext.AutoDenialState.ConsecutiveDenials; got != 1 {
+		t.Fatalf("auto denial state clone mutated original: %d", got)
+	}
+	if state.ContextStatus.Level != statepkg.ContextStatusWarning {
+		t.Fatalf("context status clone mutated original: %#v", state.ContextStatus)
 	}
 }
 

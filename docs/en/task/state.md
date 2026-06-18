@@ -11,6 +11,7 @@
 | `PermissionContext` | Permission mode, working directories, and rules |
 | `ToolContext` | File read cache and activated tool groups |
 | `TaskContext` | Task list used by task tools |
+| `ContextStatus` | Latest context-window pressure level and threshold counters |
 
 ## Create State
 
@@ -36,4 +37,4 @@ Use `Clone` when a caller needs an isolated copy:
 copy := agentState.Clone()
 ```
 
-The clone performs deep copies for messages, permission rules, tool cache entries, and tasks.
+The clone performs deep copies for messages, permission rules, tool cache entries, tasks, and context status.

@@ -20,6 +20,7 @@ type PermissionMode string
 const (
 	ModeDefault     PermissionMode = "default"
 	ModeAcceptEdits PermissionMode = "accept_edits"
+	ModeAuto        PermissionMode = "auto"
 	ModeExplore     PermissionMode = "explore"
 	ModeBypass      PermissionMode = "bypass"
 	ModeDontAsk     PermissionMode = "dont_ask"

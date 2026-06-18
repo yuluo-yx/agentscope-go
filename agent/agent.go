@@ -69,6 +69,8 @@ type Agent struct {
 	reactConfig ReActConfig
 	// List of context strategies (e.g., summarization, truncation), sorted by priority.
 	contextStrategies []ContextStrategy
+	// Auto permission classifier used when PermissionContext.Mode is permission.ModeAuto.
+	autoPermissionClassifier permission.AutoPermissionClassifier
 
 	// Agent Hooks config, allow change agent behavior without changing core logic.
 	replyHooks           []ReplyHook
@@ -232,6 +234,19 @@ func WithContextStrategies(strategies ...ContextStrategy) AgentOption {
 		}
 
 		agent.contextStrategies = append([]ContextStrategy(nil), strategies...)
+		return nil
+	}
+}
+
+// WithAutoPermissionClassifier sets the classifier used by auto permission mode.
+func WithAutoPermissionClassifier(classifier permission.AutoPermissionClassifier) AgentOption {
+
+	return func(agent *Agent) error {
+		if classifier == nil {
+			return agenterrors.NewDeveloperError("agent auto permission classifier is nil")
+		}
+
+		agent.autoPermissionClassifier = classifier
 		return nil
 	}
 }
