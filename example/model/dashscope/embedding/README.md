@@ -1,70 +1,93 @@
-# DashScope ChatModel Example
+# DashScope Embedding Example
 
-Project home: [README.md](../../../../README.md).
+This example demonstrates text embeddings through `embedding/dashscope`. It covers DashScope embedding credentials, model construction, batched text inputs, dimension configuration, and response dimension checks.
 
-Chinese documentation: [README-zh.md](README-zh.md).
+## Feature Map
 
-This example covers the current DashScope capability boundary in the Go implementation:
-
-- Construct an OpenAI-compatible Chat Completions model through `model/dashscope`.
-- Use `qwen3.7-max` by default, or override it with `AI_DASHSCOPE_MODEL`.
-- Configure both non-streaming and streaming model instances.
-- Generate a Function Calling tool schema.
-- Run a live Function Calling round for `GetWeather` and send the tool result back to the model.
-- Run a live `ChatModel.Stream` call and print streamed deltas.
-- Build a text + image URL data-block input and run local token estimation.
-- Optionally make a real text call with `AI_DASHSCOPE_API_KEY`.
-
-According to the official Alibaba Cloud documentation, Model Studio text generation offers OpenAI-compatible Chat Completions. This Go provider example demonstrates the implemented OpenAI-compatible ChatModel path.
+| Feature | Code | Description |
+| --- | --- | --- |
+| Model setup | `main()` | Creates `text-embedding-v4` from `AI_DASHSCOPE_API_KEY`. |
+| Dimension option | `dashscope.WithDimensions(1024)` | Requests 1,024-dimensional vectors. |
+| Batched inputs | `EmbeddingRequest.Inputs` | Sends multiple text inputs in one request. |
+| Response check | `len(response.Embeddings[0])` | Reads the first returned vector length. |
+| Output | `fmt.Printf` | Prints model name, embedding count, and dimension count. |
 
 ## Prerequisites
 
-- Go 1.26.3.
-- The default offline run does not require an API key.
-- A live call requires `AI_DASHSCOPE_API_KEY`; without it, the example runs the offline path.
+```bash
+export AI_DASHSCOPE_API_KEY="your-dashscope-key"
+```
+
+This example makes a real DashScope embedding request. Model construction or calls will fail when the key is missing or invalid.
 
 ## Run
 
-Offline run:
-
 ```bash
-cd example/model/dashscope
+cd example/model/dashscope/embedding
+export AI_DASHSCOPE_API_KEY="your-dashscope-key"
 go run .
 ```
 
-Live call:
-
-```bash
-cd example/model/dashscope
-AI_DASHSCOPE_API_KEY=your-key go run .
-```
-
-Choose a model:
-
-```bash
-AI_DASHSCOPE_MODEL=qwen3.6-plus AI_DASHSCOPE_API_KEY=your-key go run .
-```
-
-## Expected Output
-
-Offline output includes:
+Example output:
 
 ```text
-chat_model=dashscope:
-dashscope_live=skipped
+dashscope_embedding=ok model=dashscope:text-embedding-v4 embeddings=2 dimensions=1024
 ```
 
-Live success output includes:
+## Code Walkthrough
 
-```text
-chat_model=dashscope:
-dashscope_live=ok
-dashscope_weather=ok
-dashscope_stream=ok
+### Create the Text Model
+
+The example creates `text-embedding-v4` and requests a fixed dimension:
+
+```go
+model, err := dashscope.NewTextModel(
+    credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).EmbeddingCredential(),
+    "text-embedding-v4",
+    dashscope.WithDimensions(1024),
+)
 ```
 
-## Official References
+`EmbeddingCredential()` adapts the shared DashScope credential to the embedding provider. `WithDimensions(1024)` requests 1,024-dimensional vectors.
 
-- API reference: https://help.aliyun.com/zh/model-studio/model-api-reference/
-- Text generation: https://help.aliyun.com/zh/model-studio/qwen-api-reference/
-- Model list: https://help.aliyun.com/zh/model-studio/models
+### Build Batched Inputs
+
+The request uses `EmbeddingRequest`:
+
+```go
+response, err := model.Embed(context.Background(), asembedding.EmbeddingRequest{
+    Inputs: []asembedding.EmbeddingInput{
+        asembedding.NewTextInput("AgentScope Go makes agent applications easier to compose."),
+        asembedding.NewTextInput("Credential adapters keep provider examples consistent."),
+    },
+})
+```
+
+Each `NewTextInput` produces one text input. Returned embeddings follow the same order as the inputs.
+
+### Check Returned Dimensions
+
+The example checks the first vector length:
+
+```go
+firstDimensions := 0
+if len(response.Embeddings) > 0 {
+    firstDimensions = len(response.Embeddings[0])
+}
+```
+
+This confirms whether the service returned the requested vector shape.
+
+## Troubleshooting
+
+### Authentication Error
+
+Check `AI_DASHSCOPE_API_KEY` and confirm that the account can access embedding models.
+
+### Unexpected Dimension Count
+
+Confirm that the model supports custom dimensions, then check that `dashscope.WithDimensions(1024)` is still passed during model construction.
+
+### Empty Input Text
+
+Validate text before calling the provider. Empty text can produce provider parameter errors or low-value vectors.

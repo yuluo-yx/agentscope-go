@@ -450,6 +450,55 @@ func TestChatModelMapsProviderErrors(t *testing.T) {
 	}
 }
 
+func TestChatModelUsesCustomHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	requestCh := make(chan http.Header, 1)
+	server := newChatCompletionServer(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		requestCh <- r.Header.Clone()
+		writeJSON(t, w, map[string]any{
+			"id":      "chatcmpl-custom-client",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   "gpt-4o-mini",
+			"choices": []any{map[string]any{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+		})
+	})
+	defer server.Close()
+
+	client := &http.Client{
+		Transport: headerRoundTripper{
+			base:  http.DefaultTransport,
+			key:   "X-AgentScope-Test-Client",
+			value: "custom",
+		},
+	}
+	model, err := asopenai.NewChatModel(
+		asopenai.NewCredential("test-key", asopenai.WithBaseURL(server.URL)),
+		"gpt-4o-mini",
+		asopenai.WithStream(false),
+		asopenai.WithHTTPClient(client),
+	)
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+
+	userMsg, err := message.NewUserMessage("Tony", "hello")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	if _, err := model.Call(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}}); err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+	if got := (<-requestCh).Get("X-AgentScope-Test-Client"); got != "custom" {
+		t.Fatalf("custom HTTP client was not used, got header %q", got)
+	}
+}
+
 func TestChatModelValidationAndTokenCount(t *testing.T) {
 	t.Parallel()
 
@@ -917,4 +966,15 @@ func int64Ptr(value int64) *int64 {
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+type headerRoundTripper struct {
+	base  http.RoundTripper
+	key   string
+	value string
+}
+
+func (r headerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set(r.key, r.value)
+	return r.base.RoundTrip(req)
 }

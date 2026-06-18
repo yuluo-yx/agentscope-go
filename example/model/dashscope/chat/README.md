@@ -1,70 +1,147 @@
 # DashScope ChatModel Example
 
-Project home: [README.md](../../../../README.md).
+This example demonstrates the OpenAI-compatible `model/dashscope` ChatModel. It covers multimodal message construction, token estimation, non-streaming responses, local tool-call execution, tool-result follow-up, and streaming output.
 
-Chinese documentation: [README-zh.md](README-zh.md).
+## Feature Map
 
-This example covers the current DashScope capability boundary in the Go implementation:
-
-- Construct an OpenAI-compatible Chat Completions model through `model/dashscope`.
-- Use `qwen3.7-max` by default, or override it with `AI_DASHSCOPE_MODEL`.
-- Configure both non-streaming and streaming model instances.
-- Generate a Function Calling tool schema.
-- Run a live Function Calling round for `GetWeather` and send the tool result back to the model.
-- Run a live `ChatModel.Stream` call and print streamed deltas.
-- Build a text + image URL data-block input and run local token estimation.
-- Optionally make a real text call with `AI_DASHSCOPE_API_KEY`.
-
-According to the official Alibaba Cloud documentation, Model Studio text generation offers OpenAI-compatible Chat Completions. This Go provider example demonstrates the implemented OpenAI-compatible ChatModel path.
+| Feature | Code | Description |
+| --- | --- | --- |
+| Entry point | `main()` | Runs `chat()` and then `streamChat()`. |
+| Model setup | `chat()`, `streamChat()` | Creates `qwen3.7-max` from `AI_DASHSCOPE_API_KEY`. |
+| Multimodal message | `message.NewDataBlock` | Builds a user message with text and an image URL. |
+| Token estimation | `CountTokens` | Estimates token usage for messages plus tool schemas. |
+| Non-streaming call | `ChatModel.Call` | Waits for a complete model response. |
+| Tool loop | `weatherTool()`, `kit.RunTool` | Registers `GetWeather`, executes it locally, and sends the result back to the model. |
+| Streaming call | `ChatModel.Stream` | Reads response chunks and assembles the final text. |
 
 ## Prerequisites
 
-- Go 1.26.3.
-- The default offline run does not require an API key.
-- A live call requires `AI_DASHSCOPE_API_KEY`; without it, the example runs the offline path.
+```bash
+export AI_DASHSCOPE_API_KEY="your-dashscope-key"
+```
+
+This example makes real DashScope requests. Model construction or calls will fail when the key is missing or invalid.
 
 ## Run
 
-Offline run:
-
 ```bash
-cd example/model/dashscope
+cd example/model/dashscope/chat
+export AI_DASHSCOPE_API_KEY="your-dashscope-key"
 go run .
 ```
 
-Live call:
+Important output lines:
 
-```bash
-cd example/model/dashscope
-AI_DASHSCOPE_API_KEY=your-key go run .
+- `chat_model=dashscope:qwen3.7-max`: the model adapter was created.
+- `tools=1 multimodal_blocks=2 estimated_tokens=...`: tools and multimodal content were included in token estimation.
+- `dashscope_live=ok`: non-streaming call completed.
+- `dashscope_weather=ok`: tool call and tool-result follow-up completed.
+- `dashscope_stream_delta=...`: streaming text delta.
+
+## Code Walkthrough
+
+### Model Construction
+
+The example creates a DashScope ChatModel separately for non-streaming and streaming paths:
+
+```go
+chat := mustModel(dashscope.NewChatModel(
+    credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
+    "qwen3.7-max",
+    dashscope.WithStream(false),
+    dashscope.WithChatParameters(dashscope.ChatParameters{
+        MaxTokens:   func() *int64 { v := int64(1000); return &v }(),
+        Temperature: func() *float64 { v := 0.0; return &v }(),
+    }),
+))
 ```
 
-Choose a model:
+`credential.NewDashScope(...).ChatCredential()` produces credentials for the OpenAI-compatible Chat Completions endpoint. `Temperature` is `0.0` to reduce randomness in example output.
 
-```bash
-AI_DASHSCOPE_MODEL=qwen3.6-plus AI_DASHSCOPE_API_KEY=your-key go run .
+### Multimodal Message
+
+The example builds a user message containing text and an image URL:
+
+```go
+visionMessage := mustMessage(message.NewUserMessage("user", message.ContentBlockList{
+    message.NewTextBlock("Describe this image in one sentence."),
+    message.NewDataBlock(message.NewURLSource("https://example.com/sample.png", "image/png"), message.WithDataBlockName("sample.png")),
+}))
 ```
 
-## Expected Output
+Text, images, audio, and other inputs enter the shared message model as content blocks.
 
-Offline output includes:
+### Token Estimation
 
-```text
-chat_model=dashscope:
-dashscope_live=skipped
+The token estimate includes both the message and tool schemas:
+
+```go
+tokens, err := chat.CountTokens(asmodel.CallRequest{
+    Messages: []*message.Message{visionMessage},
+    Tools:    schemas,
+})
 ```
 
-Live success output includes:
+Tool schemas consume context budget, so they should be included in preflight estimates.
 
-```text
-chat_model=dashscope:
-dashscope_live=ok
-dashscope_weather=ok
-dashscope_stream=ok
+### Non-Streaming Call
+
+The normal chat path uses `Call`:
+
+```go
+response, err := chat.Call(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{liveMessage},
+})
 ```
 
-## Official References
+The example uses `shorten` to keep terminal output readable.
 
-- API reference: https://help.aliyun.com/zh/model-studio/model-api-reference/
-- Text generation: https://help.aliyun.com/zh/model-studio/qwen-api-reference/
-- Model list: https://help.aliyun.com/zh/model-studio/models
+### Tool-Call Loop
+
+The tool-call flow first asks the model to choose a tool:
+
+```go
+toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{weatherMessage},
+    Tools:    schemas,
+})
+weatherCall := firstToolCall(toolCallResponse.Content)
+toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
+```
+
+Then it sends assistant and tool messages back for the final answer:
+
+```go
+weatherResponse, err := chat.Call(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{weatherMessage, assistantMessage, toolMessage},
+})
+```
+
+The model selects the tool and arguments; the Go process executes the tool and maintains state.
+
+### Streaming Call
+
+Streaming uses `Stream`:
+
+```go
+responses, err := streamChat.Stream(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{liveMessage},
+    Stream:   true,
+})
+```
+
+The loop appends normal deltas to a `strings.Builder` and treats the `IsLast` chunk as the final response.
+
+## Troubleshooting
+
+### Authentication Error
+
+Check `AI_DASHSCOPE_API_KEY` and confirm that the account can access `qwen3.7-max`.
+
+### Estimate Differs From Billing
+
+`CountTokens` is a preflight estimate. Billing should be based on provider usage returned by the API.
+
+### No Tool Call Returned
+
+If the model returns plain text instead of a `ToolCallBlock`, the example panics. Tighten the prompt when deterministic tool usage is required.

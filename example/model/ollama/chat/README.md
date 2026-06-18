@@ -1,70 +1,127 @@
-# Ollama
+# Ollama ChatModel Example
 
-```yml
-services:
-   ollama:
-     # tips: need update
-     volumes:
-       - /Users/shown/workspace/ai/models:/root/.ollama
-     container_name: ollama
-     tty: true
-     restart: unless-stopped
-     image: ollama/ollama:latest
-     ports:
-       - 11434:11434
+This example demonstrates local `model/ollama` ChatModel usage. It covers local Ollama connection setup, non-streaming responses, local tool-call execution, tool-result follow-up, and streaming output.
+
+## Feature Map
+
+| Feature | Code | Description |
+| --- | --- | --- |
+| Entry point | `main()` | Runs `chat()` and then `streamChat()`. |
+| Model setup | `newOllamaModel()` | Connects to `http://127.0.0.1:11434` and uses `llama3.1`. |
+| Non-streaming call | `chat()` | Uses `ChatModel.Call` to get a complete response. |
+| Tool schema | `tool.NewToolkit` | Converts the local `GetWeather` tool into model-visible schemas. |
+| Tool loop | `chat()` | Executes the returned tool call locally and sends the result back to the model. |
+| Streaming call | `streamChat()` | Uses `ChatModel.Stream` to print text deltas. |
+
+## Prerequisites
+
+This example does not need a remote API key, but it does need a local Ollama service:
+
+```bash
+ollama serve
+ollama pull llama3.1
 ```
 
-```shell
-# test ollama server
+The code connects to:
 
-#!/bin/zsh
-
-curl http://localhost:11434/api/chat -d '{
-  "model": "llama3.1",
-  "messages": [
-    {
-      "role": "user",
-      "content": "why is the sky blue?"
-    }
-  ],
-  "stream": true
-}'
+```text
+http://127.0.0.1:11434
 ```
 
-## Demo
+## Run
 
-```shell
-
-step 1: go mod tidy
-
-step 2: go run .
-
-output:
-
-$ go run .
-start chat call: ------------------
-chat_model=ollama:llama3.1 ollama_model=ollama:llama3.1 tools=1 multimodal_blocks=2 estimated_tokens=71
-ollama_live=ok response="AgentScope Go is a remote desktop access and monitoring tool for Windows systems."
-ollama_weather=ok tool=GetWeather input={"city":"张区"} response="杭州的天气很好，阳光明媚。"
-
-start stream chat call: ------------------
-chat_model=ollama:llama3.1 ollama_model=ollama:llama3.1 tools=1 multimodal_blocks=2 estimated_tokens=71
-ollama_stream_delta="Agent"
-ollama_stream_delta="Scope"
-ollama_stream_delta=" Go"
-ollama_stream_delta=" is"
-ollama_stream_delta=" a"
-ollama_stream_delta=" remote"
-ollama_stream_delta=" desktop"
-ollama_stream_delta=" access"
-ollama_stream_delta=" and"
-ollama_stream_delta=" monitoring"
-ollama_stream_delta=" tool"
-ollama_stream_delta=" for"
-ollama_stream_delta=" Windows"
-ollama_stream_delta=" systems"
-ollama_stream_delta="."
-ollama_stream=ok response="AgentScope Go is a remote desktop access and monitoring tool for Windows systems."
-
-
+```bash
+cd example/model/ollama/chat
+go run .
 ```
+
+Important output lines:
+
+- `ollama_live=ok`: non-streaming call completed.
+- `ollama_weather=ok`: tool call and tool-result follow-up completed.
+- `ollama_stream_delta=...`: streaming text delta.
+- `ollama_stream=ok`: final streaming response.
+
+## Code Walkthrough
+
+### Model Construction
+
+`newOllamaModel()` creates the model with a local host and model name:
+
+```go
+chat, err := ollama.NewChatModel(
+    credential.NewOllama(
+        credential.WithHost("http://127.0.0.1:11434"),
+    ).ChatCredential(),
+    "llama3.1",
+    ollama.WithStream(stream),
+    ollama.WithChatParameters(ollama.ChatParameters{
+        MaxTokens:   func() *int { v := 256; return &v }(),
+        Temperature: func() *float64 { v := 0.01; return &v }(),
+    }),
+)
+```
+
+This keeps the call local and avoids remote provider credentials.
+
+### Non-Streaming Call
+
+The normal path uses `Call`:
+
+```go
+response, err := chat.Call(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{liveMessage},
+})
+```
+
+Use this path when a complete response is enough.
+
+### Tool-Call Loop
+
+The example still demonstrates tool schemas, tool calls, and result follow-up:
+
+```go
+toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{weatherMessage},
+    Tools:    schemas,
+})
+weatherCall := firstToolCall(toolCallResponse.Content)
+toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
+```
+
+The assistant tool call and tool result are then sent back as message history for the final answer.
+
+### Streaming Call
+
+The streaming path reads a channel:
+
+```go
+responses, err := streamChat.Stream(ctx, asmodel.CallRequest{
+    Messages: []*message.Message{liveMessage},
+    Stream:   true,
+})
+```
+
+The example appends deltas to a `strings.Builder` and prints `ollama_stream=ok` at the end.
+
+## Troubleshooting
+
+### Connection Refused
+
+If the error contains `connection refused`, start the Ollama service:
+
+```bash
+ollama serve
+```
+
+### Model Not Found
+
+If `llama3.1` is missing, pull it first:
+
+```bash
+ollama pull llama3.1
+```
+
+### Tool Calls Are Unstable
+
+Local model tool-call quality depends on the model. If the model returns plain text, try a model with stronger tool support or tighten the prompt.
