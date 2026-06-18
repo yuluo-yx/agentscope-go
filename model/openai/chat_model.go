@@ -26,10 +26,10 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/openai/openai-go/shared"
 
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
 	agenterrors "github.com/yuluo-yx/agentscope-go/errors"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/tts"
 	"github.com/yuluo-yx/agentscope-go/types"
 	"github.com/yuluo-yx/agentscope-go/utils"
 )

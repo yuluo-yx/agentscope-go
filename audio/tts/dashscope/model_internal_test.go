@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/tts"
 )
 
 func TestModelMetadataNoopRealtimeAndEmptySynthesisBranches(t *testing.T) {

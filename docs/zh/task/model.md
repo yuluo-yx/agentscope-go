@@ -41,12 +41,13 @@ cards, err := dashscopeembedding.ListModels()
 当前已覆盖 `embedding/dashscope`、`embedding/gemini`、`embedding/openai` 和
 `embedding/ollama`。
 
-## 文本转语音
+## 语音能力
 
-`tts` 包定义文本转语音供应商接口。它使用 `tts.Request` 和 `tts.Response`；
-音频结果以 `message.DataBlock` 返回，数据源是 base64 编码的音频数据。
+语音能力统一放在 `audio/*` 包下。`audio/tts` 定义文本转语音供应商接口，
+`audio/stt` 定义语音识别供应商接口。`model/*` 继续负责 chat/generation
+多模态模型；其中的音频输入输出能力与独立语音合成、语音识别 provider 分开维护。
 
-DashScope 原生 TTS 适配位于 `tts/dashscope`：
+DashScope 原生 TTS 适配位于 `audio/tts/dashscope`：
 
 ```go
 speech, err := dashscopetts.NewModel(
@@ -70,6 +71,26 @@ DashScope TTS model card 与 Python AgentScope 的同类 provider 能力定义�
 `WithStream(true)` 会输出兼容 WAV 的流式分块：首个分块包含 streaming WAV
 header 和 PCM 字节，后续分块在同一个 `audio/wav` media type 下追加 PCM
 字节。`WithStream(false)` 会把供应商返回的 PCM 分块聚合成一个完整 WAV 载荷。
+
+DashScope 语音识别适配位于 `audio/stt/dashscope`：
+
+```go
+speech, err := dashscopestt.NewModel(
+	dashscopestt.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+	"paraformer-v2",
+)
+chunks, err := speech.Recognize(ctx, stt.Request{
+	Audio: stt.NewAudioBlock(rawWAV, "audio/wav"),
+})
+for chunk := range chunks {
+	if chunk.Error != nil {
+		return chunk.Error
+	}
+	fmt.Println(chunk.Text)
+}
+```
+
+DashScope STT model card 通过 `dashscopestt.ListModels()` 暴露。
 
 ## 工具 Schema
 
