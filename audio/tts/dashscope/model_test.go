@@ -24,10 +24,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
+	"github.com/yuluo-yx/agentscope-go/audio/tts/dashscope"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/tts"
-	"github.com/yuluo-yx/agentscope-go/tts/dashscope"
 )
 
 func TestModelSynthesizeStreamsDashScopeAudio(t *testing.T) {

@@ -26,9 +26,9 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
+	"github.com/yuluo-yx/agentscope-go/audio/tts/dashscope"
 	"github.com/yuluo-yx/agentscope-go/message"
-	"github.com/yuluo-yx/agentscope-go/tts"
-	"github.com/yuluo-yx/agentscope-go/tts/dashscope"
 )
 
 type realtimeServerMessage struct {

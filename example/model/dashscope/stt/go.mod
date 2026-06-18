@@ -1,4 +1,4 @@
-module github.com/yuluo-yx/agentscope-go/example/model/dashscope/tts
+module github.com/yuluo-yx/agentscope-go/example/model/dashscope/stt
 
 go 1.26.4
 

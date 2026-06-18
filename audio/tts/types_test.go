@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
 	"github.com/yuluo-yx/agentscope-go/message"
-	"github.com/yuluo-yx/agentscope-go/tts"
 )
 
 func TestResponseOptionsCloneAudioBlockAndWAV(t *testing.T) {

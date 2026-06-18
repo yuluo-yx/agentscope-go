@@ -17,6 +17,8 @@ package credential_test
 import (
 	"testing"
 
+	sttdashscope "github.com/yuluo-yx/agentscope-go/audio/stt/dashscope"
+	ttsdashscope "github.com/yuluo-yx/agentscope-go/audio/tts/dashscope"
 	"github.com/yuluo-yx/agentscope-go/credential"
 	embeddingdashscope "github.com/yuluo-yx/agentscope-go/embedding/dashscope"
 	embeddinggemini "github.com/yuluo-yx/agentscope-go/embedding/gemini"
@@ -29,7 +31,6 @@ import (
 	modelollama "github.com/yuluo-yx/agentscope-go/model/ollama"
 	modelopenai "github.com/yuluo-yx/agentscope-go/model/openai"
 	modelopenairesponse "github.com/yuluo-yx/agentscope-go/model/openairesponse"
-	ttsdashscope "github.com/yuluo-yx/agentscope-go/tts/dashscope"
 )
 
 func TestCredentialBaseMetadata(t *testing.T) {
@@ -68,6 +69,7 @@ func TestCredentialModelDiscoveryMatchesPythonProviders(t *testing.T) {
 		wantEmbeddingProvider bool
 		wantEmbedding         string
 		wantTTS               string
+		wantSTT               string
 	}{
 		{
 			name:       "anthropic",
@@ -81,6 +83,7 @@ func TestCredentialModelDiscoveryMatchesPythonProviders(t *testing.T) {
 			wantEmbeddingProvider: true,
 			wantEmbedding:         "qwen3-vl-embedding",
 			wantTTS:               "qwen3-tts-flash-realtime",
+			wantSTT:               "paraformer-v2",
 		},
 		{
 			name:                  "openai",
@@ -147,6 +150,18 @@ func TestCredentialModelDiscoveryMatchesPythonProviders(t *testing.T) {
 			} else if !hasTTSModel(ttsModels, tt.wantTTS) {
 				t.Fatalf("TTS model %q not found in %#v", tt.wantTTS, ttsModels)
 			}
+
+			sttModels, err := tt.credential.ListSTTModels()
+			if err != nil {
+				t.Fatalf("ListSTTModels returned error: %v", err)
+			}
+			if tt.wantSTT == "" {
+				if len(sttModels) != 0 {
+					t.Fatalf("provider should not expose STT models: %#v", sttModels)
+				}
+			} else if !hasSTTModel(sttModels, tt.wantSTT) {
+				t.Fatalf("STT model %q not found in %#v", tt.wantSTT, sttModels)
+			}
 		})
 	}
 }
@@ -173,13 +188,19 @@ func TestCredentialProviderDescriptorsAndOptions(t *testing.T) {
 	if providers := openai.TTSProviders(); len(providers) != 0 {
 		t.Fatalf("OpenAI should not expose standalone TTS providers: %#v", providers)
 	}
+	if providers := openai.STTProviders(); len(providers) != 0 {
+		t.Fatalf("OpenAI should not expose standalone STT providers: %#v", providers)
+	}
 
 	dashscope := credential.NewDashScope("dash-key")
 	if provider := dashscope.ChatProvider(); provider.Name != "dashscope" {
 		t.Fatalf("DashScope chat provider mismatch: %#v", provider)
 	}
-	if providers := dashscope.TTSProviders(); len(providers) != 1 || providers[0].Package != "tts/dashscope" {
+	if providers := dashscope.TTSProviders(); len(providers) != 1 || providers[0].Package != "audio/tts/dashscope" {
 		t.Fatalf("DashScope TTS provider mismatch: %#v", providers)
+	}
+	if providers := dashscope.STTProviders(); len(providers) != 1 || providers[0].Package != "audio/stt/dashscope" {
+		t.Fatalf("DashScope STT provider mismatch: %#v", providers)
 	}
 
 	anthropic := credential.NewAnthropic("anthropic-key")
@@ -188,6 +209,9 @@ func TestCredentialProviderDescriptorsAndOptions(t *testing.T) {
 	}
 	if providers := anthropic.TTSProviders(); len(providers) != 0 {
 		t.Fatalf("Anthropic should not expose TTS providers: %#v", providers)
+	}
+	if providers := anthropic.STTProviders(); len(providers) != 0 {
+		t.Fatalf("Anthropic should not expose STT providers: %#v", providers)
 	}
 
 	moonshot := credential.NewMoonshot("moon-key")
@@ -205,6 +229,12 @@ func TestCredentialProviderDescriptorsAndOptions(t *testing.T) {
 	}
 	if providers := moonshot.TTSProviders(); len(providers) != 0 {
 		t.Fatalf("Moonshot should not expose TTS providers: %#v", providers)
+	}
+	if sttCards, err := moonshot.ListSTTModels(); err != nil || len(sttCards) != 0 {
+		t.Fatalf("Moonshot STT models mismatch: cards=%#v err=%v", sttCards, err)
+	}
+	if providers := moonshot.STTProviders(); len(providers) != 0 {
+		t.Fatalf("Moonshot should not expose STT providers: %#v", providers)
 	}
 
 	ollama := credential.NewOllama(credential.WithHost(" http://localhost:11434/ "))
@@ -226,6 +256,12 @@ func TestCredentialProviderDescriptorsAndOptions(t *testing.T) {
 	if providers := ollama.TTSProviders(); len(providers) != 0 {
 		t.Fatalf("Ollama should not expose TTS providers: %#v", providers)
 	}
+	if sttCards, err := ollama.ListSTTModels(); err != nil || len(sttCards) != 0 {
+		t.Fatalf("Ollama STT models mismatch: cards=%#v err=%v", sttCards, err)
+	}
+	if providers := ollama.STTProviders(); len(providers) != 0 {
+		t.Fatalf("Ollama should not expose STT providers: %#v", providers)
+	}
 
 	gemini := credential.NewGemini("gemini-key")
 	if provider := gemini.ChatProvider(); provider.Package != "model/gemini" {
@@ -236,6 +272,12 @@ func TestCredentialProviderDescriptorsAndOptions(t *testing.T) {
 	}
 	if ttsCards, err := gemini.ListTTSModels(); err != nil || len(ttsCards) != 0 {
 		t.Fatalf("Gemini TTS models mismatch: cards=%#v err=%v", ttsCards, err)
+	}
+	if sttCards, err := gemini.ListSTTModels(); err != nil || len(sttCards) != 0 {
+		t.Fatalf("Gemini STT models mismatch: cards=%#v err=%v", sttCards, err)
+	}
+	if providers := gemini.STTProviders(); len(providers) != 0 {
+		t.Fatalf("Gemini should not expose STT providers: %#v", providers)
 	}
 }
 
@@ -276,6 +318,13 @@ func TestCredentialAdaptersReturnProviderCredentials(t *testing.T) {
 	if _, err := ttsdashscope.NewModel(ttsCredential, "qwen3-tts-flash"); err != nil {
 		t.Fatalf("DashScope TTS model should accept credential adapter: %v", err)
 	}
+	sttCredential := dashscope.STTCredential()
+	if sttCredential.APIKey != "dash-key" || sttCredential.BaseURL != "https://dashscope.aliyuncs.com" {
+		t.Fatalf("DashScope STT credential mismatch: %#v", sttCredential)
+	}
+	if _, err := sttdashscope.NewModel(sttCredential, "paraformer-v2"); err != nil {
+		t.Fatalf("DashScope STT model should accept credential adapter: %v", err)
+	}
 
 	customDashScope := credential.NewDashScope("dash-key", credential.WithBaseURL(" https://proxy.example/v1/ "))
 	if got := customDashScope.ChatCredential().BaseURL; got != "https://proxy.example/v1" {
@@ -286,6 +335,9 @@ func TestCredentialAdaptersReturnProviderCredentials(t *testing.T) {
 	}
 	if got := customDashScope.TTSCredential().BaseURL; got != "https://proxy.example/v1" {
 		t.Fatalf("custom DashScope TTS base URL mismatch: %q", got)
+	}
+	if got := customDashScope.STTCredential().BaseURL; got != "https://proxy.example/v1" {
+		t.Fatalf("custom DashScope STT base URL mismatch: %q", got)
 	}
 
 	moonshot := credential.NewMoonshot(" moon-key ")
@@ -374,6 +426,15 @@ func hasEmbeddingModel(cards []credential.EmbeddingModelCard, name string) bool 
 }
 
 func hasTTSModel(cards []credential.TTSModelCard, name string) bool {
+	for _, card := range cards {
+		if card.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSTTModel(cards []credential.STTModelCard, name string) bool {
 	for _, card := range cards {
 		if card.Name == name {
 			return true

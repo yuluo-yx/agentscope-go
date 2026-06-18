@@ -12,18 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dashscope
-
-import (
-	"embed"
-
-	"github.com/yuluo-yx/agentscope-go/tts"
-)
-
-//go:embed models/*.yaml
-var modelFS embed.FS
-
-// ListModels returns embedded DashScope TTS model cards copied from Python AgentScope.
-func ListModels() ([]tts.ModelCard, error) {
-	return tts.LoadModelCardsFS(modelFS, "models", tts.CommonParameterSchema())
-}
+// Package stt defines speech-to-text requests, responses, and audio helpers.
+package stt
