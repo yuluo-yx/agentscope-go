@@ -1,0 +1,13 @@
+name: paraformer-v2
+label: Paraformer V2
+status: active
+
+input_types:
+  - audio/wav
+  - audio/mpeg
+  - audio/mp4
+
+output_types:
+  - text/plain
+
+parameter_overrides: {}

@@ -21,9 +21,9 @@ import (
 	"testing"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	astts "github.com/yuluo-yx/agentscope-go/audio/tts"
 	"github.com/yuluo-yx/agentscope-go/message"
 	statepkg "github.com/yuluo-yx/agentscope-go/state"
-	astts "github.com/yuluo-yx/agentscope-go/tts"
 )
 
 func TestTTSMiddlewareSynthesizesAudioAfterTextBlock(t *testing.T) {

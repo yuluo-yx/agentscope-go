@@ -18,6 +18,10 @@ package credential
 import (
 	"strings"
 
+	"github.com/yuluo-yx/agentscope-go/audio/stt"
+	sttdashscope "github.com/yuluo-yx/agentscope-go/audio/stt/dashscope"
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
+	ttsdashscope "github.com/yuluo-yx/agentscope-go/audio/tts/dashscope"
 	asembedding "github.com/yuluo-yx/agentscope-go/embedding"
 	embeddingdashscope "github.com/yuluo-yx/agentscope-go/embedding/dashscope"
 	embeddinggemini "github.com/yuluo-yx/agentscope-go/embedding/gemini"
@@ -31,8 +35,6 @@ import (
 	modelollama "github.com/yuluo-yx/agentscope-go/model/ollama"
 	modelopenai "github.com/yuluo-yx/agentscope-go/model/openai"
 	modelopenairesponse "github.com/yuluo-yx/agentscope-go/model/openairesponse"
-	"github.com/yuluo-yx/agentscope-go/tts"
-	ttsdashscope "github.com/yuluo-yx/agentscope-go/tts/dashscope"
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
 
@@ -49,6 +51,8 @@ type (
 	EmbeddingModelCard = asembedding.ModelCard
 	// TTSModelCard aliases the shared TTS model card type.
 	TTSModelCard = tts.ModelCard
+	// STTModelCard aliases the shared STT model card type.
+	STTModelCard = stt.ModelCard
 )
 
 // Type identifies the serialized credential type.
@@ -83,9 +87,11 @@ type Credential interface {
 	ChatProvider() Provider
 	EmbeddingProvider() (Provider, bool)
 	TTSProviders() []Provider
+	STTProviders() []Provider
 	ListChatModels() ([]ChatModelCard, error)
 	ListEmbeddingModels() ([]EmbeddingModelCard, error)
 	ListTTSModels() ([]TTSModelCard, error)
+	ListSTTModels() ([]STTModelCard, error)
 }
 
 // Anthropic represents Anthropic API credential settings.
@@ -120,6 +126,11 @@ func (c Anthropic) TTSProviders() []Provider {
 	return nil
 }
 
+// STTProviders returns no Anthropic STT providers.
+func (c Anthropic) STTProviders() []Provider {
+	return nil
+}
+
 // ListChatModels lists Anthropic chat model cards.
 func (c Anthropic) ListChatModels() ([]ChatModelCard, error) {
 	return modelanthropic.ListModels()
@@ -132,6 +143,11 @@ func (c Anthropic) ListEmbeddingModels() ([]EmbeddingModelCard, error) {
 
 // ListTTSModels returns no Anthropic TTS model cards.
 func (c Anthropic) ListTTSModels() ([]TTSModelCard, error) {
+	return nil, nil
+}
+
+// ListSTTModels returns no Anthropic STT model cards.
+func (c Anthropic) ListSTTModels() ([]STTModelCard, error) {
 	return nil, nil
 }
 
@@ -245,7 +261,12 @@ func (c DashScope) EmbeddingProvider() (Provider, bool) {
 
 // TTSProviders returns DashScope TTS provider descriptors.
 func (c DashScope) TTSProviders() []Provider {
-	return []Provider{{Name: "dashscope", Package: "tts/dashscope"}}
+	return []Provider{{Name: "dashscope", Package: "audio/tts/dashscope"}}
+}
+
+// STTProviders returns DashScope STT provider descriptors.
+func (c DashScope) STTProviders() []Provider {
+	return []Provider{{Name: "dashscope", Package: "audio/stt/dashscope"}}
 }
 
 // ListChatModels lists DashScope chat model cards.
@@ -263,6 +284,11 @@ func (c DashScope) ListTTSModels() ([]TTSModelCard, error) {
 	return ttsdashscope.ListModels()
 }
 
+// ListSTTModels lists DashScope STT model cards.
+func (c DashScope) ListSTTModels() ([]STTModelCard, error) {
+	return sttdashscope.ListModels()
+}
+
 // ChatCredential returns credentials accepted by model/dashscope.
 func (c DashScope) ChatCredential() modeldashscope.Credential {
 	return modeldashscope.NewCredential(c.APIKey, modeldashscope.WithBaseURL(c.chatBaseURL()))
@@ -273,9 +299,14 @@ func (c DashScope) EmbeddingCredential() embeddingdashscope.Credential {
 	return embeddingdashscope.NewCredential(c.APIKey, embeddingdashscope.WithBaseURL(c.nativeBaseURL()))
 }
 
-// TTSCredential returns credentials accepted by tts/dashscope.
+// TTSCredential returns credentials accepted by audio/tts/dashscope.
 func (c DashScope) TTSCredential() ttsdashscope.Credential {
 	return ttsdashscope.NewCredential(c.APIKey, ttsdashscope.WithBaseURL(c.nativeBaseURL()))
+}
+
+// STTCredential returns credentials accepted by audio/stt/dashscope.
+func (c DashScope) STTCredential() sttdashscope.Credential {
+	return sttdashscope.NewCredential(c.APIKey, sttdashscope.WithBaseURL(c.nativeBaseURL()))
 }
 
 func (c DashScope) chatBaseURL() string {
@@ -322,6 +353,11 @@ func (c Gemini) TTSProviders() []Provider {
 	return nil
 }
 
+// STTProviders returns no Gemini STT providers.
+func (c Gemini) STTProviders() []Provider {
+	return nil
+}
+
 // ListChatModels lists Gemini chat model cards.
 func (c Gemini) ListChatModels() ([]ChatModelCard, error) {
 	return modelgemini.ListModels()
@@ -334,6 +370,11 @@ func (c Gemini) ListEmbeddingModels() ([]EmbeddingModelCard, error) {
 
 // ListTTSModels returns no Gemini TTS model cards.
 func (c Gemini) ListTTSModels() ([]TTSModelCard, error) {
+	return nil, nil
+}
+
+// ListSTTModels returns no Gemini STT model cards.
+func (c Gemini) ListSTTModels() ([]STTModelCard, error) {
 	return nil, nil
 }
 
@@ -383,6 +424,11 @@ func (c Moonshot) TTSProviders() []Provider {
 	return nil
 }
 
+// STTProviders returns no Moonshot STT providers.
+func (c Moonshot) STTProviders() []Provider {
+	return nil
+}
+
 // ListChatModels lists Moonshot chat model cards.
 func (c Moonshot) ListChatModels() ([]ChatModelCard, error) {
 	return modelmoonshot.ListModels()
@@ -395,6 +441,11 @@ func (c Moonshot) ListEmbeddingModels() ([]EmbeddingModelCard, error) {
 
 // ListTTSModels returns no Moonshot TTS model cards.
 func (c Moonshot) ListTTSModels() ([]TTSModelCard, error) {
+	return nil, nil
+}
+
+// ListSTTModels returns no Moonshot STT model cards.
+func (c Moonshot) ListSTTModels() ([]STTModelCard, error) {
 	return nil, nil
 }
 
@@ -433,6 +484,11 @@ func (c Ollama) TTSProviders() []Provider {
 	return nil
 }
 
+// STTProviders returns no Ollama STT providers.
+func (c Ollama) STTProviders() []Provider {
+	return nil
+}
+
 // ListChatModels lists Ollama chat model cards.
 func (c Ollama) ListChatModels() ([]ChatModelCard, error) {
 	return modelollama.ListModels()
@@ -445,6 +501,11 @@ func (c Ollama) ListEmbeddingModels() ([]EmbeddingModelCard, error) {
 
 // ListTTSModels returns no Ollama TTS model cards.
 func (c Ollama) ListTTSModels() ([]TTSModelCard, error) {
+	return nil, nil
+}
+
+// ListSTTModels returns no Ollama STT model cards.
+func (c Ollama) ListSTTModels() ([]STTModelCard, error) {
 	return nil, nil
 }
 
@@ -500,6 +561,11 @@ func (c OpenAI) TTSProviders() []Provider {
 	return nil
 }
 
+// STTProviders returns no OpenAI standalone STT providers.
+func (c OpenAI) STTProviders() []Provider {
+	return nil
+}
+
 // ListChatModels lists OpenAI chat model cards.
 func (c OpenAI) ListChatModels() ([]ChatModelCard, error) {
 	return modelopenai.ListModels()
@@ -512,6 +578,11 @@ func (c OpenAI) ListEmbeddingModels() ([]EmbeddingModelCard, error) {
 
 // ListTTSModels returns no OpenAI standalone TTS model cards.
 func (c OpenAI) ListTTSModels() ([]TTSModelCard, error) {
+	return nil, nil
+}
+
+// ListSTTModels returns no OpenAI standalone STT model cards.
+func (c OpenAI) ListSTTModels() ([]STTModelCard, error) {
 	return nil, nil
 }
 

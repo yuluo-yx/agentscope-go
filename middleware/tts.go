@@ -20,8 +20,8 @@ import (
 	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
 	"github.com/yuluo-yx/agentscope-go/message"
-	"github.com/yuluo-yx/agentscope-go/tts"
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
 

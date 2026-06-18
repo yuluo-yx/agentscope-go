@@ -18,7 +18,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/yuluo-yx/agentscope-go/tts"
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
 )
 
 func TestTTSModelCardAppliesVoiceOverrides(t *testing.T) {

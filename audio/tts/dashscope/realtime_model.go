@@ -30,8 +30,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/yuluo-yx/agentscope-go/audio/tts"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/tts"
 	"github.com/yuluo-yx/agentscope-go/utils"
 )
 

@@ -38,13 +38,15 @@ cards, err := dashscopeembedding.ListModels()
 Current embedded embedding model cards are copied from Python AgentScope for
 `embedding/dashscope`, `embedding/gemini`, and `embedding/openai`.
 
-## Text-to-Speech
+## Audio
 
-The `tts` package defines the text-to-speech provider contract. It uses
-`tts.Request` and `tts.Response`; audio is returned as a `message.DataBlock`
-whose source is base64 encoded audio data.
+Audio capabilities live under `audio/*` packages. `audio/tts` defines the
+text-to-speech provider contract, and `audio/stt` defines the speech-to-text
+provider contract. Chat and generation models stay in `model/*`; their audio
+input/output support is separate from standalone speech synthesis and
+recognition providers.
 
-DashScope native TTS support is available through `tts/dashscope`:
+DashScope native TTS support is available through `audio/tts/dashscope`:
 
 ```go
 speech, err := dashscopetts.NewModel(
@@ -69,6 +71,26 @@ DashScope TTS model cards are also copied from Python AgentScope and exposed by
 contains a streaming WAV header followed by PCM bytes, and later chunks contain
 additional PCM bytes under the same `audio/wav` media type. `WithStream(false)`
 aggregates provider PCM chunks into one complete WAV payload.
+
+DashScope speech recognition is available through `audio/stt/dashscope`:
+
+```go
+speech, err := dashscopestt.NewModel(
+	dashscopestt.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+	"paraformer-v2",
+)
+chunks, err := speech.Recognize(ctx, stt.Request{
+	Audio: stt.NewAudioBlock(rawWAV, "audio/wav"),
+})
+for chunk := range chunks {
+	if chunk.Error != nil {
+		return chunk.Error
+	}
+	fmt.Println(chunk.Text)
+}
+```
+
+DashScope STT model cards are exposed by `dashscopestt.ListModels()`.
 
 ## Tool Schemas
 
