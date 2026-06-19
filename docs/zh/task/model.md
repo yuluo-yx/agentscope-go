@@ -223,7 +223,45 @@ for chunk := range chunks {
 }
 ```
 
-DashScope STT model card 通过 `dashscopestt.ListModels()` 暴露。
+实时语音识别使用 `NewRealtimeModel` 创建长连接模型，并通过 `NewSession`
+管理一次 WebSocket 会话。`Responses()` 会持续输出 `IsLast=false` 的实时
+文本和 `IsLast=true` 的最终文本；如果服务端返回错误，终止响应会携带
+`Error`。
+
+```go
+speech, err := dashscopestt.NewRealtimeModel(
+	dashscopestt.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+	"qwen3-asr-flash-realtime",
+	dashscopestt.WithRealtimeParameters(dashscopestt.RealtimeParameters{
+		Language: "zh",
+	}),
+)
+session, err := speech.NewSession(ctx, stt.SessionRequest{})
+defer session.Close(context.WithoutCancel(ctx))
+
+if err := session.Push(ctx, stt.NewAudioBlock(rawPCM, "audio/pcm")); err != nil {
+	return err
+}
+if err := session.Finish(ctx); err != nil {
+	return err
+}
+for chunk := range session.Responses() {
+	if chunk.Error != nil {
+		return chunk.Error
+	}
+	if chunk.Text != "" {
+		fmt.Println(chunk.Text, chunk.IsLast)
+	}
+}
+```
+
+默认实时模式是 DashScope 服务端 VAD，`input_audio_format=pcm`，
+`sample_rate=16000`，`vad_threshold=0.0`，`silence_duration_ms=400`。
+如果需要手动断句，可设置 `RealtimeParameters{Mode: dashscopestt.RealtimeModeManual}`，
+推送一段完整音频后调用 `session.Commit(ctx)`，最后再调用 `session.Finish(ctx)`。
+
+DashScope STT model card 通过 `dashscopestt.ListModels()` 暴露，包含批量
+`paraformer-v2` 和实时 `qwen3-asr-flash-realtime`。
 
 ## 流式响应
 

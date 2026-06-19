@@ -147,24 +147,6 @@ func (m *Model) Realtime() bool {
 	return false
 }
 
-// Connect is a no-op for the native HTTP provider.
-func (m *Model) Connect(context.Context) error {
-	_ = m
-	return nil
-}
-
-// Close is a no-op for the native HTTP provider.
-func (m *Model) Close(context.Context) error {
-	_ = m
-	return nil
-}
-
-// Push is unsupported for this non-realtime HTTP provider.
-func (m *Model) Push(context.Context, *message.DataBlock) (*stt.Response, error) {
-	_ = m
-	return nil, fmt.Errorf("dashscope stt: realtime push is not supported")
-}
-
 // Recognize calls DashScope native speech recognition and returns text chunks.
 func (m *Model) Recognize(ctx context.Context, request stt.Request) (<-chan stt.Response, error) {
 	if m == nil {
@@ -183,6 +165,12 @@ func (m *Model) Recognize(ctx context.Context, request stt.Request) (<-chan stt.
 	out <- *response
 	close(out)
 	return out, nil
+}
+
+// NewSession reports that the native HTTP provider does not support realtime sessions.
+func (m *Model) NewSession(context.Context, stt.SessionRequest) (stt.Session, error) {
+	_ = m
+	return nil, fmt.Errorf("dashscope stt: realtime session is not supported")
 }
 
 func (m *Model) call(ctx context.Context, request stt.Request) (dashScopeResult, error) {

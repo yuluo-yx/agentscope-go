@@ -1,0 +1,79 @@
+name: qwen3-asr-flash-realtime
+label: Qwen3-ASR-Flash-Realtime
+status: active
+realtime: true
+
+input_types:
+  - audio/pcm
+  - audio/opus
+
+output_types:
+  - text/plain
+
+parameter_overrides:
+  language:
+    description: Audio source language hint for Qwen-ASR realtime recognition.
+    enum:
+      - zh
+      - yue
+      - en
+      - ja
+      - de
+      - ko
+      - ru
+      - fr
+      - pt
+      - ar
+      - it
+      - es
+      - hi
+      - id
+      - th
+      - tr
+      - uk
+      - vi
+      - cs
+      - da
+      - fil
+      - fi
+      - is
+      - ms
+      - no
+      - pl
+      - sv
+  sample_rate:
+    description: Realtime audio sample rate in hertz.
+    enum:
+      - 16000
+      - 8000
+    default: 16000
+  input_audio_format:
+    type: string
+    title: Input audio format
+    description: Realtime audio encoding sent through input_audio_buffer.append.
+    enum:
+      - pcm
+      - opus
+    default: pcm
+  mode:
+    type: string
+    title: Realtime boundary mode
+    description: Use vad for server-side voice activity detection, or manual for explicit Commit calls.
+    enum:
+      - vad
+      - manual
+    default: vad
+  vad_threshold:
+    type: number
+    title: VAD threshold
+    description: Server VAD sensitivity threshold. Aliyun recommends 0.0.
+    minimum: -1
+    maximum: 1
+    default: 0
+  silence_duration_ms:
+    type: integer
+    title: VAD silence duration
+    description: Silence duration that ends one utterance in VAD mode.
+    minimum: 200
+    maximum: 6000
+    default: 400

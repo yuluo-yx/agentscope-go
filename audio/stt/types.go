@@ -84,6 +84,20 @@ func (r Request) Clone() Request {
 	return cp
 }
 
+// SessionRequest configures one realtime STT session.
+type SessionRequest struct {
+	Parameters map[string]any `json:"parameters,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+}
+
+// Clone returns a deep copy of the realtime session request.
+func (r SessionRequest) Clone() SessionRequest {
+	cp := r
+	cp.Parameters = utils.CloneAnyMap(r.Parameters)
+	cp.Metadata = utils.CloneAnyMap(r.Metadata)
+	return cp
+}
+
 // Response is a speech recognition response carrying text and optional segments.
 type Response struct {
 	Text      string         `json:"text,omitempty"`
@@ -197,16 +211,28 @@ func (r *Response) Clone() *Response {
 type Model interface {
 	// Name returns a provider-qualified model name for logs and diagnostics.
 	Name() string
-	// Realtime reports whether the model accepts incremental audio via Push.
+	// Realtime reports whether the model can create streaming sessions.
 	Realtime() bool
-	// Connect opens provider state for realtime models. Batch models may no-op.
-	Connect(context.Context) error
-	// Close releases provider state for realtime models. Batch models may no-op.
-	Close(context.Context) error
-	// Push sends incremental audio to realtime models and may return one text chunk.
-	Push(context.Context, *message.DataBlock) (*Response, error)
 	// Recognize converts a request to recognized text chunks.
 	Recognize(context.Context, Request) (<-chan Response, error)
+	// NewSession creates a realtime recognition session. Batch models return an unsupported error.
+	NewSession(context.Context, SessionRequest) (Session, error)
+}
+
+// Session represents one realtime STT conversation.
+type Session interface {
+	// ID returns the provider session ID when the provider has sent one.
+	ID() string
+	// Responses streams partial, final, and terminal error responses until the session ends.
+	Responses() <-chan Response
+	// Push appends one audio chunk to the realtime input buffer.
+	Push(context.Context, *message.DataBlock) error
+	// Commit manually commits the current input buffer when the provider is in manual mode.
+	Commit(context.Context) error
+	// Finish gracefully ends the session and lets the provider flush final responses.
+	Finish(context.Context) error
+	// Close releases transport resources. It is safe to call multiple times.
+	Close(context.Context) error
 }
 
 func cloneDataBlock(block *message.DataBlock) *message.DataBlock {

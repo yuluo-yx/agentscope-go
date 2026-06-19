@@ -12,5 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package dashscope provides a native DashScope speech-to-text provider.
+// Package dashscope provides native DashScope batch and realtime speech-to-text providers.
 package dashscope

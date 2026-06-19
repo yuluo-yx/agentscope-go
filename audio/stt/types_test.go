@@ -15,6 +15,7 @@
 package stt_test
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"testing"
@@ -125,6 +126,58 @@ func TestRequestUsageAndResponseErrorOptionsClone(t *testing.T) {
 	}
 }
 
+func TestSessionRequestCloneAndInterfaceShape(t *testing.T) {
+	t.Parallel()
+
+	request := stt.SessionRequest{
+		Parameters: map[string]any{"language": "zh"},
+		Metadata:   map[string]any{"trace": map[string]any{"id": "1"}},
+	}
+	clone := request.Clone()
+	clone.Parameters["language"] = "en"
+	clone.Metadata["trace"].(map[string]any)["id"] = "2"
+	if request.Parameters["language"] != "zh" || request.Metadata["trace"].(map[string]any)["id"] != "1" {
+		t.Fatalf("session request clone should deep-copy fields: original=%#v clone=%#v", request, clone)
+	}
+
+	var _ stt.Session = (*assertSession)(nil)
+	var _ stt.Model = (*assertModel)(nil)
+}
+
 type assertErr string
 
 func (e assertErr) Error() string { return string(e) }
+
+type assertSession struct{}
+
+func (s *assertSession) ID() string { return "session-1" }
+
+func (s *assertSession) Responses() <-chan stt.Response {
+	ch := make(chan stt.Response)
+	close(ch)
+	return ch
+}
+
+func (s *assertSession) Push(context.Context, *message.DataBlock) error { return nil }
+
+func (s *assertSession) Commit(context.Context) error { return nil }
+
+func (s *assertSession) Finish(context.Context) error { return nil }
+
+func (s *assertSession) Close(context.Context) error { return nil }
+
+type assertModel struct{}
+
+func (m *assertModel) Name() string { return "assert:model" }
+
+func (m *assertModel) Realtime() bool { return true }
+
+func (m *assertModel) Recognize(context.Context, stt.Request) (<-chan stt.Response, error) {
+	ch := make(chan stt.Response)
+	close(ch)
+	return ch, nil
+}
+
+func (m *assertModel) NewSession(context.Context, stt.SessionRequest) (stt.Session, error) {
+	return &assertSession{}, nil
+}

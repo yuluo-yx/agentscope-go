@@ -90,7 +90,46 @@ for chunk := range chunks {
 }
 ```
 
-DashScope STT model cards are exposed by `dashscopestt.ListModels()`.
+Realtime speech recognition uses `NewRealtimeModel` and creates one WebSocket
+session through `NewSession`. `Responses()` emits `IsLast=false` partial text and
+`IsLast=true` final text. Provider-side failures are returned as terminal
+responses with `Error` set.
+
+```go
+speech, err := dashscopestt.NewRealtimeModel(
+	dashscopestt.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+	"qwen3-asr-flash-realtime",
+	dashscopestt.WithRealtimeParameters(dashscopestt.RealtimeParameters{
+		Language: "zh",
+	}),
+)
+session, err := speech.NewSession(ctx, stt.SessionRequest{})
+defer session.Close(context.WithoutCancel(ctx))
+
+if err := session.Push(ctx, stt.NewAudioBlock(rawPCM, "audio/pcm")); err != nil {
+	return err
+}
+if err := session.Finish(ctx); err != nil {
+	return err
+}
+for chunk := range session.Responses() {
+	if chunk.Error != nil {
+		return chunk.Error
+	}
+	if chunk.Text != "" {
+		fmt.Println(chunk.Text, chunk.IsLast)
+	}
+}
+```
+
+The realtime default is DashScope server-side VAD with
+`input_audio_format=pcm`, `sample_rate=16000`, `vad_threshold=0.0`, and
+`silence_duration_ms=400`. For manual boundaries, set
+`RealtimeParameters{Mode: dashscopestt.RealtimeModeManual}`, call
+`session.Commit(ctx)` after one utterance, then call `session.Finish(ctx)`.
+
+DashScope STT model cards are exposed by `dashscopestt.ListModels()`, including
+batch `paraformer-v2` and realtime `qwen3-asr-flash-realtime`.
 
 ## Tool Schemas
 
