@@ -63,16 +63,12 @@ func run(ctx context.Context) error {
 	}
 	defer func() { _ = os.RemoveAll(root) }()
 
-	keepSandbox, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("AGENTSCOPE_DAYTONA_KEEP_SANDBOX")))
-	image := strings.TrimSpace(os.Getenv("AGENTSCOPE_DAYTONA_IMAGE"))
-	if image == "" {
-		image = "python:3.12"
-	}
-
 	ws, err := daytonaws.NewWorkspace(
-		daytonaws.WithImage(image),
+		daytonaws.WithImage("python:3.12"),
+		daytonaws.WithAPIKey(os.Getenv("DAYTONA_API_KEY")),
 		daytonaws.WithHostWorkdir(filepath.Join(root, "workspace")),
-		daytonaws.WithKeepSandbox(keepSandbox),
+		// 默认情况下，示例会在清理阶段删除 Daytona 沙箱，开启保持
+		daytonaws.WithKeepSandbox(true),
 		daytonaws.WithRequestTimeout(90*time.Second),
 		daytonaws.WithOpenTimeout(4*time.Minute),
 	)
@@ -123,22 +119,26 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	executorTool, err := newPythonAnalysisTool(writeTool, bashTool)
 	if err != nil {
 		return err
 	}
+
 	kit, err := tool.NewToolkit(executorTool)
 	if err != nil {
 		return fmt.Errorf("create analysis toolkit: %w", err)
 	}
+
 	agentState := asstate.NewAgentState()
 	agentState.PermissionContext = permission.NewContext(permission.ModeBypass)
 	analyst, err := agentpkg.NewAgent(
 		"DataAnalyst",
 		analysisSystemPrompt(),
 		model,
-		agentpkg.WithToolkit(kit),
 		agentpkg.WithAgentState(agentState),
+		agentpkg.WithWorkspace(ctx, ws),
+		agentpkg.WithAdditionalToolkit(kit),
 	)
 	if err != nil {
 		return fmt.Errorf("create analysis agent: %w", err)
@@ -159,7 +159,7 @@ func run(ctx context.Context) error {
 	fmt.Printf("daytona_workspace_alive=%t sandbox_id=%s keep_sandbox=%t model=%s\n",
 		ws.IsAlive(),
 		ws.SandboxID(),
-		keepSandbox,
+		true,
 		model.Name(),
 	)
 	fmt.Printf("csv_source=%s sandbox_csv=%s generated_python=%s\n", fixtureCSVPath, sandboxCSVPath, generatedScriptPath)
@@ -168,6 +168,34 @@ func run(ctx context.Context) error {
 		fmt.Println(*text)
 	}
 	return nil
+
+	// 如果一切顺利，将会在 https://app.daytona.io/dashboard/sandboxes 上看到一个启动的容器
+	// 同时看到以下输出：
+	// daytona_workspace_alive=true sandbox_id=b51180ac-63f5-4c37-ac89-27783022cf97 keep_sandbox=true model=dashscope:qwen3.7-max
+	//csv_source=data/sales.csv sandbox_csv=/home/daytona/data/sales.csv generated_python=/home/daytona/generated/analysis.py
+	//agent_conclusion:
+	//## 分析结论
+	//
+	//**折后销售额最高的区域是 east（东部），其折后销售额为 17,049.00，领先第二名 south（南部）2,351.10。**
+	//
+	//## 关键计算证据
+	//
+	//各区域折后销售额排名（计算公式：折后销售额 = units × unit_price × (1 - discount)）：
+	//
+	//1. **east（东部）**: 17,049.00 👑
+	//2. **south（南部）**: 14,697.90
+	//3. **north（北部）**: 12,110.82
+	//4. **west（西部）**: 9,284.53
+	//
+	//**领先幅度**: 东部比南部多出 2,351.10 的折后销售额。
+	//
+	//## 数据来源
+	//
+	//- **CSV 路径**: `/home/daytona/data/sales.csv`
+	//- **数据行数**: 32 行
+	//- **生成的 Python 脚本**: `/home/daytona/generated/analysis.py`
+	//- **结果文件路径**: `/home/daytona/data/analysis_result.json`
+	//- **分析报告路径**: `/home/daytona/data/analysis_report.md`
 }
 
 func analysisSystemPrompt() string {
@@ -203,30 +231,25 @@ CSV schema:
 }
 
 func newChatModel() (asmodel.ChatModel, error) {
-	apiKey := strings.TrimSpace(os.Getenv("DASHSCOPE_API_KEY"))
-	if apiKey == "" {
-		apiKey = strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY"))
-	}
-	if apiKey == "" {
-		return nil, fmt.Errorf("DASHSCOPE_API_KEY or AI_DASHSCOPE_API_KEY is required")
-	}
-	modelName := strings.TrimSpace(os.Getenv("DASHSCOPE_MODEL"))
-	if modelName == "" {
-		modelName = "qwen-plus"
-	}
-	temperature := 0.1
+
 	return dashscope.NewChatModel(
-		dashscope.NewCredential(apiKey),
-		modelName,
-		dashscope.WithChatParameters(dashscope.ChatParameters{Temperature: &temperature}),
+		dashscope.NewCredential(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		"qwen3.7-max",
+		dashscope.WithChatParameters(dashscope.ChatParameters{Temperature: func() *float64 {
+			v := 0.1
+			return &v
+		}(),
+		}),
 	)
 }
 
 func newPythonAnalysisTool(writeTool, bashTool asworkspace.Tool) (*tool.FunctionTool, error) {
+
 	executor := &pythonExecutor{
 		writeTool: writeTool,
 		bashTool:  bashTool,
 	}
+
 	return tool.NewFunctionTool(
 		"RunPythonAnalysis",
 		"Write generated Python into the Daytona sandbox, execute it against the prepared CSV, and return the analysis result with data-source metadata.",
@@ -310,6 +333,7 @@ func (e *pythonExecutor) run(ctx context.Context, input map[string]any, state *a
 }
 
 func pythonAnalysisToolSchema() map[string]any {
+
 	return map[string]any{
 		"type":     "object",
 		"required": []any{"analysis_goal", "code"},

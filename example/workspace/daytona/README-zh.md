@@ -9,8 +9,9 @@
 - 从 Python 镜像创建 Daytona 沙箱。
 - 上传 `data/sales.csv` 中的示例 CSV。
 - 将 CSV schema 和用户分析任务交给 Agent。
+- 通过 `agent.WithWorkspace(ctx, ws)` 将 Daytona workspace 挂到 Agent 上。
 - 由 Agent 根据 schema 生成 Python 分析代码。
-- 通过自定义 `RunPythonAnalysis` 工具把生成的 Python 写入 Daytona 沙箱并执行。
+- 通过 `agent.WithAdditionalToolkit` 追加自定义 `RunPythonAnalysis` 工具，把生成的 Python 写入 Daytona 沙箱并执行。
 - 最终回答中补充结论、关键证据和数据来源路径。
 
 仓库中的 `python_runner.py` 只是一个执行器包装脚本。实际分析代码由 Agent 运行时生成，并写入 Daytona 沙箱后执行。
@@ -34,7 +35,7 @@
 
 ```bash
 cd example/workspace/daytona
-DAYTONA_API_KEY=your-daytona-key DASHSCOPE_API_KEY=your-dashscope-key go run .
+go run .
 ```
 
 ## 预期输出
@@ -47,5 +48,3 @@ csv_source=data/sales.csv sandbox_csv=/home/daytona/data/sales.csv generated_pyt
 agent_conclusion:
 ...
 ```
-
-默认情况下，示例会在清理阶段删除 Daytona 沙箱。设置 `AGENTSCOPE_DAYTONA_KEEP_SANDBOX=true` 可保留沙箱用于排查。
