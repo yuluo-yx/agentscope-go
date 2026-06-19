@@ -4,6 +4,16 @@
 
 状态对象表示一个 Agent 会话的当前视图。它包含对话历史、权限上下文、工具缓存、任务列表和上下文窗口状态。不要在互相独立的用户会话之间共享同一个 `AgentState`。
 
+```{mermaid}
+flowchart LR
+    Session["一个用户会话"] --> AgentState["state.AgentState"]
+    AgentState --> Context["Context<br/>对话历史"]
+    AgentState --> Permission["PermissionContext<br/>权限模式和规则"]
+    AgentState --> Tool["ToolContext<br/>工具缓存和启用组"]
+    AgentState --> Task["TaskContext<br/>任务列表"]
+    AgentState --> Window["ContextStatus<br/>上下文压力"]
+```
+
 ## 字段
 
 | 字段 | 用途 |

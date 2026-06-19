@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project: "AgentScope"
-title: "<span style='font-weight: 700; color: #2196f3;'>AgentScope</span>"
+project: "AgentScope Go"
+title: "<span style='font-weight: 700; color: #2196f3;'>AgentScope Go</span>"
 author: The AgentScope Go Authors
 logo: _static/logo.svg
 copyright: "The AgentScope Go Authors"
@@ -78,15 +78,19 @@ sphinx:
           prefixes_en:
             - en/quickstart
             - en/task
+            - en/faq
           prefixes_zh:
             - zh/quickstart
             - zh/task
+            - zh/faq
           sections_en:
             - Quick Start
             - Advanced Topics
+            - FAQ
           sections_zh:
             - 快速开始
             - 高级主题
+            - 常见问题 FAQ
           languages:
             - en
             - zh
@@ -125,8 +129,8 @@ sphinx:
         - id: community
           label_en: Community
           label_zh: 社区
-          href_en: en/community/index
-          href_zh: zh/community/index
+          href_en: en/community/contributors
+          href_zh: zh/community/contributors
           prefixes_en:
             - en/community
           prefixes_zh:

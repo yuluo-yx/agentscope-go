@@ -47,6 +47,11 @@ parts:
       - file: en/task/examples
         title: Examples
 
+  - caption: FAQ
+    chapters:
+      - file: en/faq/index
+        title: FAQ
+
   - caption: Integration
     chapters:
       - file: en/integration/index
@@ -59,8 +64,10 @@ parts:
 
   - caption: Community
     chapters:
-      - file: en/community/index
-        title: Community
+      - file: en/community/contributors
+        title: Contributors
+      - file: en/community/chat-groups
+        title: Chat Groups
 
   - caption: 首页
     chapters:
@@ -101,6 +108,11 @@ parts:
       - file: zh/task/examples
         title: 示例
 
+  - caption: 常见问题 FAQ
+    chapters:
+      - file: zh/faq/index
+        title: FAQ
+
   - caption: 集成
     chapters:
       - file: zh/integration/index
@@ -113,5 +125,7 @@ parts:
 
   - caption: 社区
     chapters:
-      - file: zh/community/index
-        title: 社区
+      - file: zh/community/contributors
+        title: 贡献者
+      - file: zh/community/chat-groups
+        title: 交流群
