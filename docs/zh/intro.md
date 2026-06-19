@@ -139,8 +139,8 @@ func main() {
 | `embedding/openai` | OpenAI Embedding 适配 |
 | `audio/tts` | 文本转语音接口、请求和响应类型 |
 | `audio/tts/dashscope` | DashScope TTS 适配 |
-| `audio/stt` | 语音转文本接口、请求和响应类型 |
-| `audio/stt/dashscope` | DashScope STT 适配 |
+| `audio/stt` | 批量和实时语音转文本接口、请求、响应和 Session 类型 |
+| `audio/stt/dashscope` | DashScope 批量 STT 和 Qwen-ASR realtime STT 适配 |
 
 ### 扩展和基础设施
 

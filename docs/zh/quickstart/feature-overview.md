@@ -42,6 +42,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | 消息 | 统一表达 user、assistant、system、tool call、tool result 和多模态内容 | `message.Message`、`message.ContentBlock` | [消息](../task/message.md) |
 | 模型 | 屏蔽不同供应商 SDK 的请求、响应、流式事件和工具 Schema 差异 | `model.ChatModel` | [模型集成](../task/model.md) |
+| 语音 | 提供 TTS、批量 STT 和实时 STT Session，适合语音输入输出场景 | `audio/tts`、`audio/stt` | [模型集成](../task/model.md) |
 | 工具 | 把 Go 函数、内置文件工具、任务工具、Skill 和 MCP 工具暴露给模型 | `tool.Tool`、`tool.Toolkit` | [工具系统](../task/tool.md) |
 | 智能体 | 执行“模型推理 -> 权限检查 -> 工具执行 -> 结果回填”的循环 | `agent.Agent` | [构建智能体](agent.md) |
 | 状态 | 保存会话、上下文、任务、工具缓存和上下文压力状态 | `state.AgentState` | [状态管理](../task/state.md) |
