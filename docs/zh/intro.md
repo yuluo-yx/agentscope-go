@@ -6,6 +6,22 @@ AgentScope Go 提供智能体开发需要的基础组件：模型调用、消息
 
 AgentScope Go 适合在 Go 服务中嵌入 Agent 能力。应用可以只使用统一模型接口，也可以组合工具、权限、Sandbox 沙箱和中间件构建完整的多轮智能体。部署、模型服务、凭据和业务数据仍由应用侧管理。
 
+```{mermaid}
+flowchart LR
+    App["Go 应用"] --> Model["model<br/>模型调用"]
+    App --> Agent["agent<br/>智能体循环"]
+    Agent --> Message["message<br/>消息和内容块"]
+    Agent --> State["state<br/>会话状态"]
+    Agent --> Model
+    Agent --> Tool["tool<br/>工具注册与执行"]
+    Agent --> Permission["permission<br/>执行前决策"]
+    Agent --> Sandbox["Sandbox 沙箱<br/>文件、Shell、Skill、MCP"]
+    Agent --> Middleware["middleware<br/>Hook 扩展"]
+    Tool --> Message
+    Model --> Message
+    Sandbox --> Tool
+```
+
 ## 适用场景
 
 AgentScope Go 更适合以下场景：

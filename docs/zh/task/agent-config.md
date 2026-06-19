@@ -4,6 +4,23 @@
 
 配置项按用途可以分成五类：模型重试、ReAct 循环、上下文管理、工具资源和中间件。简单 Agent 只需要模型、系统提示词和可选 `Toolkit`；只有在遇到失败重试、长上下文、工具环境或观测需求时，才需要继续增加配置。
 
+```{mermaid}
+flowchart TD
+    NewAgent["agent.NewAgent"] --> Required["必需项<br/>name + system prompt + ChatModel"]
+    NewAgent --> Runtime["运行期状态<br/>WithAgentState"]
+    NewAgent --> Tools["工具来源<br/>WithToolkit / WithAdditionalToolkit"]
+    NewAgent --> Sandbox["Sandbox 沙箱资源<br/>WithWorkspace / WithAgentResources"]
+    NewAgent --> Loop["执行策略<br/>ModelConfig + ReActConfig + ContextConfig"]
+    NewAgent --> Hooks["扩展能力<br/>WithMiddlewares"]
+    Sandbox --> Resources["system prompt 片段<br/>Toolkit<br/>Offloader"]
+    Tools --> Loop
+    Runtime --> Loop
+    Required --> Reply["Reply / ReplyStream"]
+    Loop --> Reply
+    Hooks --> Reply
+    Resources --> Reply
+```
+
 ## 构造函数
 
 ```go
@@ -66,7 +83,8 @@ agent.WithReActConfig(agent.ReActConfig{
 
 ## 上下文配置
 
-`ContextConfig` 定义压缩阈值、摘要提示词、摘要 Schema 和工具结果截断长度：
+`ContextConfig` 定义上下文压力阈值、摘要提示词、摘要 Schema 和工具结果截断长度。
+默认策略链不是单一摘要策略，而是按顺序执行三类策略：先清理多模态数据和工具结果，再按剩余 token 做压力控制，最后按比例触发摘要压缩。
 
 ```go
 agent.WithContextConfig(agent.ContextConfig{
@@ -77,10 +95,27 @@ agent.WithContextConfig(agent.ContextConfig{
 })
 ```
 
-`MaxTokens` 用于启用上下文压力跟踪和摘要压缩。为 `0` 时，默认策略链只保留既有的轻量清理行为：在配置 offloader 时卸载 base64 `DataBlock`，再截断或卸载超长工具结果。
+```{mermaid}
+flowchart TD
+    Compress["Agent.CompressContext"] --> ToolResult["ToolResultContextStrategy<br/>DataBlock 卸载<br/>工具结果截断或卸载"]
+    ToolResult --> HasMax{"MaxTokens > 0？"}
+    HasMax -- 否 --> Done["完成轻量清理"]
+    HasMax -- 是 --> Threshold["ThresholdContextStrategy<br/>记录上下文压力<br/>必要时触发摘要压缩或阻断"]
+    Threshold --> Summary["SummaryContextStrategy<br/>超过 TriggerRatio 时<br/>摘要旧消息并保留近期上下文"]
+    Summary --> Done
+```
 
-为正数时，默认策略链会包含 `ThresholdContextStrategy`。该策略会写入
-`AgentState.ContextStatus`，并按剩余 token 数执行三档渐进响应：
+内置策略如下：
+
+| 策略 | 触发条件 | 行为 | 适用场景 |
+| --- | --- | --- | --- |
+| `ToolResultContextStrategy` | 默认总会进入；有 offloader 或工具结果超过 `ToolResultLimit` 时产生实际效果 | 卸载 base64 `DataBlock`；截断或卸载超长 `ToolResultBlock` | 工具返回大文件、大文本或多模态数据 |
+| `ThresholdContextStrategy` | `MaxTokens > 0`；默认绝对阈值只在 `MaxTokens` 大于 Warning 阈值时自动生效 | 写入 `AgentState.ContextStatus`；剩余 token 过低时摘要压缩；压缩后仍不足时返回 `ContextWindowError` | 长会话、需要提前发现上下文压力或阻断危险请求 |
+| `SummaryContextStrategy` | `MaxTokens > 0`，且当前请求达到 `TriggerRatio * MaxTokens` | 保留近期上下文，把旧消息交给模型生成结构化摘要；有 offloader 时把被压缩消息写入沙箱或外部存储 | 希望自动压缩旧上下文，同时保留最近指令和未完成工具调用 |
+
+`MaxTokens` 为 `0` 时，阈值策略和摘要策略都会跳过，默认只执行轻量清理。需要自动摘要压缩、上下文压力状态或阻断行为时，必须设置 `MaxTokens`。
+
+`ThresholdContextStrategy` 会按剩余 token 数执行三档渐进响应：
 
 | 阈值 | 默认值 | 行为 |
 | --- | ---: | --- |
@@ -91,9 +126,9 @@ agent.WithContextConfig(agent.ContextConfig{
 内置绝对阈值仅在 `MaxTokens` 大于 Warning 阈值时自动生效。较小模型窗口或测试场景需要三档行为时，应显式配置更小的
 `ThresholdContextStrategy` 阈值。
 
-既有摘要策略仍作为基于比例的兜底：当前请求超过 `TriggerRatio * MaxTokens` 时，摘要策略会保留最新上下文，让模型生成结构化摘要，并通过已配置的 offloader 或沙箱卸载被压缩的旧消息。
+`SummaryContextStrategy` 是基于比例的摘要策略。当前请求达到 `TriggerRatio * MaxTokens` 时，它会按 `ReserveRatio * MaxTokens` 尽量保留最近消息；未完成的工具调用、运行中的工具结果和需要继续确认的工具状态会被保留，避免压缩后丢失正在进行的动作。被压缩的旧消息会写入 `AgentState.Summary`；如果配置了 offloader 或 Sandbox 沙箱，还会把原始旧消息卸载到外部存储，并在摘要中留下引用。
 
-替换策略链时可以自定义三档阈值：
+替换策略链时可以自定义三档阈值。只要仍希望保留默认清理和摘要行为，就需要把对应内置策略也放回链路中：
 
 ```go
 agent.WithContextStrategies(
@@ -107,13 +142,13 @@ agent.WithContextStrategies(
 )
 ```
 
-应用需要自定义存储或压缩策略时，可以替换上下文策略链：
+应用需要自定义存储、压缩策略或摘要写入方式时，可以实现 `agent.ContextStrategy` 并替换上下文策略链：
 
 ```go
 agent.WithContextStrategies(customStrategy)
 ```
 
-只需要覆盖少量字段时，可以先使用 `agent.DefaultContextConfig()` 获取默认值。
+`WithContextStrategies` 是替换而不是追加。传入自定义策略后，默认的工具结果清理、阈值控制和摘要压缩不会自动保留；需要哪些内置行为，就显式传入哪些策略。只需要覆盖少量字段时，可以先使用 `agent.DefaultContextConfig()` 获取默认值。
 
 配置建议：
 

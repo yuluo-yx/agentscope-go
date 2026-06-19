@@ -23,6 +23,19 @@ go run ./example/workspace/local
 
 ## 选择路线
 
+```{mermaid}
+flowchart TD
+    Start["选择示例"] --> HasKey{"是否配置<br/>在线模型 Key？"}
+    HasKey -- 否 --> Local["本地优先<br/>agent/basic<br/>tool/function<br/>workspace/local"]
+    HasKey -- 是 --> Goal{"目标能力"}
+    Goal -- 模型供应商 --> Model["model/*/chat<br/>embedding / tts / stt"]
+    Goal -- 工具开发 --> Tools["tool/function<br/>tool/builtin<br/>tool/mcp<br/>tool/task<br/>tool/skill"]
+    Goal -- Agent 流程 --> Agent["agent/basic<br/>agent/configuration<br/>agent/context_strategy<br/>agent/permission"]
+    Goal -- 服务集成 --> Integration["integration/gin<br/>integration/kratos"]
+    Goal -- 隔离执行 --> Sandbox["workspace/local<br/>workspace/docker<br/>workspace/agentsandbox"]
+    Goal -- 观测和 Hook --> Hooks["agent/hooks<br/>agent/middleware_tracing<br/>o11y"]
+```
+
 | 目标 | 建议示例 |
 | --- | --- |
 | 了解消息结构 | `example/message` |
