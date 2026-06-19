@@ -47,10 +47,30 @@ parts:
       - file: en/task/examples
         title: Examples
 
-  - caption: 快速开始
+  - caption: Integration
+    chapters:
+      - file: en/integration/index
+        title: Integration
+
+  - caption: Blogs
+    chapters:
+      - file: en/blogs/index
+        title: Blogs
+
+  - caption: Community
+    chapters:
+      - file: en/community/index
+        title: Community
+
+  - caption: 首页
     chapters:
       - file: zh/intro
-        title: 简介
+        title: 首页
+
+  - caption: 快速开始
+    chapters:
+      - file: zh/quickstart/feature-overview
+        title: 功能总览
       - file: zh/quickstart/installation
         title: 安装
       - file: zh/quickstart/key-concepts
@@ -69,14 +89,29 @@ parts:
       - file: zh/task/mcp
         title: 模型上下文协议
       - file: zh/task/hook
-        title: 钩子系统
+        title: Hook 系统
       - file: zh/task/state
         title: 状态管理
       - file: zh/task/workspace
-        title: Workspace
+        title: Sandbox 沙箱
       - file: zh/task/message
         title: 消息
       - file: zh/task/permission
         title: 权限
       - file: zh/task/examples
         title: 示例
+
+  - caption: 集成
+    chapters:
+      - file: zh/integration/index
+        title: 集成
+
+  - caption: 博客
+    chapters:
+      - file: zh/blogs/index
+        title: 博客
+
+  - caption: 社区
+    chapters:
+      - file: zh/community/index
+        title: 社区

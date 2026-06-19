@@ -34,7 +34,10 @@ bibtex_bibfiles:
   - references.bib
 
 sphinx:
+  extra_extensions:
+    - sphinxcontrib.mermaid
   config:
+    mermaid_version: "11.12.1"
     html_theme: furo
     pygments_style: "friendly"
     html_favicon: _static/logo.svg
@@ -48,14 +51,97 @@ sphinx:
     use_multitoc_numbering: false
     html_js_files:
       - language.js
+      - tabs.js
     html_css_files:
       - custom.css
+    html_context:
+      docs_top_tabs:
+        - id: home
+          label_en: Home
+          label_zh: 首页
+          href_en: en/intro
+          href_zh: zh/intro
+          prefixes_en:
+            - en/intro
+          prefixes_zh:
+            - zh/intro
+          sections_en: []
+          sections_zh: []
+          languages:
+            - en
+            - zh
+        - id: docs
+          label_en: Docs
+          label_zh: 文档
+          href_en: en/quickstart/installation
+          href_zh: zh/quickstart/feature-overview
+          prefixes_en:
+            - en/quickstart
+            - en/task
+          prefixes_zh:
+            - zh/quickstart
+            - zh/task
+          sections_en:
+            - Quick Start
+            - Advanced Topics
+          sections_zh:
+            - 快速开始
+            - 高级主题
+          languages:
+            - en
+            - zh
+        - id: integration
+          label_en: Integration
+          label_zh: 集成
+          href_en: en/integration/index
+          href_zh: zh/integration/index
+          prefixes_en:
+            - en/integration
+          prefixes_zh:
+            - zh/integration
+          sections_en:
+            - Integration
+          sections_zh:
+            - 集成
+          languages:
+            - en
+            - zh
+        - id: blogs
+          label_en: Blogs
+          label_zh: 博客
+          href_en: en/blogs/index
+          href_zh: zh/blogs/index
+          prefixes_en:
+            - en/blogs
+          prefixes_zh:
+            - zh/blogs
+          sections_en:
+            - Blogs
+          sections_zh:
+            - 博客
+          languages:
+            - en
+            - zh
+        - id: community
+          label_en: Community
+          label_zh: 社区
+          href_en: en/community/index
+          href_zh: zh/community/index
+          prefixes_en:
+            - en/community
+          prefixes_zh:
+            - zh/community
+          sections_en:
+            - Community
+          sections_zh:
+            - 社区
+          languages:
+            - en
+            - zh
     html_sidebars:
       "**":
         - "sidebar/scroll-start.html"
         - "sidebar/brand.html"
-        - "language-switch.html"
-        - "sidebar/search.html"
         - "sidebar/navigation.html"
         - "sidebar/ethical-ads.html"
         - "sidebar/scroll-end.html"
