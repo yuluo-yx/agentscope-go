@@ -224,8 +224,9 @@ for chunk := range chunks {
 ```
 
 实时语音识别使用 `NewRealtimeModel` 创建长连接模型，并通过 `NewSession`
-管理一次 WebSocket 会话。`Responses()` 会持续输出 `IsLast=false` 的实时
-文本和 `IsLast=true` 的最终文本；如果服务端返回错误，终止响应会携带
+管理一次 WebSocket 会话。一个 Session 可以持续接收多个 PCM 音频块，适合
+长连接、多轮和多段语音识别。`Responses()` 会持续输出 `IsLast=false`
+的实时文本和 `IsLast=true` 的最终文本；如果服务端返回错误，终止响应会携带
 `Error`。
 
 ```go
@@ -262,6 +263,27 @@ for chunk := range session.Responses() {
 
 DashScope STT model card 通过 `dashscopestt.ListModels()` 暴露，包含批量
 `paraformer-v2` 和实时 `qwen3-asr-flash-realtime`。
+
+如果需要从电脑麦克风实时识别，可以运行 `example/model/dashscope/stt_microphone`。
+该示例使用 `malgo` 打开本机默认麦克风，采集 16-bit PCM 单声道音频，并通过
+`session.Push` 持续发送到 DashScope realtime STT。按 `Ctrl+C` 后，示例会先
+停止麦克风，再调用 `session.Finish` 获取最终文本。
+
+```bash
+cd example/model/dashscope/stt_microphone
+export AI_DASHSCOPE_API_KEY="your-dashscope-key"
+go run .
+```
+
+常用参数如下：
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `--language` | `zh` | 传给 Qwen-ASR realtime 的语言提示 |
+| `--sample-rate` | `16000` | 麦克风采样率，支持 `8000` 和 `16000` |
+| `--chunk-ms` | `100` | 每个音频块的目标时长，单位为毫秒 |
+| `--silence-ms` | `400` | 服务端 VAD 判断一句话结束的静音时长，单位为毫秒 |
+| `--queue-size` | `32` | 麦克风回调到网络发送之间的有界队列长度 |
 
 ## 流式响应
 

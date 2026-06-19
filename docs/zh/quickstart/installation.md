@@ -88,4 +88,4 @@ go run ./example/tool/function
 go run ./example/workspace/local
 ```
 
-需要模型供应商完整调用路径时，再进入 `example/model/*/chat`、`example/model/dashscope/embedding`、`example/model/dashscope/tts` 或 `example/model/dashscope/stt`。
+需要模型供应商完整调用路径时，再进入 `example/model/*/chat`、`example/model/dashscope/embedding`、`example/model/dashscope/tts`、`example/model/dashscope/stt` 或 `example/model/dashscope/stt_microphone`。

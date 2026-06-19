@@ -57,7 +57,8 @@ flowchart TD
 | `model/anthropic/chat` | Anthropic ChatModel 非流式、流式、token 估算和工具调用闭环 |
 | `model/dashscope/chat` | DashScope OpenAI-compatible ChatModel、多模态消息、token 估算和工具调用闭环 |
 | `model/dashscope/embedding` | DashScope 文本向量模型，覆盖多输入 embedding 和维度配置 |
-| `model/dashscope/stt` | DashScope 语音识别模型，读取本地 WAV 文件并输出识别文本 |
+| `model/dashscope/stt` | DashScope 语音识别模型，读取本地 WAV 或 PCM 文件并输出批量或 realtime 识别文本 |
+| `model/dashscope/stt_microphone` | DashScope Qwen-ASR realtime 麦克风示例，监听默认麦克风并实时输出控制台文本 |
 | `model/dashscope/tts` | DashScope 语音合成模型，流式接收音频块并写入 `output.wav` |
 | `model/deepseek/chat` | DeepSeek ChatModel 非流式、流式和工具调用闭环 |
 | `model/gemini/chat` | Gemini ChatModel 多模态消息、token 估算、非流式、流式和工具调用闭环 |
@@ -102,6 +103,8 @@ export AI_ZHIPU_API_KEY=your-zhipu-key
 ```
 
 OpenAI 示例额外支持 `AI_OPENAI_PROXY_URL`，用于本地代理访问。Ollama 示例默认连接 `http://127.0.0.1:11434`。
+
+`example/model/dashscope/stt_microphone` 会访问本机默认麦克风，并通过 DashScope WebSocket 发起真实 realtime STT 请求。首次在 macOS 上运行时，需要允许当前终端或 IDE 访问麦克风。
 
 ## 示例文档
 
