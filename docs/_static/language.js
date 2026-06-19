@@ -25,11 +25,9 @@
     const currentLang = getCurrentPageLanguage();
     localStorage.setItem("preferred-language", currentLang);
 
-    setTimeout(() => {
-      if (window.switchLanguage) {
-        window.switchLanguage(currentLang, true);
-      }
-    }, 5);
+    if (window.switchLanguage) {
+      window.switchLanguage(currentLang, true);
+    }
   }
 
   if (document.readyState === "loading") {

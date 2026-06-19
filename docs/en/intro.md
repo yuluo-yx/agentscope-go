@@ -4,16 +4,6 @@
 
 AgentScope Go provides the building blocks for agents that can talk to chat models, call tools, keep runtime state, manage permissions, and run against a local workspace. The implementation follows the Python AgentScope design where it fits Go idioms: packages are explicit, APIs are typed, and examples are small standalone Go modules.
 
-## Highlights
-
-- **Agent loop**: `agent.Agent` coordinates model reasoning, tool execution, tool-result feedback, and final replies.
-- **Messages**: `message.Message` stores system, user, assistant, tool-call, tool-result, and data blocks.
-- **Models**: OpenAI, Anthropic, DashScope, DeepSeek, Moonshot, XAI, and Ollama chat integrations are available.
-- **Tools**: function tools, built-in file/shell tools, task tools, skill loading, and MCP tool adapters share the same `tool.Tool` interface.
-- **Permissions**: permission modes and rules decide whether a tool call can run.
-- **State**: `state.AgentState` carries conversation context, task state, permission context, and tool caches.
-- **Workspace**: `workspace/local.Workspace` provides a local file environment, skills, and offload helpers for tools.
-
 ## Requirements
 
 - Go 1.26.3 or newer.
@@ -63,10 +53,8 @@ func main() {
 		panic(err)
 	}
 
-	for _, block := range response.Content {
-		if text, ok := block.(*message.TextBlock); ok {
-			fmt.Println(text.Text)
-		}
+	if text := response.GetTextContent(); text != nil {
+		fmt.Println(*text)
 	}
 }
 ```

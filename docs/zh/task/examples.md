@@ -2,6 +2,8 @@
 
 示例位于 `example/`。每个子目录都是独立 Go Module，包含自己的 `go.mod`、`main.go`、`README.md` 和 `README-zh.md`。
 
+示例按功能拆分，而不是按教程顺序拆分。不依赖在线模型的示例适合本地验证；模型、工具、Agent 和 Sandbox 沙箱示例可按目标单独运行。
+
 ## 运行示例
 
 ```bash
@@ -9,18 +11,54 @@ cd example/tool/mcp
 go run .
 ```
 
+模型相关示例通常会发起真实服务请求。运行前需要设置对应供应商的 API Key。Ollama 示例需要本地 Ollama 服务和已拉取的模型。
+
+不想配置在线模型时，可以先运行：
+
+```bash
+go run ./example/agent/basic
+go run ./example/tool/function
+go run ./example/workspace/local
+```
+
+## 选择路线
+
+| 目标 | 建议示例 |
+| --- | --- |
+| 了解消息结构 | `example/message` |
+| 了解 Agent ReAct 循环 | `example/agent/basic` |
+| 写自定义工具 | `example/tool/function` |
+| 接 MCP 工具 | `example/tool/mcp` |
+| 接文件和 Shell 工具 | `example/workspace/local`、`example/tool/builtin` |
+| 理解权限确认 | `example/agent/permission` |
+| 理解中间件 | `example/agent/hooks`、`example/agent/middleware_tracing` |
+| 接真实模型 | `example/model/*/chat` |
+| 接 HTTP 服务 | `example/integration/gin`、`example/integration/kratos` |
+| 做隔离执行 | `example/workspace/docker`、`example/workspace/agentsandbox` |
+
 ## 示例矩阵
 
 | 目录 | 用途 |
 | --- | --- |
-| `message` | 构造系统、用户和助手消息 |
-| `model/providers` | 构造模型供应商和估算 Token |
-| `model/dashscope` | DashScope 聊天、工具 Schema、数据块输入和可选真实调用 |
+| `message` | system、user、assistant 消息组成的对话历史 |
+| `model/anthropic/chat` | Anthropic ChatModel 非流式、流式、token 估算和工具调用闭环 |
+| `model/dashscope/chat` | DashScope OpenAI-compatible ChatModel、多模态消息、token 估算和工具调用闭环 |
+| `model/dashscope/embedding` | DashScope 文本向量模型，覆盖多输入 embedding 和维度配置 |
+| `model/dashscope/stt` | DashScope 语音识别模型，读取本地 WAV 文件并输出识别文本 |
+| `model/dashscope/tts` | DashScope 语音合成模型，流式接收音频块并写入 `output.wav` |
+| `model/deepseek/chat` | DeepSeek ChatModel 非流式、流式和工具调用闭环 |
+| `model/gemini/chat` | Gemini ChatModel 多模态消息、token 估算、非流式、流式和工具调用闭环 |
+| `model/moonshot/chat` | Moonshot ChatModel 多模态消息、token 估算、非流式、流式和工具调用闭环 |
+| `model/ollama/chat` | 本地 Ollama ChatModel 非流式、流式和工具调用闭环 |
+| `model/openai/chat` | OpenAI ChatModel 非流式、流式、代理 HTTP client 和工具调用闭环 |
+| `model/xai/chat` | xAI ChatModel 多模态消息、token 估算、非流式、流式和工具调用闭环 |
+| `model/zhipu/chat` | 智谱 AI ChatModel 非流式、流式、token 估算和工具调用闭环 |
 | `agent/basic` | 使用脚本模型和任务工具的智能体示例 |
+| `agent/team` | 进程内 leader/worker Agent team tools 与 inbox 投递 |
 | `agent/configuration` | Agent model fallback、ReAct 配置和本地上下文清理 |
-| `agent/context_strategy` | 摘要压缩、workspace offload 和自定义上下文策略 |
+| `agent/context_strategy` | 摘要压缩、沙箱 offload 和自定义上下文策略 |
 | `agent/external` | Agent 外部工具执行暂停与恢复流程 |
-| `agent/hooks` | Agent middleware hook 示例，覆盖 reply、reasoning、model call、acting 和 system prompt |
+| `agent/hooks` | Agent middleware Hook 示例，覆盖 reply、reasoning、model call、acting 和 system prompt |
 | `agent/middleware_tracing` | reply、model call 和 tool execution span 的 tracing middleware |
 | `agent/permission` | Agent 权限确认与恢复流程 |
 | `integration/gin` | Gin HTTP 集成，演示底层 ChatModel 流式和 Agent 事件流式 |
@@ -30,15 +68,28 @@ go run .
 | `tool/mcp` | MCP 客户端和通过 Toolkit 执行 MCP 工具 |
 | `tool/task` | 任务工具用法 |
 | `tool/skill` | 加载本地 `SKILL.md` |
-| `workspace/local` | 本地 Workspace 工具、Skill 和卸载能力 |
-| `workspace/docker` | Docker Workspace 工具、容器文件操作和可选 ChatModel 回复 |
+| `workspace/local` | 本地沙箱工具、Skill 和卸载能力 |
+| `workspace/docker` | Docker 沙箱工具、容器文件操作和可选 ChatModel 回复 |
+| `workspace/agentsandbox` | Kubernetes Agent Sandbox 后端工具和可选 Agent 集成 |
+| `o11y` | 轻量 tracing、middleware 事件和模型调用观测示例 |
 
 ## 真实模型调用
 
-设置 `AI_DASHSCOPE_API_KEY` 可以运行 DashScope 真实调用路径：
+不同 provider 使用不同环境变量。常见变量如下：
 
 ```bash
-AI_DASHSCOPE_API_KEY=your-key go run .
+export AI_OPENAI_API_KEY=your-openai-key
+export AI_ANTHROPIC_API_KEY=your-anthropic-key
+export AI_DASHSCOPE_API_KEY=your-dashscope-key
+export AI_DEEPSEEK_API_KEY=your-deepseek-key
+export AI_GEMINI_API_KEY=your-gemini-key
+export AI_MOONSHOT_API_KEY=your-moonshot-key
+export AI_XAI_API_KEY=your-xai-key
+export AI_ZHIPU_API_KEY=your-zhipu-key
 ```
 
-没有 Key 时，示例会尽可能保留本地或离线路径。
+OpenAI 示例额外支持 `AI_OPENAI_PROXY_URL`，用于本地代理访问。Ollama 示例默认连接 `http://127.0.0.1:11434`。
+
+## 示例文档
+
+每个示例目录都有自己的 `README-zh.md`。主题页只解释入口和取舍；具体运行参数、输出样例和排错说明以示例目录内文档为准。

@@ -2,6 +2,23 @@
 
 `model` 包定义统一模型接口。各模型供应商包负责把 SDK 的消息、工具 Schema、流式事件和 Token 统计适配到该接口。
 
+模型层是 AgentScope Go 的最小可用层。普通聊天、摘要、分类或结构化抽取服务可以只使用 `ChatModel`，不需要引入 Agent。只有当模型需要自动调用工具、处理权限或产生执行事件时，才需要继续接入 `agent.Agent`。
+
+```{mermaid}
+flowchart LR
+    App["业务代码"] --> Request["model.CallRequest"]
+    Request --> Message["message.Message 列表"]
+    Request --> Tools["可选工具 Schema"]
+    Request --> Params["模型参数"]
+    Request --> ChatModel["model.ChatModel"]
+    ChatModel --> Adapter["供应商适配包"]
+    Adapter --> Provider["OpenAI / DashScope / Anthropic / Gemini 等"]
+    Provider --> Adapter
+    Adapter --> Response["model.ChatResponse"]
+    Response --> Blocks["TextBlock / ThinkingBlock / ToolCallBlock / DataBlock"]
+    Blocks --> App
+```
+
 ## ChatModel
 
 ```go
@@ -13,26 +30,124 @@ type ChatModel interface {
 }
 ```
 
+接口含义如下：
+
+| 方法 | 用途 | 使用建议 |
+| --- | --- | --- |
+| `Name` | 返回供应商和模型名，用于日志、事件和诊断 | 适合打入请求日志 |
+| `Call` | 一次性返回完整模型响应 | 普通后端 API 最容易接入 |
+| `Stream` | 返回模型响应分块，最后一个分块 `IsLast=true` | 前端流式输出、Agent 事件流使用 |
+| `CountTokens` | 估算或计算消息和工具 Schema 的 token 数 | 上下文压缩和预算控制使用 |
+
+`Call` 和 `Stream` 都接收 `model.CallRequest`。请求中可以只传消息，也可以传工具 Schema、工具选择、模型参数和元数据。
+
+```go
+user, err := message.NewUserMessage("user", "Summarize AgentScope Go in one sentence.")
+if err != nil {
+	panic(err)
+}
+
+response, err := chat.Call(ctx, model.CallRequest{
+	Messages: []*message.Message{user},
+	Parameters: map[string]any{
+		"temperature": 0.2,
+	},
+})
+if err != nil {
+	panic(err)
+}
+
+if text := response.GetTextContent(); text != nil {
+	fmt.Println(*text)
+}
+```
+
+不同供应商对 `Parameters` 的支持不完全一致。生产代码更推荐使用供应商包提供的类型化参数 Option，例如 `dashscope.WithChatParameters`、`openai.WithChatParameters` 或 `gemini.WithChatParameters`。
+
 ## 供应商
 
-| 包 | 说明 |
-| --- | --- |
-| `model/openai` | OpenAI SDK 集成 |
-| `model/openairesponse` | OpenAI Responses API 集成 |
-| `model/anthropic` | Anthropic SDK 集成 |
-| `model/dashscope` | DashScope OpenAI 兼容端点 |
-| `model/deepseek` | OpenAI 兼容包装 |
-| `model/gemini` | Gemini 官方 Go SDK 集成 |
-| `model/moonshot` | OpenAI 兼容包装 |
-| `model/xai` | OpenAI 兼容包装 |
-| `model/zhipu` | 智谱 OpenAI 兼容包装 |
-| `model/ollama` | Ollama 官方 Go API |
+| 包 | 能力 | 常用凭据入口 | 说明 |
+| --- | --- | --- | --- |
+| `model/openai` | Chat Completions | `credential.NewOpenAI(...).ChatCredential()` 或 `openai.NewCredential` | 支持 OpenAI SDK、代理 HTTP client 和模型元数据 |
+| `model/openairesponse` | Responses API | `credential.NewOpenAI(...).ResponseCredential()` 或 `openairesponse.NewCredential` | 面向 Responses API 的独立适配 |
+| `model/anthropic` | Messages API | `credential.NewAnthropic(...).ChatCredential()` 或 `anthropic.NewCredential` | 使用 Anthropic 官方 SDK |
+| `model/dashscope` | OpenAI 兼容聊天端点 | `credential.NewDashScope(...).ChatCredential()` 或 `dashscope.NewCredential` | 适合通义千问聊天和工具调用 |
+| `model/deepseek` | OpenAI 兼容聊天端点 | `deepseek.NewCredential` | 复用 OpenAI 兼容请求路径 |
+| `model/gemini` | Gemini 聊天模型 | `credential.NewGemini(...).ChatCredential()` 或 `gemini.NewCredential` | 使用 Gemini 官方 Go SDK |
+| `model/moonshot` | OpenAI 兼容聊天端点 | `credential.NewMoonshot(...).ChatCredential()` 或 `moonshot.NewCredential` | 面向 Moonshot/Kimi 模型 |
+| `model/xai` | OpenAI 兼容聊天端点 | `xai.NewCredential` | 面向 xAI 模型 |
+| `model/zhipu` | OpenAI 兼容聊天端点 | `zhipu.NewCredential` | 面向智谱模型 |
+| `model/ollama` | 本地 Ollama | `ollama.NewCredential` | 默认连接本地 Ollama 服务 |
+
+多数供应商包都提供 `ListModels()`，用于读取仓库内置的模型卡片。模型卡片适合做能力展示、配置校验或管理后台候选列表，但它不是线上服务的实时模型列表。
+
+```go
+cards, err := dashscope.ListModels()
+if err != nil {
+	panic(err)
+}
+for _, card := range cards {
+	fmt.Println(card.Name)
+}
+```
+
+## 创建模型
+
+推荐在业务代码中把模型创建集中到一个小函数里。这样 API Key、base URL、超时、代理和默认参数都能统一管理。
+
+```go
+func newDashScopeChat() (model.ChatModel, error) {
+	maxTokens := int64(512)
+	temperature := 0.2
+
+	return dashscope.NewChatModel(
+		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
+		"qwen-plus",
+		dashscope.WithStream(false),
+		dashscope.WithChatParameters(dashscope.ChatParameters{
+			MaxTokens:   &maxTokens,
+			Temperature: &temperature,
+		}),
+	)
+}
+```
+
+`WithStream` 在部分供应商包中用于记录兼容性偏好。调用 `Call` 时仍走非流式路径，调用 `Stream` 时仍走流式路径。不要把它当成上层是否返回流式 HTTP 的唯一开关，上层接口应由服务边界决定。
+
+## 工具调用
+
+工具 Schema 使用 OpenAI 兼容的 function schema 表示。模型层只负责把 Schema 发给供应商，并把供应商返回的工具调用转换成 `message.ToolCallBlock`。是否执行工具由调用方代码或 `agent.Agent` 决定。
+
+```go
+schemas, err := kit.ToolSchemas()
+if err != nil {
+	panic(err)
+}
+
+response, err := chat.Call(ctx, model.CallRequest{
+	Messages: messages,
+	Tools:    schemas,
+})
+if err != nil {
+	panic(err)
+}
+
+for _, block := range response.GetContentBlocks("tool_call") {
+	call := block.(*message.ToolCallBlock)
+	result, err := kit.RunTool(ctx, call, state.NewAgentState())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(result.State)
+}
+```
+
+手动执行工具适合需要完全控制模型轮次的场景。需要多轮工具回填、权限确认和事件流时，可以把模型和 `Toolkit` 交给 `agent.Agent`。
 
 ## Embedding
 
 `embedding` 包定义 embedding 请求、响应、缓存辅助能力和供应商模型元数据。Go
-实现会为已覆盖的同类 provider 内嵌与 Python AgentScope 能力定义对齐的
-embedding model card：
+实现会为已覆盖的 provider 内嵌 embedding model card：
 
 ```go
 cards, err := dashscopeembedding.ListModels()
@@ -40,6 +155,25 @@ cards, err := dashscopeembedding.ListModels()
 
 当前已覆盖 `embedding/dashscope`、`embedding/gemini`、`embedding/openai` 和
 `embedding/ollama`。
+
+文本向量模型不实现 `ChatModel`。它们属于单独的 `embedding` 包，适合检索、召回、相似度搜索和上下文构建。
+
+```go
+embedder, err := dashscopeembedding.NewTextModel(
+	credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).EmbeddingCredential(),
+	"text-embedding-v4",
+)
+if err != nil {
+	panic(err)
+}
+
+response, err := embedder.Embed(ctx, embedding.EmbeddingRequest{
+	Inputs: []embedding.EmbeddingInput{
+		embedding.NewTextInput("AgentScope Go"),
+		embedding.NewTextInput("tool calling"),
+	},
+})
+```
 
 ## 语音能力
 
@@ -65,8 +199,7 @@ for chunk := range chunks {
 }
 ```
 
-DashScope TTS model card 与 Python AgentScope 的同类 provider 能力定义保持对齐，并通过
-`dashscopetts.ListModels()` 暴露，包含普通和 realtime 两类模型定义。
+DashScope TTS model card 通过 `dashscopetts.ListModels()` 暴露，包含普通和 realtime 两类模型定义。
 
 `WithStream(true)` 会输出兼容 WAV 的流式分块：首个分块包含 streaming WAV
 header 和 PCM 字节，后续分块在同一个 `audio/wav` media type 下追加 PCM
@@ -92,16 +225,27 @@ for chunk := range chunks {
 
 DashScope STT model card 通过 `dashscopestt.ListModels()` 暴露。
 
-## 工具 Schema
+## 流式响应
 
-工具以 OpenAI 兼容的 function schema 传给模型：
+`Stream` 返回 `<-chan ChatResponse`。实现约定是先发送若干 `IsLast=false` 的增量块，最后发送一个 `IsLast=true` 的完整响应。若供应商流式过程中失败，最终块会带 `Error`，调用方应检查。
 
 ```go
-schemas, err := kit.ToolSchemas()
-response, err := chat.Call(ctx, model.CallRequest{
-	Messages: messages,
-	Tools:    schemas,
-})
+chunks, err := chat.Stream(ctx, model.CallRequest{Messages: messages})
+if err != nil {
+	panic(err)
+}
+
+for chunk := range chunks {
+	if chunk.Error != nil {
+		panic(chunk.Error)
+	}
+	if text := chunk.GetTextContent(); text != nil {
+		fmt.Print(*text)
+	}
+	if chunk.IsLast {
+		fmt.Println("\nstream done")
+	}
+}
 ```
 
 `Call` 和 `Stream` 都使用同一个 `ChatResponse` 结构。需要读取模型返回的文本块内容时，可以直接调用：
@@ -117,3 +261,11 @@ if len(toolCalls) > 0 {
 	fmt.Println(toolCalls[0].BlockID())
 }
 ```
+
+## 取舍建议
+
+- 简单模型调用：只依赖 `model` 和 `message`。
+- 需要工具 Schema：再引入 `tool.Toolkit`。
+- 需要多轮工具闭环：使用 `agent.Agent`。
+- 需要上下文压缩：给 Agent 配置 `ContextConfig` 和上下文策略。
+- 需要供应商特有参数：优先使用供应商包的类型化参数结构，不要把所有内容塞进 `Parameters`。
