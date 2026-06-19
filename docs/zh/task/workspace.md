@@ -42,6 +42,7 @@ flowchart TD
 | 本地沙箱 | `workspace/local` | 本地开发、测试、普通服务端文件工具 | 本机文件系统 |
 | Docker 沙箱 | `workspace/docker` | 需要容器隔离的文件和 Shell 工具 | Docker engine |
 | Agent Sandbox 后端 | `workspace/agentsandbox` | Kubernetes 中运行隔离工具任务 | Kubernetes、agent-sandbox controller 和 SandboxTemplate |
+| Daytona 沙箱 | `workspace/daytona` | 使用 Daytona 托管或自托管沙箱执行文件和 Shell 工具 | Daytona API 与 Go SDK |
 
 本地沙箱最容易开始。Docker 和 Agent Sandbox 适合隔离更强、工具执行风险更高或运行环境需要复现的场景。
 
@@ -116,6 +117,31 @@ if err := ws.Initialize(ctx); err != nil {
 `Write` 工具继续接受绝对路径。由于 agent-sandbox Go SDK 的 `Write()` 只接受普通文件名，AgentScope-Go 会先上传临时文件，再在 sandbox 内移动到目标绝对路径。
 
 Agent Sandbox 后端的部署前置条件较多。已经在 Kubernetes 中运行 agent-sandbox，并且需要复用其隔离能力时，才适合选择该后端。普通本地开发优先使用本地或 Docker 沙箱。
+
+## Daytona 沙箱
+
+`workspace/daytona.Workspace` 会通过 Daytona 官方 Go SDK 创建或连接 Daytona sandbox，并在 Daytona runtime 中执行 `Bash`、`Read`、`Write`、`Edit`、`Glob` 和 `Grep` 工具。
+
+```go
+ws, err := daytona.NewWorkspace(
+	daytona.WithImage("python:3.12"),
+	daytona.WithHostWorkdir("/tmp/agentscope-daytona-sandbox"),
+)
+if err != nil {
+	panic(err)
+}
+if err := ws.Initialize(ctx); err != nil {
+	panic(err)
+}
+```
+
+前置条件：
+
+- Daytona 账号，或兼容的自托管 Daytona API。
+- `DAYTONA_API_KEY`，或 Daytona SDK 支持的 JWT 环境变量组合。
+- 可选 `DAYTONA_API_URL` 与 `DAYTONA_TARGET`，用于自定义 API 地址和 target/region。
+
+默认情况下，新建的 Daytona sandbox 会在 `Close` 时删除。需要保留沙箱用于排查时，使用 `WithKeepSandbox(true)`；需要接入已有沙箱时，使用 `WithSandboxID` 或 `WithSandboxName`，关闭时只断开本地连接，不删除远端沙箱。
 
 ## 工具
 

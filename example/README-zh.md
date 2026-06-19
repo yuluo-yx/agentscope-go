@@ -52,6 +52,7 @@ go run .
 | `tool/skill` | 本地 `SKILL.md` 加载 |
 | `workspace/local` | workspace 支撑的工具文件操作、skills、上下文与工具结果 offload |
 | `workspace/docker` | Docker workspace 工具、容器文件操作和可选 ChatModel 回复 |
+| `workspace/daytona` | Daytona 沙箱 workspace，在远端沙箱中执行 Python CSV 数据分析 |
 
 ## 外部服务
 

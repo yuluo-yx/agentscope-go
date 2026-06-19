@@ -69,6 +69,31 @@ Connection modes:
 
 The `Write` tool still accepts absolute paths. Because the agent-sandbox Go SDK `Write()` accepts only plain filenames, AgentScope-Go uploads a temporary file first and then moves it to the requested absolute path inside the sandbox.
 
+## Daytona Workspace
+
+`workspace/daytona.Workspace` creates or connects to Daytona sandboxes through the official Daytona Go SDK and runs `Bash`, `Read`, `Write`, `Edit`, `Glob`, and `Grep` inside the Daytona sandbox.
+
+```go
+ws, err := daytona.NewWorkspace(
+	daytona.WithImage("python:3.12"),
+	daytona.WithHostWorkdir("/tmp/agentscope-daytona-workspace"),
+)
+if err != nil {
+	panic(err)
+}
+if err := ws.Initialize(ctx); err != nil {
+	panic(err)
+}
+```
+
+Prerequisites:
+
+- A Daytona account or compatible self-hosted Daytona API.
+- `DAYTONA_API_KEY`, or the JWT environment variables supported by the Daytona SDK.
+- Optional `DAYTONA_API_URL` and `DAYTONA_TARGET` for custom API endpoints and targets.
+
+By default, a newly created Daytona sandbox is deleted when `Close` is called. Use `WithKeepSandbox(true)` to keep it for inspection, or `WithSandboxID` / `WithSandboxName` to connect to an existing sandbox without deleting it.
+
 ## Tools
 
 `ListTools` exposes built-in local file and shell tools:
