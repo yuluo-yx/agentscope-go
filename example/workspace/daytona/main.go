@@ -63,10 +63,24 @@ func run(ctx context.Context) error {
 	}
 	defer func() { _ = os.RemoveAll(root) }()
 
-	keepSandbox := getenvBool("AGENTSCOPE_DAYTONA_KEEP_SANDBOX")
-	ws, err := openDaytonaWorkspace(ctx, root, keepSandbox)
+	keepSandbox, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("AGENTSCOPE_DAYTONA_KEEP_SANDBOX")))
+	image := strings.TrimSpace(os.Getenv("AGENTSCOPE_DAYTONA_IMAGE"))
+	if image == "" {
+		image = "python:3.12"
+	}
+
+	ws, err := daytonaws.NewWorkspace(
+		daytonaws.WithImage(image),
+		daytonaws.WithHostWorkdir(filepath.Join(root, "workspace")),
+		daytonaws.WithKeepSandbox(keepSandbox),
+		daytonaws.WithRequestTimeout(90*time.Second),
+		daytonaws.WithOpenTimeout(4*time.Minute),
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("create Daytona workspace: %w", err)
+	}
+	if err := ws.Initialize(ctx); err != nil {
+		return fmt.Errorf("initialize Daytona workspace: %w", err)
 	}
 	defer func() {
 		if err := ws.Close(context.Background()); err != nil {
@@ -74,21 +88,72 @@ func run(ctx context.Context) error {
 		}
 	}()
 
-	workspaceTools, err := requiredWorkspaceTools(ctx, ws)
+	tools, err := ws.ListTools(ctx)
+	if err != nil {
+		return fmt.Errorf("list Daytona workspace tools: %w", err)
+	}
+	writeTool, err := toolByName(tools, "Write")
 	if err != nil {
 		return err
 	}
-	schema, err := prepareSandboxFiles(ctx, workspaceTools.write)
+	bashTool, err := toolByName(tools, "Bash")
 	if err != nil {
 		return err
 	}
+
+	dir, err := exampleDir()
+	if err != nil {
+		return err
+	}
+	writeState := asstate.NewAgentState()
+	localCSVPath := filepath.Join(dir, fixtureCSVPath)
+	localRunnerPath := filepath.Join(dir, fixtureRunnerPath)
+	if err := uploadExampleFile(ctx, writeTool, localCSVPath, sandboxCSVPath, writeState); err != nil {
+		return err
+	}
+	if err := uploadExampleFile(ctx, writeTool, localRunnerPath, sandboxRunnerPath, writeState); err != nil {
+		return err
+	}
+	schema, err := inspectCSV(localCSVPath, fixtureCSVPath, sandboxCSVPath)
+	if err != nil {
+		return err
+	}
+
 	model, err := newChatModel()
 	if err != nil {
 		return err
 	}
-	reply, err := runAnalysisAgent(ctx, model, workspaceTools, schema)
+	executorTool, err := newPythonAnalysisTool(writeTool, bashTool)
 	if err != nil {
 		return err
+	}
+	kit, err := tool.NewToolkit(executorTool)
+	if err != nil {
+		return fmt.Errorf("create analysis toolkit: %w", err)
+	}
+	agentState := asstate.NewAgentState()
+	agentState.PermissionContext = permission.NewContext(permission.ModeBypass)
+	analyst, err := agentpkg.NewAgent(
+		"DataAnalyst",
+		analysisSystemPrompt(),
+		model,
+		agentpkg.WithToolkit(kit),
+		agentpkg.WithAgentState(agentState),
+	)
+	if err != nil {
+		return fmt.Errorf("create analysis agent: %w", err)
+	}
+	prompt, err := analysisUserPrompt(schema)
+	if err != nil {
+		return err
+	}
+	userMessage, err := message.NewUserMessage("user", prompt)
+	if err != nil {
+		return fmt.Errorf("create user message: %w", err)
+	}
+	reply, err := analyst.Reply(ctx, userMessage)
+	if err != nil {
+		return fmt.Errorf("run analysis agent: %w", err)
 	}
 
 	fmt.Printf("daytona_workspace_alive=%t sandbox_id=%s keep_sandbox=%t model=%s\n",
@@ -103,97 +168,6 @@ func run(ctx context.Context) error {
 		fmt.Println(*text)
 	}
 	return nil
-}
-
-func openDaytonaWorkspace(ctx context.Context, root string, keepSandbox bool) (*daytonaws.Workspace, error) {
-	ws, err := daytonaws.NewWorkspace(
-		daytonaws.WithImage(getenv("AGENTSCOPE_DAYTONA_IMAGE", "python:3.12")),
-		daytonaws.WithHostWorkdir(filepath.Join(root, "workspace")),
-		daytonaws.WithKeepSandbox(keepSandbox),
-		daytonaws.WithRequestTimeout(90*time.Second),
-		daytonaws.WithOpenTimeout(4*time.Minute),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create Daytona workspace: %w", err)
-	}
-	if err := ws.Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("initialize Daytona workspace: %w", err)
-	}
-	return ws, nil
-}
-
-type workspaceTools struct {
-	write asworkspace.Tool
-	bash  asworkspace.Tool
-}
-
-func requiredWorkspaceTools(ctx context.Context, ws *daytonaws.Workspace) (workspaceTools, error) {
-	tools, err := ws.ListTools(ctx)
-	if err != nil {
-		return workspaceTools{}, fmt.Errorf("list Daytona workspace tools: %w", err)
-	}
-	writeTool, err := toolByName(tools, "Write")
-	if err != nil {
-		return workspaceTools{}, err
-	}
-	bashTool, err := toolByName(tools, "Bash")
-	if err != nil {
-		return workspaceTools{}, err
-	}
-	return workspaceTools{write: writeTool, bash: bashTool}, nil
-}
-
-func prepareSandboxFiles(ctx context.Context, writeTool asworkspace.Tool) (csvSchema, error) {
-	dir, err := exampleDir()
-	if err != nil {
-		return csvSchema{}, err
-	}
-	state := asstate.NewAgentState()
-	localCSVPath := filepath.Join(dir, fixtureCSVPath)
-	localRunnerPath := filepath.Join(dir, fixtureRunnerPath)
-	if err := uploadExampleFile(ctx, writeTool, localCSVPath, sandboxCSVPath, state); err != nil {
-		return csvSchema{}, err
-	}
-	if err := uploadExampleFile(ctx, writeTool, localRunnerPath, sandboxRunnerPath, state); err != nil {
-		return csvSchema{}, err
-	}
-	return inspectCSV(localCSVPath, fixtureCSVPath, sandboxCSVPath)
-}
-
-func runAnalysisAgent(ctx context.Context, model asmodel.ChatModel, workspaceTools workspaceTools, schema csvSchema) (*message.Message, error) {
-	executorTool, err := newPythonAnalysisTool(workspaceTools.write, workspaceTools.bash)
-	if err != nil {
-		return nil, err
-	}
-	kit, err := tool.NewToolkit(executorTool)
-	if err != nil {
-		return nil, fmt.Errorf("create analysis toolkit: %w", err)
-	}
-	agentState := asstate.NewAgentState()
-	agentState.PermissionContext = permission.NewContext(permission.ModeBypass)
-	analyst, err := agentpkg.NewAgent(
-		"DataAnalyst",
-		analysisSystemPrompt(),
-		model,
-		agentpkg.WithToolkit(kit),
-		agentpkg.WithAgentState(agentState),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create analysis agent: %w", err)
-	}
-	prompt, err := analysisUserPrompt(schema)
-	if err != nil {
-		return nil, err
-	}
-	userMessage, err := message.NewUserMessage("user", prompt)
-	if err != nil {
-		return nil, fmt.Errorf("create user message: %w", err)
-	}
-	reply, err := analyst.Reply(ctx, userMessage)
-	if err != nil {
-		return nil, fmt.Errorf("run analysis agent: %w", err)
-	}
-	return reply, nil
 }
 
 func analysisSystemPrompt() string {
@@ -229,14 +203,21 @@ CSV schema:
 }
 
 func newChatModel() (asmodel.ChatModel, error) {
-	apiKey := getenvAny("DASHSCOPE_API_KEY", "AI_DASHSCOPE_API_KEY")
+	apiKey := strings.TrimSpace(os.Getenv("DASHSCOPE_API_KEY"))
+	if apiKey == "" {
+		apiKey = strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY"))
+	}
 	if apiKey == "" {
 		return nil, fmt.Errorf("DASHSCOPE_API_KEY or AI_DASHSCOPE_API_KEY is required")
+	}
+	modelName := strings.TrimSpace(os.Getenv("DASHSCOPE_MODEL"))
+	if modelName == "" {
+		modelName = "qwen-plus"
 	}
 	temperature := 0.1
 	return dashscope.NewChatModel(
 		dashscope.NewCredential(apiKey),
-		getenv("DASHSCOPE_MODEL", "qwen-plus"),
+		modelName,
 		dashscope.WithChatParameters(dashscope.ChatParameters{Temperature: &temperature}),
 	)
 }
@@ -268,7 +249,8 @@ type pythonExecutor struct {
 }
 
 func (e *pythonExecutor) run(ctx context.Context, input map[string]any, state *asstate.AgentState) (message.ContentBlockList, error) {
-	code := strings.TrimSpace(stringInput(input, "code"))
+	code, _ := input["code"].(string)
+	code = strings.TrimSpace(code)
 	if code == "" {
 		return nil, fmt.Errorf("RunPythonAnalysis requires generated Python code")
 	}
@@ -279,14 +261,14 @@ func (e *pythonExecutor) run(ctx context.Context, input map[string]any, state *a
 		return nil, err
 	}
 
-	command := strings.Join([]string{
-		"python",
-		shellQuote(sandboxRunnerPath),
-		"--script", shellQuote(generatedScriptPath),
-		"--csv", shellQuote(sandboxCSVPath),
-		"--result", shellQuote(resultPath),
-		"--report", shellQuote(reportPath),
-	}, " ")
+	command := fmt.Sprintf(
+		"python %s --script %s --csv %s --result %s --report %s",
+		sandboxRunnerPath,
+		generatedScriptPath,
+		sandboxCSVPath,
+		resultPath,
+		reportPath,
+	)
 	response, err := runWorkspaceTool(ctx, e.bashTool, map[string]any{
 		"command":    command,
 		"timeout_ms": 90_000,
@@ -295,9 +277,13 @@ func (e *pythonExecutor) run(ctx context.Context, input map[string]any, state *a
 		return nil, err
 	}
 
-	output := strings.TrimSpace(textContent(response.Content))
+	output := ""
+	if text := response.Content.GetTextContent(""); text != nil {
+		output = strings.TrimSpace(*text)
+	}
+	analysisGoal, _ := input["analysis_goal"].(string)
 	payload := map[string]any{
-		"analysis_goal":     stringInput(input, "analysis_goal"),
+		"analysis_goal":     analysisGoal,
 		"csv_path":          sandboxCSVPath,
 		"generated_script":  generatedScriptPath,
 		"result_path":       resultPath,
@@ -361,7 +347,11 @@ func writeSandboxText(ctx context.Context, writeTool asworkspace.Tool, sandboxPa
 		return err
 	}
 	if response.State != message.ToolResultSuccess {
-		return fmt.Errorf("write %s failed: %s", sandboxPath, textContent(response.Content))
+		output := ""
+		if text := response.Content.GetTextContent(""); text != nil {
+			output = *text
+		}
+		return fmt.Errorf("write %s failed: %s", sandboxPath, output)
 	}
 	return nil
 }
@@ -513,52 +503,4 @@ func uniqueExamples(values []string, limit int) []string {
 	}
 	sort.Strings(examples)
 	return examples
-}
-
-func textContent(blocks message.ContentBlockList) string {
-	var builder strings.Builder
-	for _, block := range blocks {
-		if text, ok := block.(*message.TextBlock); ok {
-			builder.WriteString(text.Text)
-		}
-	}
-	return builder.String()
-}
-
-func stringInput(input map[string]any, key string) string {
-	value, _ := input[key].(string)
-	return value
-}
-
-func getenv(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
-func getenvAny(names ...string) string {
-	for _, name := range names {
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func getenvBool(name string) bool {
-	value := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
-	if value == "" {
-		return false
-	}
-	parsed, err := strconv.ParseBool(value)
-	if err != nil {
-		return false
-	}
-	return parsed
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
