@@ -60,6 +60,7 @@ type chatModelOptions struct {
 	contextSize  int
 	maxRetries   int
 	httpClient   *http.Client
+	headers      map[string]string
 }
 
 // WithProviderName sets the logical provider name for OpenAI-compatible wrappers.
@@ -112,6 +113,18 @@ func WithHTTPClient(client *http.Client) ChatModelOption {
 	}
 }
 
+// WithHeader sets a custom HTTP header on every request.
+// This is useful for overriding headers like User-Agent that some relay
+// services or WAF rules may block.
+func WithHeader(key, value string) ChatModelOption {
+	return func(options *chatModelOptions) {
+		if options.headers == nil {
+			options.headers = make(map[string]string)
+		}
+		options.headers[key] = value
+	}
+}
+
 // NewChatModel creates an OpenAI Chat Completions model.
 func NewChatModel(credential Credential, model string, opts ...ChatModelOption) (*ChatModel, error) {
 	options := chatModelOptions{
@@ -150,6 +163,9 @@ func NewChatModel(credential Credential, model string, opts ...ChatModelOption) 
 	}
 	if options.httpClient != nil {
 		clientOptions = append(clientOptions, option.WithHTTPClient(options.httpClient))
+	}
+	for key, value := range options.headers {
+		clientOptions = append(clientOptions, option.WithHeader(key, value))
 	}
 	return &ChatModel{
 		providerName: options.providerName,
