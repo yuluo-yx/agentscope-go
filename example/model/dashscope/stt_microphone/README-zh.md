@@ -34,9 +34,11 @@ go run .
 对着麦克风说话，控制台会持续刷新中间结果，并在服务端 VAD 判断一句话结束后输出最终文本：
 
 ```text
+$ go run . --language zh --sample-rate 16000 --chunk-ms 100 --silence-ms 600
 listening language=zh sample_rate=16000 chunk_ms=100; press Ctrl+C to stop
-partial: 你
-final: 你好
+final: 哈喽，AI框架。。
+^C
+stopping microphone and finishing session
 ```
 
 按 `Ctrl+C` 结束程序。程序会先停止麦克风，再调用 `session.Finish` 获取收尾结果。
