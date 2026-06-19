@@ -203,14 +203,8 @@ func TestModelMetadataNoopRealtimeAndValidation(t *testing.T) {
 	if model.Realtime() || (*dashscope.Model)(nil).Realtime() {
 		t.Fatalf("HTTP model should not report realtime support")
 	}
-	if err := model.Connect(context.Background()); err != nil {
-		t.Fatalf("Connect no-op returned error: %v", err)
-	}
-	if err := model.Close(context.Background()); err != nil {
-		t.Fatalf("Close no-op returned error: %v", err)
-	}
-	if _, err := model.Push(context.Background(), stt.NewAudioBlock([]byte("raw"), "audio/wav")); err == nil {
-		t.Fatalf("Push should reject non-realtime model")
+	if _, err := model.NewSession(context.Background(), stt.SessionRequest{}); err == nil {
+		t.Fatalf("NewSession should reject non-realtime model")
 	}
 	if _, err := model.Recognize(context.Background(), stt.Request{}); err == nil {
 		t.Fatalf("Recognize should reject empty audio")
@@ -254,6 +248,14 @@ func TestListModelsLoadsDashScopeSTTModelCards(t *testing.T) {
 	}
 	if _, ok := card.ParameterSchema["properties"].(map[string]any)["language"]; !ok {
 		t.Fatalf("language schema should be present: %#v", card.ParameterSchema)
+	}
+	realtimeCard := findSTTCard(cards, "qwen3-asr-flash-realtime")
+	if realtimeCard.Name == "" || !realtimeCard.Realtime || realtimeCard.InputTypes[0] != "audio/pcm" {
+		t.Fatalf("DashScope realtime STT card mismatch: %#v", realtimeCard)
+	}
+	realtimeProperties := realtimeCard.ParameterSchema["properties"].(map[string]any)
+	if _, ok := realtimeProperties["mode"]; !ok {
+		t.Fatalf("realtime mode schema should be present: %#v", realtimeCard.ParameterSchema)
 	}
 }
 

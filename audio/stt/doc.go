@@ -12,5 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package stt defines speech-to-text requests, responses, and audio helpers.
+// Package stt defines speech-to-text requests, responses, realtime sessions, and audio helpers.
 package stt

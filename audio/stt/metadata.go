@@ -205,7 +205,7 @@ func mergeParameterSchema(baseSchema map[string]any, overrides map[string]map[st
 		}
 		existing, ok := properties[paramName].(map[string]any)
 		if !ok {
-			continue
+			existing = map[string]any{}
 		}
 		merged := utils.CloneAnyMap(existing)
 		for key, value := range override {
