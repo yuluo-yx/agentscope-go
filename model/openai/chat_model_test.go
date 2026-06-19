@@ -499,6 +499,52 @@ func TestChatModelUsesCustomHTTPClient(t *testing.T) {
 	}
 }
 
+func TestChatModelWithHeaderOverridesRequestHeader(t *testing.T) {
+	t.Parallel()
+
+	headerCh := make(chan http.Header, 1)
+	server := newChatCompletionServer(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		headerCh <- r.Header.Clone()
+		writeJSON(t, w, map[string]any{
+			"id":      "chatcmpl-header",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   "gpt-4o-mini",
+			"choices": []any{map[string]any{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+		})
+	})
+	defer server.Close()
+
+	model, err := asopenai.NewChatModel(
+		asopenai.NewCredential("test-key", asopenai.WithBaseURL(server.URL)),
+		"gpt-4o-mini",
+		asopenai.WithStream(false),
+		asopenai.WithHeader("User-Agent", "TestAgent/1.0"),
+		asopenai.WithHeader("X-Custom-Header", "custom-value"),
+	)
+	if err != nil {
+		t.Fatalf("NewChatModel returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "hello")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	if _, err := model.Call(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}}); err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+	headers := <-headerCh
+	if got := headers.Get("User-Agent"); got != "TestAgent/1.0" {
+		t.Fatalf("User-Agent header not overridden, got %q", got)
+	}
+	if got := headers.Get("X-Custom-Header"); got != "custom-value" {
+		t.Fatalf("custom header not forwarded, got %q", got)
+	}
+}
+
 func TestChatModelValidationAndTokenCount(t *testing.T) {
 	t.Parallel()
 

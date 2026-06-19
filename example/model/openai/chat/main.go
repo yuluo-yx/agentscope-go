@@ -160,16 +160,24 @@ func streamChat() {
 }
 
 func newOpenAIModel(stream bool) asmodel.ChatModel {
+
+	// 使用自定义 http client
 	httpClient, proxyURL := newOpenAIHTTPClient()
 	if proxyURL != "" {
 		fmt.Printf("openai_proxy=%s\n", proxyURL)
 	}
 
 	chat, err := openai.NewChatModel(
-		credential.NewOpenAI(os.Getenv("AI_OPENAI_API_KEY")).ChatCredential(),
-		"gpt-5.4",
+		credential.NewOpenAI(
+			os.Getenv("AI_OPENAI_API_KEY"),
+			// 指定代理地址
+			credential.WithBaseURL("https://xxx.xx/v1"),
+		).ChatCredential(),
+		"gpt-5.5",
 		openai.WithHTTPClient(httpClient),
 		openai.WithStream(stream),
+		// 可以覆盖默认 SDK User-Agent，避免被中转服务 WAF 拦截
+		openai.WithHeader("User-Agent", "Mozilla/5.0"),
 		openai.WithChatParameters(openai.ChatParameters{
 			MaxTokens:   func() *int64 { v := int64(256); return &v }(),
 			Temperature: func() *float64 { v := 0.01; return &v }(),

@@ -1,6 +1,6 @@
 module github.com/yuluo-yx/agentscope-go/example/model/xai/chat
 
-go 1.26.3
+go 1.26.4
 
 require github.com/yuluo-yx/agentscope-go v0.0.0
 
