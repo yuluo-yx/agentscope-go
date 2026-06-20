@@ -64,6 +64,7 @@ func main() {
 | Package | Purpose |
 | --- | --- |
 | `agent` | ReAct-style agent loop and middleware hooks |
+| `loop` | Loop Engineering goals, budgets, verification, state, and events |
 | `message` | Message and content block protocol |
 | `model` | Chat model contracts and provider packages |
 | `tool` | Tool interfaces, Toolkit, function adapters, and tool groups |

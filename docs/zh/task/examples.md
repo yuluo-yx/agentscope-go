@@ -45,6 +45,7 @@ flowchart TD
 | 接文件和 Shell 工具 | `example/workspace/local`、`example/tool/builtin` |
 | 理解权限确认 | `example/agent/permission` |
 | 理解中间件 | `example/agent/hooks`、`example/agent/middleware_tracing` |
+| 构建 Loop Engineering Agent | `example/loop/basic`、`example/loop/assisted-verifier` |
 | 接真实模型 | `example/model/*/chat` |
 | 接 HTTP 服务 | `example/integration/gin`、`example/integration/kratos` |
 | 做隔离执行 | `example/workspace/docker`、`example/workspace/microsandbox`、`example/workspace/agentsandbox` |
@@ -75,6 +76,8 @@ flowchart TD
 | `agent/hooks` | Agent middleware Hook 示例，覆盖 reply、reasoning、model call、acting 和 system prompt |
 | `agent/middleware_tracing` | reply、model call 和 tool execution span 的 tracing middleware |
 | `agent/permission` | Agent 权限确认与恢复流程 |
+| `loop/basic` | report-only Loop Engineering Agent，演示目标、状态和事件 |
+| `loop/assisted-verifier` | assisted Loop Engineering Agent，演示 verifier 和 maker/checker 分离 |
 | `integration/gin` | Gin HTTP 集成，演示底层 ChatModel 流式和 Agent 事件流式 |
 | `integration/kratos` | Kratos HTTP 集成，演示底层 ChatModel 流式和 Agent 事件流式 |
 | `tool/function` | 自定义函数工具 |

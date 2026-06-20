@@ -215,6 +215,8 @@ type AgentState struct {
 	TaskContext *TaskContext `json:"tasks_context"`
 	// Latest context window pressure, updated by context strategies.
 	ContextStatus *ContextStatus `json:"context_status,omitempty"`
+	// Loop context tracks optional Loop Engineering state when the loop package is enabled.
+	LoopContext *LoopContext `json:"loop_context,omitempty"`
 }
 
 // NewAgentState creates a fully initialized Agent state.
@@ -248,6 +250,7 @@ func (s *AgentState) Clone() *AgentState {
 	cp.ToolContext = s.ToolContext.Clone()
 	cp.TaskContext = s.TaskContext.Clone()
 	cp.ContextStatus = s.ContextStatus.Clone()
+	cp.LoopContext = s.LoopContext.Clone()
 	return &cp
 }
 
