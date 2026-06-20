@@ -52,6 +52,7 @@ These model examples make real provider requests by default. Set the matching pr
 | `tool/skill` | Local `SKILL.md` loading |
 | `workspace/local` | Workspace-backed tool file operations, skills, context offload, and tool result offload |
 | `workspace/docker` | Docker workspace tools, container file operations, and optional ChatModel response |
+| `workspace/microsandbox` | Microsandbox microVM workspace tools and optional DashScope ChatModel response |
 | `workspace/daytona` | Daytona sandbox workspace running Python CSV data analysis |
 
 ## External Services

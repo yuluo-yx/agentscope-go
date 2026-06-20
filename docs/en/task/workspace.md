@@ -36,6 +36,30 @@ if err != nil {
 
 When `WithHostWorkdir` is set, offload, skills, and MCP indexes are written to the host mirror directory.
 
+## Microsandbox Workspace
+
+`workspace/microsandbox.Workspace` creates a local Microsandbox microVM through the official Microsandbox Go SDK and runs `Bash`, `Read`, `Write`, `Edit`, `Glob`, and `Grep` inside that microVM.
+
+```go
+ws, err := microsandbox.NewWorkspace(
+	microsandbox.WithImage("python:3.12"),
+	microsandbox.WithHostWorkdir("/tmp/agentscope-microsandbox-workspace"),
+)
+if err != nil {
+	panic(err)
+}
+if err := ws.Initialize(ctx); err != nil {
+	panic(err)
+}
+```
+
+Prerequisites:
+
+- Linux with KVM enabled, or macOS with Apple Silicon.
+- Microsandbox runtime assets. By default, `Initialize` calls `EnsureInstalled` and the SDK downloads missing assets into `~/.microsandbox/`.
+
+Use `WithEnsureInstalled(false)` when the runtime is already installed and startup must not download assets. Use `WithKeepSandbox(true)` to leave the microVM running for inspection when `Close` is called.
+
 ## Agent Sandbox Workspace
 
 `workspace/agentsandbox.Workspace` creates Kubernetes `SandboxClaim` resources through the agent-sandbox Go SDK and runs `Bash`, `Read`, `Write`, `Edit`, `Glob`, and `Grep` inside an Agent Sandbox runtime.
@@ -104,19 +128,20 @@ tools, err := ws.ListTools(ctx)
 
 Register them in a Toolkit when the agent should use workspace-backed tools.
 
-Docker and Agent Sandbox backends intentionally keep the same model-visible
+Docker, Microsandbox, and Agent Sandbox backends intentionally keep the same model-visible
 `Bash`, `Read`, `Write`, `Edit`, `Glob`, and `Grep` schemas as the local
 workspace, but execute them through their backend runtimes. Docker tools call
-the Docker engine against the workspace container, and Agent Sandbox tools call
-the sandbox handle. These tool calls must not fall back to host execution.
+the Docker engine against the workspace container, Microsandbox tools call the
+Microsandbox SDK handle, and Agent Sandbox tools call the sandbox handle. These
+tool calls must not fall back to host execution.
 
 This differs from the Python Docker/E2B implementation, where workspace tools
 are exposed through an in-workspace gateway. In AgentScope Go this is an
 explicit boundary: built-in workspace tools use typed Go runtime adapters, while
 MCP servers can still be exposed through `workspace/gateway.Server` and the
-host-side gateway client. Tests that require Docker or Agent Sandbox remain
-opt-in through `AGENTSCOPE_TEST_DOCKER=1` and
-`AGENTSCOPE_TEST_AGENT_SANDBOX=1`.
+host-side gateway client. Tests that require Docker, Microsandbox, or Agent
+Sandbox remain opt-in through `AGENTSCOPE_TEST_DOCKER=1`,
+`AGENTSCOPE_TEST_MICROSANDBOX=1`, and `AGENTSCOPE_TEST_AGENT_SANDBOX=1`.
 
 ## Skills
 
