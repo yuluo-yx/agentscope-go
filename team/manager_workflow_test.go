@@ -28,7 +28,7 @@ import (
 	astool "github.com/yuluo-yx/agentscope-go/tool"
 )
 
-func TestTeamManagerInternalErrorAndHelperBranches(t *testing.T) {
+func TestTeamManagerRegistrationAndWorkerErrorBranches(t *testing.T) {
 	t.Parallel()
 
 	model := &coverageChatModel{name: "team"}

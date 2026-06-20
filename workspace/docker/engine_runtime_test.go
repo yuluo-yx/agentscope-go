@@ -336,6 +336,8 @@ func (api *fakeDockerAPI) handleExecAttach(w http.ResponseWriter, r *http.Reques
 	_, _ = conn.Write(dockerStdCopyFrame(2, []byte("warn\n")))
 	if tcpConn != nil {
 		_ = tcpConn.CloseWrite()
+		_ = tcpConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_, _ = io.Copy(io.Discard, tcpConn)
 	}
 	_ = conn.Close()
 }

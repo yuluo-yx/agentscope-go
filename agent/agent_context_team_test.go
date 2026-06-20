@@ -504,6 +504,163 @@ func TestThresholdContextStrategyWarningCompactAndBlocking(t *testing.T) {
 	}
 }
 
+func TestContextStrategyErrorAndHelperBranches(t *testing.T) {
+	t.Parallel()
+
+	promptErr := errors.New("prompt failed")
+	_, err := (&ContextStrategyInput{
+		State:        NewAgentState(),
+		systemPrompt: func(context.Context) (string, error) { return "", promptErr },
+	}).CurrentModelRequest(context.Background())
+	if !errors.Is(err, promptErr) {
+		t.Fatalf("CurrentModelRequest prompt error = %v", err)
+	}
+
+	toolErr := errors.New("tools failed")
+	_, err = (&ContextStrategyInput{
+		State:        NewAgentState(),
+		systemPrompt: func(context.Context) (string, error) { return "system", nil },
+		toolSchemas:  func() ([]ToolSchema, error) { return nil, toolErr },
+	}).CurrentModelRequest(context.Background())
+	if !errors.Is(err, toolErr) {
+		t.Fatalf("CurrentModelRequest tool error = %v", err)
+	}
+
+	thresholdInput := &ContextStrategyInput{
+		State:  NewAgentState(),
+		Model:  &coverageChatModel{countTokens: 1},
+		Config: ContextConfig{MaxTokens: 100},
+	}
+	if err := (ThresholdContextStrategy{WarningThreshold: 5, CompactThreshold: 10, BlockingThreshold: 3}).ApplyContextStrategy(context.Background(), thresholdInput); err == nil ||
+		!strings.Contains(err.Error(), "warning threshold") {
+		t.Fatalf("invalid warning threshold error = %v", err)
+	}
+	if err := (ThresholdContextStrategy{WarningThreshold: 10, CompactThreshold: 3, BlockingThreshold: 3}).ApplyContextStrategy(context.Background(), thresholdInput); err == nil ||
+		!strings.Contains(err.Error(), "compact threshold") {
+		t.Fatalf("invalid compact threshold error = %v", err)
+	}
+	if err := (ThresholdContextStrategy{}).ApplyContextStrategy(context.Background(), &ContextStrategyInput{
+		State:  NewAgentState(),
+		Model:  &coverageChatModel{countTokens: 1},
+		Config: ContextConfig{MaxTokens: 100},
+	}); err != nil {
+		t.Fatalf("default thresholds should skip small max token windows: %v", err)
+	}
+
+	countErr := errors.New("count failed")
+	if err := (ThresholdContextStrategy{WarningThreshold: 10, CompactThreshold: 5, BlockingThreshold: 1}).ApplyContextStrategy(context.Background(), &ContextStrategyInput{
+		State:  NewAgentState(),
+		Model:  &coverageChatModel{countErr: countErr},
+		Config: ContextConfig{MaxTokens: 100},
+	}); !errors.Is(err, countErr) {
+		t.Fatalf("threshold count error = %v", err)
+	}
+
+	threshold := ThresholdContextStrategy{WarningThreshold: 10, CompactThreshold: 5, BlockingThreshold: 1}
+	if statusLevelForRemaining(11, threshold) != ContextStatusNormal ||
+		statusLevelForRemaining(10, threshold) != ContextStatusWarning ||
+		statusLevelForRemaining(5, threshold) != ContextStatusCompact ||
+		statusLevelForRemaining(1, threshold) != ContextStatusCompact {
+		t.Fatalf("statusLevelForRemaining threshold classification mismatch")
+	}
+	threshold.updateStatus(nil, ContextStatusWarning, 1, 2, "")
+	threshold.updateStatus(&ContextStrategyInput{}, ContextStatusWarning, 1, 2, "")
+	var nilWindowErr *ContextWindowError
+	if nilWindowErr.Error() != "" || !strings.Contains((&ContextWindowError{Strategy: "threshold", MaxTokens: 10, UsedTokens: 9, RemainingTokens: 1, BlockingThreshold: 2}).Error(), "threshold") {
+		t.Fatalf("ContextWindowError formatting mismatch")
+	}
+
+	if compacted, err := compactContextWithSummary(context.Background(), nil); err != nil || compacted {
+		t.Fatalf("compactContextWithSummary nil = %v, %v", compacted, err)
+	}
+	oldMsg := testUserMessages(t, "old")[0]
+	recentMsg := testUserMessages(t, "recent")[0]
+	noCompressInput := &ContextStrategyInput{
+		State:        &AgentState{Context: []*message.Message{oldMsg, recentMsg}},
+		Model:        &coverageChatModel{countTokens: 1},
+		Config:       ContextConfig{MaxTokens: 100, ReserveRatio: 1, SummaryTemplate: "{task_overview}", SummarySchema: DefaultSummarySchema()},
+		systemPrompt: func(context.Context) (string, error) { return "system", nil },
+		toolSchemas:  func() ([]ToolSchema, error) { return nil, nil },
+	}
+	if compacted, err := compactContextWithSummary(context.Background(), noCompressInput); err != nil || compacted {
+		t.Fatalf("compactContextWithSummary no-compress = %v, %v", compacted, err)
+	}
+
+	callErr := errors.New("summary call failed")
+	if err := executeSummary(context.Background(), &ContextStrategyInput{
+		State:        NewAgentState(),
+		Model:        &coverageChatModel{callErr: callErr},
+		Config:       ContextConfig{SummaryTemplate: "{task_overview}", SummarySchema: DefaultSummarySchema()},
+		systemPrompt: func(context.Context) (string, error) { return "system", nil },
+	}, []*message.Message{oldMsg}, []*message.Message{recentMsg}); !errors.Is(err, callErr) {
+		t.Fatalf("executeSummary call error = %v", err)
+	}
+
+	offloadErr := errors.New("offload failed")
+	if err := executeSummary(context.Background(), &ContextStrategyInput{
+		State: NewAgentState(),
+		Model: &coverageChatModel{responses: []*ChatResponse{asmodel.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock(`{"task_overview":"done"}`)},
+			true,
+		)}},
+		Offloader:    &coverageOffloader{contextErr: offloadErr},
+		Config:       ContextConfig{SummaryTemplate: "{task_overview}", SummarySchema: DefaultSummarySchema()},
+		systemPrompt: func(context.Context) (string, error) { return "system", nil },
+	}, []*message.Message{oldMsg}, []*message.Message{recentMsg}); !errors.Is(err, offloadErr) {
+		t.Fatalf("executeSummary offload error = %v", err)
+	}
+
+	if text, err := summaryTextFromResponse(asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("{}")}, true), ContextConfig{SummaryTemplate: "{task_overview}"}); err != nil || text != "{}" {
+		t.Fatalf("empty JSON summary should fall back to raw text: %q, %v", text, err)
+	}
+
+	readOne := message.NewToolCallBlock("read-1", "Read", `{"file_path":"one.txt"}`)
+	readDuplicate := message.NewToolCallBlock("read-2", "Read", `{"file_path":"one.txt"}`)
+	readBadJSON := message.NewToolCallBlock("read-3", "Read", `{bad`)
+	readWrongType := message.NewToolCallBlock("read-4", "Read", `{"file_path":7}`)
+	writeCall := message.NewToolCallBlock("write-1", "Write", `{"file_path":"ignored.txt"}`)
+	msg, err := message.NewAssistantMessage("assistant", []message.ContentBlock{readOne, readDuplicate, readBadJSON, readWrongType, writeCall})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage returned error: %v", err)
+	}
+	if paths := readFilePathsFromMessages([]*message.Message{nil, msg}); len(paths) != 1 || paths[0] != "one.txt" {
+		t.Fatalf("readFilePathsFromMessages should return unique valid Read paths: %#v", paths)
+	}
+
+	if hasUnresolvedToolWork(nil) {
+		t.Fatalf("nil message should not have unresolved tool work")
+	}
+	finished, err := message.NewAssistantMessage("assistant", []message.ContentBlock{
+		message.NewToolCallBlock("done", "Search", "{}", message.WithToolCallState(message.ToolCallFinished)),
+		message.NewToolResultBlock("done", "Search", message.ToolResultOutput{Raw: "ok"}, message.ToolResultSuccess),
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage finished returned error: %v", err)
+	}
+	if hasUnresolvedToolWork(finished) {
+		t.Fatalf("finished tool work should be resolved")
+	}
+	runningResult, err := message.NewAssistantMessage("assistant", []message.ContentBlock{
+		message.NewToolResultBlock("running", "Search", message.ToolResultOutput{Raw: "wait"}, message.ToolResultRunning),
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage running result returned error: %v", err)
+	}
+	if !hasUnresolvedToolWork(runningResult) {
+		t.Fatalf("running tool result should be unresolved")
+	}
+	pendingCall, err := message.NewAssistantMessage("assistant", []message.ContentBlock{
+		message.NewToolCallBlock("pending", "Search", "{}"),
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage pending call returned error: %v", err)
+	}
+	compressed, reserved, err := splitContextForSummary(context.Background(), &coverageChatModel{countTokens: 1}, []*message.Message{pendingCall, recentMsg}, nil, 0)
+	if err != nil || len(compressed) != 0 || len(reserved) != 2 {
+		t.Fatalf("unresolved tool work should force reservation: compressed=%#v reserved=%#v err=%v", compressed, reserved, err)
+	}
+}
+
 func testUserMessages(t *testing.T, texts ...string) []*message.Message {
 	t.Helper()
 

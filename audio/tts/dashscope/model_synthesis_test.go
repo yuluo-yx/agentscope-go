@@ -60,7 +60,7 @@ func TestModelMetadataNoopRealtimeAndEmptySynthesisBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty Synthesize returned error: %v", err)
 	}
-	got := collectInternalTTSResponses(responses)
+	got := collectTTSResponses(responses)
 	if len(got) != 1 || !got[0].IsLast || got[0].Content != nil {
 		t.Fatalf("empty synthesis response mismatch: %#v", got)
 	}
@@ -147,7 +147,7 @@ func TestParsingAggregationAndProviderErrorBranches(t *testing.T) {
 	}
 }
 
-func TestRealtimeInternalErrorAndNoopBranches(t *testing.T) {
+func TestRealtimeErrorAndNoopBranches(t *testing.T) {
 	t.Parallel()
 
 	cards, err := ListModels()
@@ -228,7 +228,7 @@ func TestRealtimeInternalErrorAndNoopBranches(t *testing.T) {
 	}
 }
 
-func collectInternalTTSResponses(responses <-chan tts.Response) []tts.Response {
+func collectTTSResponses(responses <-chan tts.Response) []tts.Response {
 	out := []tts.Response{}
 	for response := range responses {
 		out = append(out, response)

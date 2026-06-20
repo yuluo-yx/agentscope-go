@@ -69,14 +69,21 @@ func cloneStringMap(values map[string]string) map[string]string {
 }
 
 func cloneMCPClientConfig(config asworkspace.MCPClientConfig) asworkspace.MCPClientConfig {
-	config.EnabledTools = append([]string(nil), config.EnabledTools...)
-	if config.Stdio.Env != nil {
-		config.Stdio.Env = cloneStringMap(config.Stdio.Env)
+	out := config
+	if config.Stdio != nil {
+		stdio := *config.Stdio
+		stdio.Args = append([]string(nil), config.Stdio.Args...)
+		stdio.Env = cloneStringMap(config.Stdio.Env)
+		out.Stdio = &stdio
 	}
-	if config.HTTP.Headers != nil {
-		config.HTTP.Headers = cloneStringMap(config.HTTP.Headers)
+	if config.HTTP != nil {
+		http := *config.HTTP
+		http.Headers = cloneStringMap(config.HTTP.Headers)
+		out.HTTP = &http
 	}
-	return config
+	out.EnabledTools = append([]string(nil), config.EnabledTools...)
+	out.DisabledTools = append([]string(nil), config.DisabledTools...)
+	return out
 }
 
 func shellQuote(value string) string {

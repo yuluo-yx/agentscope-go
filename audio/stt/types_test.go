@@ -34,6 +34,10 @@ func TestResponseOptionsCloneAudioBlockAndSegments(t *testing.T) {
 	if source.Data != base64.StdEncoding.EncodeToString(rawAudio) || source.MediaType != "audio/wav" {
 		t.Fatalf("audio block source mismatch: %#v", source)
 	}
+	defaultBlock := stt.NewAudioBlock(rawAudio, "")
+	if defaultBlock.Source.(*message.Base64Source).MediaType != "application/octet-stream" {
+		t.Fatalf("empty media type should default to application/octet-stream: %#v", defaultBlock.Source)
+	}
 
 	metadata := map[string]any{"nested": map[string]any{"provider": "dashscope"}}
 	usage := &stt.Usage{

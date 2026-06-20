@@ -30,7 +30,7 @@ import (
 func TestTextModelMetadataCacheAndErrorBranches(t *testing.T) {
 	t.Parallel()
 
-	cache := &internalEmbeddingCache{embeddings: []types.Embedding{{1, 2}}, ok: true}
+	cache := &fakeEmbeddingCache{embeddings: []types.Embedding{{1, 2}}, ok: true}
 	model, err := NewTextModel(NewCredential(), "nomic-embed-text", WithDimensions(2), WithCache(cache))
 	if err != nil {
 		t.Fatalf("NewTextModel returned error: %v", err)
@@ -78,10 +78,10 @@ func TestCacheAndNormalizeErrorBranches(t *testing.T) {
 	t.Parallel()
 
 	cacheErr := errors.New("cache failed")
-	if _, _, err := retrieveCache(context.Background(), &internalEmbeddingCache{errOnRetrieve: cacheErr}, "k"); !errors.Is(err, cacheErr) {
+	if _, _, err := retrieveCache(context.Background(), &fakeEmbeddingCache{errOnRetrieve: cacheErr}, "k"); !errors.Is(err, cacheErr) {
 		t.Fatalf("retrieveCache should return error, got %v", err)
 	}
-	if err := storeCache(context.Background(), &internalEmbeddingCache{errOnStore: cacheErr}, "k", nil); !errors.Is(err, cacheErr) {
+	if err := storeCache(context.Background(), &fakeEmbeddingCache{errOnStore: cacheErr}, "k", nil); !errors.Is(err, cacheErr) {
 		t.Fatalf("storeCache should return error, got %v", err)
 	}
 	err := normalizeError(ollamaapi.StatusError{StatusCode: http.StatusServiceUnavailable, ErrorMessage: "offline"})
@@ -91,7 +91,7 @@ func TestCacheAndNormalizeErrorBranches(t *testing.T) {
 	}
 }
 
-type internalEmbeddingCache struct {
+type fakeEmbeddingCache struct {
 	embeddings    []types.Embedding
 	ok            bool
 	errOnRetrieve error
@@ -100,12 +100,12 @@ type internalEmbeddingCache struct {
 	storeCalls    int
 }
 
-func (c *internalEmbeddingCache) Store(context.Context, any, []types.Embedding, asembedding.StoreOptions) error {
+func (c *fakeEmbeddingCache) Store(context.Context, any, []types.Embedding, asembedding.StoreOptions) error {
 	c.storeCalls++
 	return c.errOnStore
 }
 
-func (c *internalEmbeddingCache) Retrieve(context.Context, any) ([]types.Embedding, bool, error) {
+func (c *fakeEmbeddingCache) Retrieve(context.Context, any) ([]types.Embedding, bool, error) {
 	c.retrieveCalls++
 	if c.errOnRetrieve != nil {
 		return nil, false, c.errOnRetrieve
@@ -113,6 +113,6 @@ func (c *internalEmbeddingCache) Retrieve(context.Context, any) ([]types.Embeddi
 	return c.embeddings, c.ok, nil
 }
 
-func (c *internalEmbeddingCache) Remove(context.Context, any) error { return nil }
+func (c *fakeEmbeddingCache) Remove(context.Context, any) error { return nil }
 
-func (c *internalEmbeddingCache) Clear(context.Context) error { return nil }
+func (c *fakeEmbeddingCache) Clear(context.Context) error { return nil }

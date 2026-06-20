@@ -83,6 +83,30 @@ func TestTextModelConstructorCacheAndNilBranches(t *testing.T) {
 	}
 }
 
+func TestListModelsLoadsOpenAIEmbeddingCards(t *testing.T) {
+	t.Parallel()
+
+	cards, err := ListModels()
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(cards) == 0 {
+		t.Fatalf("expected embedded OpenAI embedding cards")
+	}
+	found := false
+	for _, card := range cards {
+		if card.Name == "text-embedding-3-small" {
+			found = true
+			if card.Type != asembedding.ModelCardTypeEmbedding || len(card.InputTypes) == 0 || len(card.OutputTypes) == 0 {
+				t.Fatalf("OpenAI embedding card metadata mismatch: %#v", card)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing text-embedding-3-small card: %#v", cards)
+	}
+}
+
 func TestCacheHelpersAndNormalizeErrorBranches(t *testing.T) {
 	t.Parallel()
 

@@ -33,7 +33,7 @@ func TestTextModelMetadataParametersAndCacheBranches(t *testing.T) {
 		NewCredential(""),
 		"gemini-embedding-001",
 		WithDimensions(2),
-		WithClient(&internalGeminiClient{}),
+		WithClient(&fakeGeminiEmbedClient{}),
 	)
 	if err != nil {
 		t.Fatalf("NewTextModel with injected client returned error: %v", err)
@@ -61,7 +61,7 @@ func TestTextModelMetadataParametersAndCacheBranches(t *testing.T) {
 	}
 	applyParameters(nil, map[string]any{"task_type": "ignored"})
 
-	cache := &internalEmbeddingCache{embeddings: []types.Embedding{{0.4, 0.5}}, ok: true}
+	cache := &fakeEmbeddingCache{embeddings: []types.Embedding{{0.4, 0.5}}, ok: true}
 	model.cache = cache
 	resp, err := model.Embed(context.Background(), asembedding.EmbeddingRequest{Inputs: []asembedding.EmbeddingInput{asembedding.NewTextInput("cached")}})
 	if err != nil {
@@ -72,9 +72,33 @@ func TestTextModelMetadataParametersAndCacheBranches(t *testing.T) {
 	}
 
 	storeErr := errors.New("store failed")
-	model.cache = &internalEmbeddingCache{errOnStore: storeErr}
+	model.cache = &fakeEmbeddingCache{errOnStore: storeErr}
 	if _, err := model.Embed(context.Background(), asembedding.EmbeddingRequest{Inputs: []asembedding.EmbeddingInput{asembedding.NewTextInput("api")}}); !errors.Is(err, storeErr) {
 		t.Fatalf("Embed should return store error, got %v", err)
+	}
+}
+
+func TestListModelsLoadsGeminiEmbeddingCards(t *testing.T) {
+	t.Parallel()
+
+	cards, err := ListModels()
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(cards) == 0 {
+		t.Fatalf("expected embedded Gemini embedding cards")
+	}
+	found := false
+	for _, card := range cards {
+		if card.Name == "gemini-embedding-001" {
+			found = true
+			if card.Type != asembedding.ModelCardTypeEmbedding || len(card.InputTypes) == 0 || len(card.OutputTypes) == 0 {
+				t.Fatalf("Gemini embedding card metadata mismatch: %#v", card)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing gemini-embedding-001 card: %#v", cards)
 	}
 }
 
@@ -87,15 +111,15 @@ func TestTextModelConstructorAndNilBranches(t *testing.T) {
 	}{
 		{name: "empty api key without client", fn: func() error { _, err := NewTextModel(NewCredential(""), "m"); return err }},
 		{name: "empty model", fn: func() error {
-			_, err := NewTextModel(NewCredential("k"), "", WithClient(&internalGeminiClient{}))
+			_, err := NewTextModel(NewCredential("k"), "", WithClient(&fakeGeminiEmbedClient{}))
 			return err
 		}},
 		{name: "non-positive dimensions", fn: func() error {
-			_, err := NewTextModel(NewCredential("k"), "m", WithDimensions(0), WithClient(&internalGeminiClient{}))
+			_, err := NewTextModel(NewCredential("k"), "m", WithDimensions(0), WithClient(&fakeGeminiEmbedClient{}))
 			return err
 		}},
 		{name: "dimensions overflow int32", fn: func() error {
-			_, err := NewTextModel(NewCredential("k"), "m", WithDimensions(math.MaxInt32+1), WithClient(&internalGeminiClient{}))
+			_, err := NewTextModel(NewCredential("k"), "m", WithDimensions(math.MaxInt32+1), WithClient(&fakeGeminiEmbedClient{}))
 			return err
 		}},
 		{name: "nil model embed", fn: func() error {
@@ -113,19 +137,19 @@ func TestTextModelConstructorAndNilBranches(t *testing.T) {
 	}
 
 	cacheErr := errors.New("cache failed")
-	if _, _, err := retrieveCache(context.Background(), &internalEmbeddingCache{errOnRetrieve: cacheErr}, "k"); !errors.Is(err, cacheErr) {
+	if _, _, err := retrieveCache(context.Background(), &fakeEmbeddingCache{errOnRetrieve: cacheErr}, "k"); !errors.Is(err, cacheErr) {
 		t.Fatalf("retrieveCache should return error, got %v", err)
 	}
-	if err := storeCache(context.Background(), &internalEmbeddingCache{errOnStore: cacheErr}, "k", nil); !errors.Is(err, cacheErr) {
+	if err := storeCache(context.Background(), &fakeEmbeddingCache{errOnStore: cacheErr}, "k", nil); !errors.Is(err, cacheErr) {
 		t.Fatalf("storeCache should return error, got %v", err)
 	}
 }
 
-type internalGeminiClient struct {
+type fakeGeminiEmbedClient struct {
 	config *genai.EmbedContentConfig
 }
 
-func (c *internalGeminiClient) EmbedContent(_ context.Context, _ string, _ []*genai.Content, config *genai.EmbedContentConfig) (*genai.EmbedContentResponse, error) {
+func (c *fakeGeminiEmbedClient) EmbedContent(_ context.Context, _ string, _ []*genai.Content, config *genai.EmbedContentConfig) (*genai.EmbedContentResponse, error) {
 	c.config = config
 	return &genai.EmbedContentResponse{
 		Embeddings: []*genai.ContentEmbedding{{
@@ -135,7 +159,7 @@ func (c *internalGeminiClient) EmbedContent(_ context.Context, _ string, _ []*ge
 	}, nil
 }
 
-type internalEmbeddingCache struct {
+type fakeEmbeddingCache struct {
 	embeddings    []types.Embedding
 	ok            bool
 	errOnRetrieve error
@@ -144,12 +168,12 @@ type internalEmbeddingCache struct {
 	storeCalls    int
 }
 
-func (c *internalEmbeddingCache) Store(context.Context, any, []types.Embedding, asembedding.StoreOptions) error {
+func (c *fakeEmbeddingCache) Store(context.Context, any, []types.Embedding, asembedding.StoreOptions) error {
 	c.storeCalls++
 	return c.errOnStore
 }
 
-func (c *internalEmbeddingCache) Retrieve(context.Context, any) ([]types.Embedding, bool, error) {
+func (c *fakeEmbeddingCache) Retrieve(context.Context, any) ([]types.Embedding, bool, error) {
 	c.retrieveCalls++
 	if c.errOnRetrieve != nil {
 		return nil, false, c.errOnRetrieve
@@ -157,6 +181,6 @@ func (c *internalEmbeddingCache) Retrieve(context.Context, any) ([]types.Embeddi
 	return c.embeddings, c.ok, nil
 }
 
-func (c *internalEmbeddingCache) Remove(context.Context, any) error { return nil }
+func (c *fakeEmbeddingCache) Remove(context.Context, any) error { return nil }
 
-func (c *internalEmbeddingCache) Clear(context.Context) error { return nil }
+func (c *fakeEmbeddingCache) Clear(context.Context) error { return nil }

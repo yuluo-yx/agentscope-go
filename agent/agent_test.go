@@ -81,6 +81,33 @@ func (m *scriptedChatModel) CountTokens(request modelpkg.CallRequest) (int, erro
 	return modelpkg.ApproximateTokenCount(request.Messages, request.Tools), nil
 }
 
+type nilResponseChatModel struct{}
+
+func (nilResponseChatModel) Name() string {
+	return "nil-response"
+}
+
+func (nilResponseChatModel) Call(context.Context, modelpkg.CallRequest) (*modelpkg.ChatResponse, error) {
+	return nil, nil
+}
+
+func (nilResponseChatModel) Stream(context.Context, modelpkg.CallRequest) (<-chan modelpkg.ChatResponse, error) {
+	ch := make(chan modelpkg.ChatResponse)
+	close(ch)
+	return ch, nil
+}
+
+func (nilResponseChatModel) CountTokens(modelpkg.CallRequest) (int, error) {
+	return 0, nil
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 type recordingAutoPermissionClassifier struct {
 	decision *permission.Decision
 	calls    []permission.ClassifierRequest
@@ -784,6 +811,90 @@ func TestModelAutoPermissionClassifierParsesJSONAndFailsClosed(t *testing.T) {
 	}
 	if decision.Behavior != permission.BehaviorDeny || !strings.Contains(decision.Message, "invalid JSON") {
 		t.Fatalf("invalid JSON should fail closed, got %#v", decision)
+	}
+}
+
+func TestModelAutoPermissionClassifierDecisionVariantsAndValidation(t *testing.T) {
+	t.Parallel()
+
+	if _, err := agentpkg.NewModelAutoPermissionClassifier(nil); err == nil || !strings.Contains(err.Error(), "model is nil") {
+		t.Fatalf("nil model should be rejected, got %v", err)
+	}
+	model := &scriptedChatModel{responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock("```json\n{\"decision\":\"ask\",\"message\":\"Need review\",\"decision_reason\":\"ambiguous\",\"updated_input\":{\"command\":\"git status\"}}\n```")},
+			true,
+		),
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock(`{"behavior":"deny"}`)},
+			true,
+		),
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock(`{"behavior":"run"}`)},
+			true,
+		),
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock("   ")},
+			true,
+		),
+	}}
+	classifier, err := agentpkg.NewModelAutoPermissionClassifier(
+		model,
+		agentpkg.WithAutoPermissionClassifierPrompt(" custom classifier prompt "),
+		agentpkg.WithAutoPermissionClassifierPrompt(" "),
+	)
+	if err != nil {
+		t.Fatalf("NewModelAutoPermissionClassifier returned error: %v", err)
+	}
+	request := permission.ClassifierRequest{
+		ToolName:        "Bash",
+		ToolDescription: "Executes commands.",
+		Input:           map[string]any{"command": "git status"},
+		Action:          `{"tool_name":"Bash","input":{"command":"git status"}}`,
+	}
+
+	decision, err := classifier.Classify(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Classify ask returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorAsk || decision.Message != "Need review" ||
+		decision.DecisionReason != "ambiguous" || decision.UpdatedInput["command"] != "git status" {
+		t.Fatalf("ask decision mismatch: %#v", decision)
+	}
+	systemText := model.requests[0].Messages[0].GetTextContent("")
+	if systemText == nil || *systemText != "custom classifier prompt" {
+		t.Fatalf("custom prompt was not used: %#v", model.requests[0].Messages[0])
+	}
+	userText := model.requests[0].Messages[1].GetTextContent("")
+	if userText == nil || !strings.Contains(*userText, `"tool_name": "Bash"`) {
+		t.Fatalf("classifier request JSON missing tool name: %q", valueOrEmpty(userText))
+	}
+
+	decision, err = classifier.Classify(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Classify deny returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorDeny || decision.Message != "" || decision.DecisionReason != "" {
+		t.Fatalf("minimal deny decision mismatch: %#v", decision)
+	}
+
+	decision, err = classifier.Classify(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Classify invalid behavior returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorDeny || !strings.Contains(decision.Message, "invalid behavior") {
+		t.Fatalf("invalid behavior should fail closed, got %#v", decision)
+	}
+
+	if _, err := classifier.Classify(context.Background(), request); err == nil || !strings.Contains(err.Error(), "empty response") {
+		t.Fatalf("empty response should return error, got %v", err)
+	}
+	nilClassifier, err := agentpkg.NewModelAutoPermissionClassifier(nilResponseChatModel{})
+	if err != nil {
+		t.Fatalf("NewModelAutoPermissionClassifier nil response model returned error: %v", err)
+	}
+	if _, err := nilClassifier.Classify(context.Background(), request); err == nil || !strings.Contains(err.Error(), "nil response") {
+		t.Fatalf("nil response should return error, got %v", err)
 	}
 }
 
