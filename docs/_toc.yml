@@ -36,6 +36,8 @@ parts:
         title: Model Context Protocol
       - file: en/task/hook
         title: Hook System
+      - file: en/task/loop-engineering
+        title: Loop Engineering
       - file: en/task/state
         title: State Management
       - file: en/task/workspace
@@ -97,6 +99,8 @@ parts:
         title: 模型上下文协议
       - file: zh/task/hook
         title: Hook 系统
+      - file: zh/task/loop-engineering
+        title: Loop Engineering
       - file: zh/task/state
         title: 状态管理
       - file: zh/task/workspace

@@ -97,6 +97,7 @@ func main() {
 | --- | --- |
 | `github.com/yuluo-yx/agentscope-go` | 常用核心 API 的兼容别名入口 |
 | `agent` | ReAct 风格智能体循环和中间件 Hook |
+| `loop` | Loop Engineering 目标、预算、验证、状态和事件 API |
 | `message` | 消息和内容块协议 |
 | `model` | 聊天模型接口和供应商实现 |
 | `tool` | 工具接口、Toolkit、函数适配器和工具组 |

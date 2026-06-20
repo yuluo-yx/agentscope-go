@@ -23,6 +23,8 @@ go run .
 | `agent/hooks` | Agent middleware hooks for reply, reasoning, model call, acting, and system prompt |
 | `agent/middleware_tracing` | Tracing middleware for reply, model-call, and tool-execution spans |
 | `agent/permission` | Agent permission confirmation and resume flow |
+| `loop/basic` | Report-only Loop Engineering Agent with state and events |
+| `loop/assisted-verifier` | Assisted Loop Engineering Agent with verifier-based maker/checker separation |
 | `integration/gin` | Gin HTTP integration for direct ChatModel streams and Agent event streams |
 | `integration/kratos` | Kratos HTTP integration for direct ChatModel streams and Agent event streams |
 | `tool/function` | Custom function tool |

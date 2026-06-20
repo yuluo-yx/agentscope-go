@@ -19,6 +19,7 @@ package agentscope
 
 import (
 	asagent "github.com/yuluo-yx/agentscope-go/agent"
+	asloop "github.com/yuluo-yx/agentscope-go/loop"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	astool "github.com/yuluo-yx/agentscope-go/tool"
@@ -62,6 +63,26 @@ type (
 	Task           = asstate.Task
 	TaskContext    = asstate.TaskContext
 	TaskState      = asstate.TaskState
+	LoopContext    = asstate.LoopContext
+	LoopRun        = asstate.LoopRun
+	LoopStopReason = asstate.LoopStopReason
+)
+
+type (
+	LoopSpec               = asloop.Spec
+	LoopMode               = asloop.Mode
+	LoopPolicy             = asloop.Policy
+	LoopScope              = asloop.Scope
+	LoopSuccessCriterion   = asloop.SuccessCriterion
+	LoopHumanGate          = asloop.HumanGate
+	LoopVerifier           = asloop.Verifier
+	LoopVerifierFunc       = asloop.VerifierFunc
+	LoopVerificationInput  = asloop.VerificationInput
+	LoopVerificationResult = asloop.VerificationResult
+	LoopObserver           = asloop.Observer
+	LoopObserverFunc       = asloop.ObserverFunc
+	LoopRunEvent           = asloop.RunEvent
+	LoopMetrics            = asloop.Metrics
 )
 
 type (
@@ -89,6 +110,21 @@ const (
 	TaskInProgress = asstate.TaskInProgress
 	TaskCompleted  = asstate.TaskCompleted
 
+	LoopModeReportOnly = asloop.ModeReportOnly
+	LoopModeAssisted   = asloop.ModeAssisted
+	LoopModeUnattended = asloop.ModeUnattended
+	LoopStopCompleted  = asstate.LoopStopCompleted
+	LoopStopMaxIters   = asstate.LoopStopMaxIterations
+	LoopStopBudget     = asstate.LoopStopBudgetExceeded
+	LoopStopUser       = asstate.LoopStopWaitingUser
+	LoopStopExternal   = asstate.LoopStopWaitingExternal
+	LoopStopVerifyFail = asstate.LoopStopVerifierFailed
+	LoopStopError      = asstate.LoopStopError
+	LoopEventStart     = asloop.EventStart
+	LoopEventStop      = asloop.EventStop
+	LoopEventVerifyEnd = asloop.EventVerifyEnd
+	LoopEventWrapUp    = asloop.EventWrapUp
+
 	ChatResponseType       = asmodel.ChatResponseType
 	StructuredResponseType = asmodel.StructuredResponseType
 	UsageTypeChat          = asmodel.UsageTypeChat
@@ -104,6 +140,7 @@ var (
 	WithContextStrategies = asagent.WithContextStrategies
 	WithReActConfig       = asagent.WithReActConfig
 	WithMiddlewares       = asagent.WithMiddlewares
+	WithLoopSpec          = asloop.WithSpec
 
 	DefaultContextConfig     = asagent.DefaultContextConfig
 	DefaultContextStrategies = asagent.DefaultContextStrategies
@@ -111,6 +148,12 @@ var (
 	DefaultReActConfig       = asagent.DefaultReActConfig
 	DefaultModelConfig       = asagent.DefaultModelConfig
 	ApplySystemPromptHooks   = asagent.ApplySystemPromptHooks
+	DefaultLoopPolicy        = asloop.DefaultPolicy
+	ValidateLoopSpec         = asloop.Validate
+	NewLoopMiddleware        = asloop.NewMiddleware
+	WithLoopVerifier         = asloop.WithVerifier
+	WithLoopObserver         = asloop.WithObserver
+	WithLoopEventEmission    = asloop.WithEventEmission
 
 	NewAgentState  = asstate.NewAgentState
 	NewToolContext = asstate.NewToolContext
