@@ -562,11 +562,15 @@ func testExternalToolResume(ctx context.Context, opts testcases.TestCaseOptions)
 	if text := reply.GetTextContent(""); text == nil || *text != "deployment recorded" {
 		return fmt.Errorf("final reply text mismatch after external result: %#v", reply)
 	}
-	resumedResult, err := onlyToolResultFromLastRequest(model)
+	if len(model.requests) == 0 {
+		return fmt.Errorf("external tool resume should record a resumed model request")
+	}
+	resumedResult, err := lastToolResultFromRequest(model.requests[len(model.requests)-1])
 	if err != nil {
 		return err
 	}
-	if text := resumedResult.Output.Blocks.GetTextContent(""); resumedResult.State != message.ToolResultSuccess || text == nil || *text != "external executor finished checkout" {
+	if text := resumedResult.Output.Blocks.GetTextContent(""); resumedResult.ID != required.ToolCalls[0].ID ||
+		resumedResult.State != message.ToolResultSuccess || text == nil || *text != "external executor finished checkout" {
 		return fmt.Errorf("external tool result should be sent to resumed model call, got %#v text=%#v", resumedResult, text)
 	}
 	if opts.SetDetails != nil {
