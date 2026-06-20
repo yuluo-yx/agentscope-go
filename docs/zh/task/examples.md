@@ -32,7 +32,7 @@ flowchart TD
     Goal -- 工具开发 --> Tools["tool/function<br/>tool/builtin<br/>tool/mcp<br/>tool/task<br/>tool/skill"]
     Goal -- Agent 流程 --> Agent["agent/basic<br/>agent/configuration<br/>agent/context_strategy<br/>agent/permission"]
     Goal -- 服务集成 --> Integration["integration/gin<br/>integration/kratos"]
-    Goal -- 隔离执行 --> Sandbox["workspace/local<br/>workspace/docker<br/>workspace/agentsandbox"]
+    Goal -- 隔离执行 --> Sandbox["workspace/local<br/>workspace/docker<br/>workspace/microsandbox<br/>workspace/agentsandbox"]
     Goal -- 观测和 Hook --> Hooks["agent/hooks<br/>agent/middleware_tracing<br/>o11y"]
 ```
 
@@ -47,7 +47,7 @@ flowchart TD
 | 理解中间件 | `example/agent/hooks`、`example/agent/middleware_tracing` |
 | 接真实模型 | `example/model/*/chat` |
 | 接 HTTP 服务 | `example/integration/gin`、`example/integration/kratos` |
-| 做隔离执行 | `example/workspace/docker`、`example/workspace/agentsandbox` |
+| 做隔离执行 | `example/workspace/docker`、`example/workspace/microsandbox`、`example/workspace/agentsandbox` |
 
 ## 示例矩阵
 
@@ -84,6 +84,7 @@ flowchart TD
 | `tool/skill` | 加载本地 `SKILL.md` |
 | `workspace/local` | 本地沙箱工具、Skill 和卸载能力 |
 | `workspace/docker` | Docker 沙箱工具、容器文件操作和可选 ChatModel 回复 |
+| `workspace/microsandbox` | Microsandbox microVM 沙箱工具和可选 DashScope ChatModel 回复 |
 | `workspace/agentsandbox` | Kubernetes Agent Sandbox 后端工具和可选 Agent 集成 |
 | `o11y` | 轻量 tracing、middleware 事件和模型调用观测示例 |
 

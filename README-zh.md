@@ -117,6 +117,7 @@ func main() {
 | [`example/tool/task`](example/tool/task) | 将任务式工作包装为工具。 |
 | [`example/workspace/local`](example/workspace/local) | 为 AI 工具工作流提供本地 workspace 文件上下文。 |
 | [`example/workspace/docker`](example/workspace/docker) | 在 Docker 容器中运行 workspace 工具，并把结果交给 ChatModel。 |
+| [`example/workspace/microsandbox`](example/workspace/microsandbox) | 在本地 Microsandbox microVM 中运行 workspace 工具，并可选交给 DashScope 总结。 |
 | [`example/workspace/agentsandbox`](example/workspace/agentsandbox) | 在 Kubernetes Agent Sandbox 运行时中执行 workspace 工具。 |
 
 想快速理解框架用法时，建议先从这些示例开始。

@@ -41,6 +41,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | 本地沙箱 | `workspace/local` | 本地开发、测试、普通服务端文件工具 | 本机文件系统 |
 | Docker 沙箱 | `workspace/docker` | 需要容器隔离的文件和 Shell 工具 | Docker engine |
+| Microsandbox 沙箱 | `workspace/microsandbox` | 需要本地 microVM 隔离的文件和 Shell 工具 | Microsandbox Go SDK、KVM 或 Apple Silicon |
 | Agent Sandbox 后端 | `workspace/agentsandbox` | Kubernetes 中运行隔离工具任务 | Kubernetes、agent-sandbox controller 和 SandboxTemplate |
 | Daytona 沙箱 | `workspace/daytona` | 使用 Daytona 托管或自托管沙箱执行文件和 Shell 工具 | Daytona API 与 Go SDK |
 
@@ -82,6 +83,30 @@ if err != nil {
 
 当设置 `WithHostWorkdir` 时，offload、Skill 和 MCP 索引会写入宿主机 mirror 目录。
 如果没有设置 `WithHostWorkdir`，Docker 后端仍可执行容器内工具，但 `OffloadContext`、`OffloadToolResult`、`OffloadDataBlock`、`AddSkill` 和 `RemoveSkill` 会返回需要 host workdir 的错误。
+
+## Microsandbox 沙箱
+
+`workspace/microsandbox.Workspace` 会通过 Microsandbox 官方 Go SDK 创建本地 microVM，并在 microVM 中执行 `Bash`、`Read`、`Write`、`Edit`、`Glob` 和 `Grep` 工具。
+
+```go
+ws, err := microsandbox.NewWorkspace(
+	microsandbox.WithImage("python:3.12"),
+	microsandbox.WithHostWorkdir("/tmp/agentscope-microsandbox-sandbox"),
+)
+if err != nil {
+	panic(err)
+}
+if err := ws.Initialize(ctx); err != nil {
+	panic(err)
+}
+```
+
+前置条件：
+
+- Linux 且启用 KVM，或 Apple Silicon macOS。
+- Microsandbox runtime 资产可用。默认情况下，`Initialize` 会调用 `EnsureInstalled`，SDK 会把缺失资产下载到 `~/.microsandbox/`。
+
+如果运行时已经安装且启动阶段不能下载资产，可以使用 `WithEnsureInstalled(false)`。如果需要在 `Close` 后保留 microVM 便于排查，可以使用 `WithKeepSandbox(true)`。
 
 ## Agent Sandbox 后端
 
@@ -165,16 +190,17 @@ if err != nil {
 }
 ```
 
-Docker 与 Agent Sandbox 后端会保留和本地沙箱一致的模型可见
+Docker、Microsandbox 与 Agent Sandbox 后端会保留和本地沙箱一致的模型可见
 `Bash`、`Read`、`Write`、`Edit`、`Glob`、`Grep` schema，但执行时会进入对应
-后端运行时：Docker 工具通过 Docker engine 作用于沙箱容器，Agent
-Sandbox 工具通过 sandbox handle 执行。这些工具调用不得回落到宿主机执行。
+后端运行时：Docker 工具通过 Docker engine 作用于沙箱容器，Microsandbox
+工具通过 Microsandbox SDK handle 执行，Agent Sandbox 工具通过 sandbox handle
+执行。这些工具调用不得回落到宿主机执行。
 
 AgentScope Go 对内置沙箱工具采用类型化 runtime adapter：Docker
-工具通过 Docker engine 执行，Agent Sandbox 工具通过 sandbox handle 执行。
+工具通过 Docker engine 执行，Microsandbox 工具通过 SDK handle 执行，Agent Sandbox 工具通过 sandbox handle 执行。
 MCP server 仍可通过 `workspace/gateway.Server` 和宿主侧 gateway client 暴露。
-依赖 Docker 或 Agent Sandbox 的测试继续显式门控：
-`AGENTSCOPE_TEST_DOCKER=1` 与 `AGENTSCOPE_TEST_AGENT_SANDBOX=1`。
+依赖 Docker、Microsandbox 或 Agent Sandbox 的测试继续显式门控：
+`AGENTSCOPE_TEST_DOCKER=1`、`AGENTSCOPE_TEST_MICROSANDBOX=1` 与 `AGENTSCOPE_TEST_AGENT_SANDBOX=1`。
 
 ## 与 Agent 组合
 
@@ -288,6 +314,7 @@ Sandbox 沙箱生命周期由调用方管理：
 
 - 本地开发和单机服务：优先 `workspace/local`。
 - 需要容器隔离：使用 `workspace/docker`，并配置 `WithHostWorkdir`。
+- 需要本地 microVM 隔离：使用 `workspace/microsandbox`。
 - 已部署 agent-sandbox：使用 `workspace/agentsandbox`。
 - 只需要普通函数工具：不要引入沙箱。
 - 需要 Agent 自动装配工具和 offloader：使用 `agent.WithWorkspace`。

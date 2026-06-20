@@ -115,6 +115,7 @@ func main() {
 | `tool/skill` | 本地 `SKILL.md` 加载器 |
 | `workspace/local` | 本地沙箱后端 |
 | `workspace/docker` | Docker 沙箱后端 |
+| `workspace/microsandbox` | 本地 Microsandbox microVM 沙箱后端 |
 | `workspace/agentsandbox` | Kubernetes Agent Sandbox 后端 |
 | `workspace/gateway` | 沙箱与宿主侧 MCP gateway 连接能力 |
 

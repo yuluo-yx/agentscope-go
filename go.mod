@@ -12,6 +12,7 @@ require (
 	github.com/moby/moby/client v0.4.1
 	github.com/ollama/ollama v0.30.9
 	github.com/openai/openai-go v1.12.0
+	github.com/superradcompany/microsandbox/sdk/go v0.5.7
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
