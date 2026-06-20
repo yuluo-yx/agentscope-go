@@ -28,10 +28,10 @@ import (
 )
 
 func TestTracingMiddlewareWrapsStreamsAndRecordsTerminalMetadata(t *testing.T) {
-	tracer := &internalTracer{}
+	tracer := &recordingTracer{}
 	state := statepkg.NewAgentState()
 	state.SessionID = "session-1"
-	agent := internalAgent{name: "Friday", state: state}
+	agent := middlewareAgentStub{name: "Friday", state: state}
 	mw := NewTracingMiddleware(tracer)
 
 	replyEvents, err := mw.OnReply(context.Background(), agent, agentpkg.HookInput{"input": "hello"}, func(context.Context) (<-chan message.Event, error) {
@@ -57,7 +57,7 @@ func TestTracingMiddlewareWrapsStreamsAndRecordsTerminalMetadata(t *testing.T) {
 		context.Background(),
 		agent,
 		agentpkg.HookInput{
-			"model":   internalChatModel{name: "mock:model"},
+			"model":   traceChatModelStub{name: "mock:model"},
 			"request": asmodel.CallRequest{Messages: []*message.Message{{Role: message.RoleUser}}, Tools: []asmodel.ToolSchema{{}}},
 		},
 		func(context.Context) (<-chan asmodel.ChatResponse, error) {
@@ -111,8 +111,8 @@ func TestTracingMiddlewareWrapsStreamsAndRecordsTerminalMetadata(t *testing.T) {
 }
 
 func TestTracingMiddlewareRecordsErrorsNilStreamsAndPassthrough(t *testing.T) {
-	tracer := &internalTracer{}
-	agent := internalAgent{name: "Friday", state: statepkg.NewAgentState()}
+	tracer := &recordingTracer{}
+	agent := middlewareAgentStub{name: "Friday", state: statepkg.NewAgentState()}
 	mw := NewTracingMiddleware(tracer)
 	boom := errors.New("boom")
 
@@ -142,20 +142,20 @@ func TestTracingMiddlewareRecordsErrorsNilStreamsAndPassthrough(t *testing.T) {
 		}
 	}
 
-	nilSpan := &internalTraceSpan{attributes: map[string]any{}}
+	nilSpan := &recordingTraceSpan{attributes: map[string]any{}}
 	if wrapEvents(nil, nilSpan) != nil || nilSpan.err == nil || !nilSpan.ended {
 		t.Fatalf("nil event stream should record and end span: %#v", nilSpan)
 	}
-	nilSpan = &internalTraceSpan{attributes: map[string]any{}}
+	nilSpan = &recordingTraceSpan{attributes: map[string]any{}}
 	if wrapResponses(nil, nilSpan) != nil || nilSpan.err == nil || !nilSpan.ended {
 		t.Fatalf("nil model stream should record and end span: %#v", nilSpan)
 	}
-	nilSpan = &internalTraceSpan{attributes: map[string]any{}}
+	nilSpan = &recordingTraceSpan{attributes: map[string]any{}}
 	if wrapToolChunks(nil, nilSpan) != nil || nilSpan.err == nil || !nilSpan.ended {
 		t.Fatalf("nil tool stream should record and end span: %#v", nilSpan)
 	}
 	recordAndEnd(nil, boom)
-	if sessionID(nil) != "" || sessionID(internalAgent{name: "nil-state"}) != "" {
+	if sessionID(nil) != "" || sessionID(middlewareAgentStub{name: "nil-state"}) != "" {
 		t.Fatal("sessionID should be empty for nil agent/state")
 	}
 	if inputType(nil) != "nil" || inputType(42) != "int" {
@@ -193,11 +193,11 @@ func TestEventConversionMiddlewareAGUIBranchesAndConverterErrors(t *testing.T) {
 		t.Fatal("empty custom middleware name should use default")
 	}
 
-	sink := &internalEventSink{events: make(chan ConvertedEvent, 1)}
+	sink := &recordingEventSink{events: make(chan ConvertedEvent, 1)}
 	mw := NewEventConversionMiddleware("drop-errors", sink, func(message.Event) (ConvertedEvent, error) {
 		return ConvertedEvent{}, errors.New("skip")
 	})
-	events, err := mw.OnReply(context.Background(), internalAgent{name: "Friday", state: statepkg.NewAgentState()}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	events, err := mw.OnReply(context.Background(), middlewareAgentStub{name: "Friday", state: statepkg.NewAgentState()}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		out := make(chan message.Event, 1)
 		out <- message.NewTextBlockDeltaEvent("reply-1", "text-1", "hello")
 		close(out)
@@ -214,12 +214,12 @@ func TestEventConversionMiddlewareAGUIBranchesAndConverterErrors(t *testing.T) {
 		t.Fatalf("converter errors should not publish events: %#v", event)
 	default:
 	}
-	if _, err := mw.OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	if _, err := mw.OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		return nil, errors.New("next failed")
 	}); err == nil {
 		t.Fatal("OnReply should return next errors")
 	}
-	if _, err := mw.OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	if _, err := mw.OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		return nil, nil
 	}); err == nil {
 		t.Fatal("OnReply should reject nil event streams")
@@ -253,7 +253,7 @@ func TestEventConversionMiddlewareAGUIBranchesAndConverterErrors(t *testing.T) {
 
 func TestInboxStateChangeAndToolOffloadHelperBranches(t *testing.T) {
 	state := statepkg.NewAgentState()
-	agent := internalAgent{name: "Friday", state: state}
+	agent := middlewareAgentStub{name: "Friday", state: state}
 	blocks := inboxBlocks([]InboxItem{
 		{Hint: "from hint", Source: "source"},
 		{Blocks: message.ContentBlockList{message.NewTextBlock("from block")}},
@@ -377,45 +377,45 @@ func collectMiddlewareChunks(chunks <-chan agentpkg.ToolChunk) []agentpkg.ToolCh
 	return collected
 }
 
-type internalAgent struct {
+type middlewareAgentStub struct {
 	name  string
 	state *statepkg.AgentState
 }
 
-func (a internalAgent) AgentName() string {
+func (a middlewareAgentStub) AgentName() string {
 	return a.name
 }
 
-func (a internalAgent) AgentState() *statepkg.AgentState {
+func (a middlewareAgentStub) AgentState() *statepkg.AgentState {
 	return a.state
 }
 
-type internalChatModel struct {
+type traceChatModelStub struct {
 	name string
 }
 
-func (m internalChatModel) Name() string {
+func (m traceChatModelStub) Name() string {
 	return m.name
 }
 
-func (m internalChatModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
+func (m traceChatModelStub) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
 	return nil, nil
 }
 
-func (m internalChatModel) Stream(context.Context, asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
+func (m traceChatModelStub) Stream(context.Context, asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
 	return emptyModelStream(context.Background())
 }
 
-func (m internalChatModel) CountTokens(asmodel.CallRequest) (int, error) {
+func (m traceChatModelStub) CountTokens(asmodel.CallRequest) (int, error) {
 	return 0, nil
 }
 
-type internalTracer struct {
-	spans []*internalTraceSpan
+type recordingTracer struct {
+	spans []*recordingTraceSpan
 }
 
-func (t *internalTracer) StartSpan(ctx context.Context, name string, attributes map[string]any) (context.Context, TraceSpan) {
-	span := &internalTraceSpan{name: name, attributes: map[string]any{}}
+func (t *recordingTracer) StartSpan(ctx context.Context, name string, attributes map[string]any) (context.Context, TraceSpan) {
+	span := &recordingTraceSpan{name: name, attributes: map[string]any{}}
 	for key, value := range attributes {
 		span.attributes[key] = value
 	}
@@ -423,14 +423,14 @@ func (t *internalTracer) StartSpan(ctx context.Context, name string, attributes 
 	return ctx, span
 }
 
-type internalTraceSpan struct {
+type recordingTraceSpan struct {
 	name       string
 	attributes map[string]any
 	err        error
 	ended      bool
 }
 
-func (s *internalTraceSpan) SetAttributes(attributes map[string]any) {
+func (s *recordingTraceSpan) SetAttributes(attributes map[string]any) {
 	if s.attributes == nil {
 		s.attributes = map[string]any{}
 	}
@@ -439,19 +439,19 @@ func (s *internalTraceSpan) SetAttributes(attributes map[string]any) {
 	}
 }
 
-func (s *internalTraceSpan) RecordError(err error) {
+func (s *recordingTraceSpan) RecordError(err error) {
 	s.err = err
 }
 
-func (s *internalTraceSpan) End() {
+func (s *recordingTraceSpan) End() {
 	s.ended = true
 }
 
-type internalEventSink struct {
+type recordingEventSink struct {
 	events chan ConvertedEvent
 }
 
-func (s *internalEventSink) PublishEvent(_ context.Context, event ConvertedEvent) error {
+func (s *recordingEventSink) PublishEvent(_ context.Context, event ConvertedEvent) error {
 	s.events <- event
 	return nil
 }

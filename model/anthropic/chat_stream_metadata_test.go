@@ -50,6 +50,30 @@ func TestParseStreamEmitsTerminalError(t *testing.T) {
 	}
 }
 
+func TestListModelsLoadsAnthropicModelCards(t *testing.T) {
+	t.Parallel()
+
+	cards, err := ListModels()
+	if err != nil {
+		t.Fatalf("ListModels returned error: %v", err)
+	}
+	if len(cards) == 0 {
+		t.Fatalf("expected embedded Anthropic model cards")
+	}
+	found := false
+	for _, card := range cards {
+		if card.Name == "claude-sonnet-4-5" {
+			found = true
+			if card.Type != asmodel.ModelCardTypeChat || card.Extra["provider"] != "anthropic" || !card.Capabilities[asmodel.ModelCapabilityGeneration] || !card.Capabilities[asmodel.ModelCapabilityTools] {
+				t.Fatalf("Anthropic model card metadata mismatch: %#v", card)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing claude-sonnet-4-5 card: %#v", cards)
+	}
+}
+
 type failingMessageStream struct {
 	err    error
 	closed bool

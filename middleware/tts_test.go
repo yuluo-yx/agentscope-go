@@ -37,7 +37,7 @@ func TestTTSMiddlewareSynthesizesAudioAfterTextBlock(t *testing.T) {
 		),
 	}}
 	mw := NewTTSMiddleware(model)
-	events, err := mw.OnReply(context.Background(), internalAgent{name: "Friday", state: statepkg.NewAgentState()}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	events, err := mw.OnReply(context.Background(), middlewareAgentStub{name: "Friday", state: statepkg.NewAgentState()}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		out := make(chan message.Event, 4)
 		out <- message.NewTextBlockStartEvent("reply-1", "text-1")
 		out <- message.NewTextBlockDeltaEvent("reply-1", "text-1", "hel")
@@ -84,7 +84,7 @@ func TestTTSMiddlewarePushesRealtimeTextAndClosesAudioBlock(t *testing.T) {
 		*astts.NewResponse(message.NewDataBlock(message.NewBase64Source("Qg==", "audio/wav")), true),
 	}
 	mw := NewTTSMiddleware(model)
-	events, err := mw.OnReply(context.Background(), internalAgent{name: "Friday", state: statepkg.NewAgentState()}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	events, err := mw.OnReply(context.Background(), middlewareAgentStub{name: "Friday", state: statepkg.NewAgentState()}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		out := make(chan message.Event, 3)
 		out <- message.NewTextBlockStartEvent("reply-1", "text-1")
 		out <- message.NewTextBlockDeltaEvent("reply-1", "text-1", "A")
@@ -123,7 +123,7 @@ func TestTTSMiddlewarePassThroughAndErrorBranches(t *testing.T) {
 	original := make(chan message.Event, 1)
 	original <- message.NewTextBlockStartEvent("reply-1", "text-1")
 	close(original)
-	events, err := (*TTSMiddleware)(nil).OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	events, err := (*TTSMiddleware)(nil).OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		return original, nil
 	})
 	if err != nil {
@@ -134,12 +134,12 @@ func TestTTSMiddlewarePassThroughAndErrorBranches(t *testing.T) {
 	}
 
 	nextErr := errors.New("next failed")
-	if _, err := NewTTSMiddleware(&recordingTTSModel{}).OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	if _, err := NewTTSMiddleware(&recordingTTSModel{}).OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		return nil, nextErr
 	}); !errors.Is(err, nextErr) {
 		t.Fatalf("next error mismatch: %v", err)
 	}
-	if _, err := NewTTSMiddleware(&recordingTTSModel{}).OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	if _, err := NewTTSMiddleware(&recordingTTSModel{}).OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		return nil, nil
 	}); err == nil || !strings.Contains(err.Error(), "nil event stream") {
 		t.Fatalf("nil stream error mismatch: %v", err)
@@ -147,7 +147,7 @@ func TestTTSMiddlewarePassThroughAndErrorBranches(t *testing.T) {
 
 	synthErr := errors.New("synthesize failed")
 	model := &recordingTTSModel{synthesizeErr: synthErr}
-	events, err = NewTTSMiddleware(model).OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	events, err = NewTTSMiddleware(model).OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		out := make(chan message.Event, 3)
 		out <- message.NewTextBlockStartEvent("reply-1", "text-1")
 		out <- message.NewTextBlockDeltaEvent("reply-1", "text-1", "hello")
@@ -176,7 +176,7 @@ func TestTTSMiddlewareSkipsInvalidResponsesAndStopsOnRealtimeErrors(t *testing.T
 		*astts.NewResponse(nil, true, astts.WithResponseError(errors.New("provider failed"))),
 		*astts.NewResponse(message.NewDataBlock(message.NewBase64Source("Qg==", "audio/wav")), true),
 	}}
-	events, err := NewTTSMiddleware(model).OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	events, err := NewTTSMiddleware(model).OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		out := make(chan message.Event, 3)
 		out <- message.NewTextBlockStartEvent("reply-1", "text-1")
 		out <- message.NewTextBlockDeltaEvent("reply-1", "text-1", "hello")
@@ -198,7 +198,7 @@ func TestTTSMiddlewareSkipsInvalidResponsesAndStopsOnRealtimeErrors(t *testing.T
 
 	connectErr := errors.New("connect failed")
 	realtimeConnect := &recordingTTSModel{realtime: true, connectErr: connectErr}
-	events, err = NewTTSMiddleware(realtimeConnect).OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	events, err = NewTTSMiddleware(realtimeConnect).OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		out := make(chan message.Event, 2)
 		out <- message.NewTextBlockDeltaEvent("reply-1", "text-1", "A")
 		out <- message.NewTextBlockEndEvent("reply-1", "text-1")
@@ -214,7 +214,7 @@ func TestTTSMiddlewareSkipsInvalidResponsesAndStopsOnRealtimeErrors(t *testing.T
 
 	pushErr := errors.New("push failed")
 	realtimePush := &recordingTTSModel{realtime: true, pushErr: pushErr}
-	events, err = NewTTSMiddleware(realtimePush).OnReply(context.Background(), internalAgent{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	events, err = NewTTSMiddleware(realtimePush).OnReply(context.Background(), middlewareAgentStub{}, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		out := make(chan message.Event, 2)
 		out <- message.NewTextBlockDeltaEvent("reply-1", "text-1", "A")
 		out <- message.NewTextBlockEndEvent("reply-1", "text-1")

@@ -47,6 +47,21 @@ func init() {
 		Tags:        []string{"local", "agent", "permission"},
 		Fn:          testPermissionConfirmResume,
 	})
+	testcases.Register("permission-deny-tool-result", testcases.TestCase{
+		Description: "Denied tool permission emits a denied tool result without executing the local handler",
+		Tags:        []string{"local", "agent", "permission", "tool"},
+		Fn:          testPermissionDenyToolResult,
+	})
+	testcases.Register("permission-updated-input", testcases.TestCase{
+		Description: "Permission decisions can rewrite tool input before Agent executes the local tool",
+		Tags:        []string{"local", "agent", "permission", "tool"},
+		Fn:          testPermissionUpdatedInput,
+	})
+	testcases.Register("external-tool-resume", testcases.TestCase{
+		Description: "External tools emit execution requirements and resume after external results are observed",
+		Tags:        []string{"local", "agent", "tool", "external"},
+		Fn:          testExternalToolResume,
+	})
 	testcases.Register("workspace-local-files", testcases.TestCase{
 		Description: "Local workspace file tools run through an Agent loop",
 		Tags:        []string{"local", "workspace", "tool"},
@@ -338,6 +353,224 @@ func testPermissionConfirmResume(ctx context.Context, _ testcases.TestCaseOption
 	}
 	if text := reply.GetTextContent(""); text == nil || *text != "release published" {
 		return fmt.Errorf("final reply text mismatch: %#v", reply)
+	}
+	return nil
+}
+
+func testPermissionDenyToolResult(ctx context.Context, opts testcases.TestCaseOptions) error {
+	executed := false
+	deleteRecord, err := tool.NewFunctionTool(
+		"DeleteRecord",
+		"Delete one record when policy allows it.",
+		map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"id": map[string]any{"type": "string"}},
+			"required":   []string{"id"},
+		},
+		func(context.Context, map[string]any, *asstate.AgentState) (message.ContentBlockList, error) {
+			executed = true
+			return message.ContentBlockList{message.NewTextBlock("deleted")}, nil
+		},
+		tool.WithFunctionPermissionFunc(func(context.Context, map[string]any, *permission.Context) (*permission.Decision, error) {
+			return &permission.Decision{Behavior: permission.BehaviorDeny, Message: "blocked by e2e policy"}, nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+	kit, err := tool.NewToolkit(deleteRecord)
+	if err != nil {
+		return err
+	}
+	model := &scriptedChatModel{name: "scripted-permission-deny-e2e", responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(message.ContentBlockList{message.NewToolCallBlock("delete-call", "DeleteRecord", mustJSONInput(map[string]any{"id": "release"}))}, true),
+		modelpkg.NewChatResponse(message.ContentBlockList{message.NewTextBlock("delete was blocked")}, true),
+	}}
+	agent, err := agentpkg.NewAgent("Friday", "Respect permission denials.", model, agentpkg.WithToolkit(kit))
+	if err != nil {
+		return err
+	}
+	userMsg, err := message.NewUserMessage("Tony", "Delete release")
+	if err != nil {
+		return err
+	}
+	var events []message.Event
+	if err := agent.ReplyStream(ctx, userMsg, func(evt message.Event) error {
+		events = append(events, evt)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if executed {
+		return fmt.Errorf("DeleteRecord handler executed despite denied permission")
+	}
+	final := agent.AgentState().Context[len(agent.AgentState().Context)-1]
+	if text := final.GetTextContent(""); text == nil || *text != "delete was blocked" {
+		return fmt.Errorf("final reply text mismatch: %#v", final)
+	}
+	if err := assertEventOrder(events, message.ToolCallStartType, message.ToolResultEndType, message.TextBlockDeltaType, message.ReplyEndType); err != nil {
+		return err
+	}
+	result, err := onlyToolResultFromLastRequest(model)
+	if err != nil {
+		return err
+	}
+	if text := result.Output.Blocks.GetTextContent(""); result.State != message.ToolResultDenied || text == nil || !strings.Contains(*text, "blocked by e2e policy") {
+		return fmt.Errorf("denied tool result mismatch: %#v text=%#v", result, text)
+	}
+	if opts.SetDetails != nil {
+		opts.SetDetails(map[string]any{"model_calls": len(model.requests), "denied_tool": result.Name})
+	}
+	return nil
+}
+
+func testPermissionUpdatedInput(ctx context.Context, opts testcases.TestCaseOptions) error {
+	var handlerInput map[string]any
+	normalizeDeploy, err := tool.NewFunctionTool(
+		"NormalizeDeploy",
+		"Normalize a deploy request before it is executed.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"service": map[string]any{"type": "string"},
+				"env":     map[string]any{"type": "string"},
+			},
+			"required": []string{"service", "env"},
+		},
+		func(_ context.Context, input map[string]any, _ *asstate.AgentState) (message.ContentBlockList, error) {
+			handlerInput = input
+			return message.ContentBlockList{message.NewTextBlock(fmt.Sprintf("deploy %s to %s", input["service"], input["env"]))}, nil
+		},
+		tool.WithFunctionPermissionFunc(func(_ context.Context, input map[string]any, _ *permission.Context) (*permission.Decision, error) {
+			updated := map[string]any{
+				"service": strings.TrimSpace(fmt.Sprint(input["service"])),
+				"env":     "staging",
+			}
+			return &permission.Decision{Behavior: permission.BehaviorAllow, Message: "normalized by e2e policy", UpdatedInput: updated}, nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+	kit, err := tool.NewToolkit(normalizeDeploy)
+	if err != nil {
+		return err
+	}
+	model := &scriptedChatModel{name: "scripted-permission-updated-input-e2e", responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(message.ContentBlockList{message.NewToolCallBlock("normalize-call", "NormalizeDeploy", mustJSONInput(map[string]any{"service": " checkout ", "env": "prod"}))}, true),
+		modelpkg.NewChatResponse(message.ContentBlockList{message.NewTextBlock("normalized deploy recorded")}, true),
+	}}
+	agent, err := agentpkg.NewAgent("Friday", "Normalize deploy input before executing tools.", model, agentpkg.WithToolkit(kit))
+	if err != nil {
+		return err
+	}
+	userMsg, err := message.NewUserMessage("Tony", "Deploy checkout")
+	if err != nil {
+		return err
+	}
+	reply, err := agent.Reply(ctx, userMsg)
+	if err != nil {
+		return err
+	}
+	if text := reply.GetTextContent(""); text == nil || *text != "normalized deploy recorded" {
+		return fmt.Errorf("final reply text mismatch: %#v", reply)
+	}
+	if handlerInput["service"] != "checkout" || handlerInput["env"] != "staging" {
+		return fmt.Errorf("permission-updated input was not passed to handler: %#v", handlerInput)
+	}
+	result, err := onlyToolResultFromLastRequest(model)
+	if err != nil {
+		return err
+	}
+	if text := result.Output.Blocks.GetTextContent(""); result.State != message.ToolResultSuccess || text == nil || *text != "deploy checkout to staging" {
+		return fmt.Errorf("normalized tool result mismatch: %#v text=%#v", result, text)
+	}
+	if opts.SetDetails != nil {
+		opts.SetDetails(map[string]any{"model_calls": len(model.requests), "normalized_env": handlerInput["env"]})
+	}
+	return nil
+}
+
+func testExternalToolResume(ctx context.Context, opts testcases.TestCaseOptions) error {
+	executedLocally := false
+	deployJob, err := tool.NewFunctionTool(
+		"DeployJob",
+		"Submit a deployment job to an external executor.",
+		map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"service": map[string]any{"type": "string"}},
+			"required":   []string{"service"},
+		},
+		func(context.Context, map[string]any, *asstate.AgentState) (message.ContentBlockList, error) {
+			executedLocally = true
+			return message.ContentBlockList{message.NewTextBlock("should run externally")}, nil
+		},
+		tool.WithFunctionExternalTool(true),
+		tool.WithFunctionPermissionFunc(func(context.Context, map[string]any, *permission.Context) (*permission.Decision, error) {
+			return &permission.Decision{Behavior: permission.BehaviorAllow, Message: "external execution allowed"}, nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+	kit, err := tool.NewToolkit(deployJob)
+	if err != nil {
+		return err
+	}
+	model := &scriptedChatModel{name: "scripted-external-tool-e2e", responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(message.ContentBlockList{message.NewToolCallBlock("deploy-call", "DeployJob", mustJSONInput(map[string]any{"service": "checkout"}))}, true),
+		modelpkg.NewChatResponse(message.ContentBlockList{message.NewTextBlock("deployment recorded")}, true),
+	}}
+	agent, err := agentpkg.NewAgent("Friday", "Submit external jobs when needed.", model, agentpkg.WithToolkit(kit))
+	if err != nil {
+		return err
+	}
+	userMsg, err := message.NewUserMessage("Tony", "Deploy checkout")
+	if err != nil {
+		return err
+	}
+	var required *message.RequireExternalExecutionEvent
+	var events []message.Event
+	if err := agent.ReplyStream(ctx, userMsg, func(evt message.Event) error {
+		events = append(events, evt)
+		if typed, ok := evt.(*message.RequireExternalExecutionEvent); ok {
+			required = typed
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if executedLocally {
+		return fmt.Errorf("external DeployJob handler executed locally")
+	}
+	if required == nil || len(required.ToolCalls) != 1 || required.ToolCalls[0].Name != "DeployJob" {
+		return fmt.Errorf("expected one external execution request, got %#v", required)
+	}
+	if err := assertEventOrder(events, message.ToolCallStartType, message.ToolResultStartType, message.RequireExternalExecutionType, message.ReplyEndType); err != nil {
+		return err
+	}
+	result := message.NewToolResultBlock(
+		required.ToolCalls[0].ID,
+		required.ToolCalls[0].Name,
+		message.ToolResultOutput{Blocks: message.ContentBlockList{message.NewTextBlock("external executor finished checkout")}},
+		message.ToolResultSuccess,
+	)
+	reply, err := agent.Reply(ctx, message.NewExternalExecutionResultEvent(required.ReplyID(), []*message.ToolResultBlock{result}))
+	if err != nil {
+		return err
+	}
+	if text := reply.GetTextContent(""); text == nil || *text != "deployment recorded" {
+		return fmt.Errorf("final reply text mismatch after external result: %#v", reply)
+	}
+	resumedResult, err := onlyToolResultFromLastRequest(model)
+	if err != nil {
+		return err
+	}
+	if text := resumedResult.Output.Blocks.GetTextContent(""); resumedResult.State != message.ToolResultSuccess || text == nil || *text != "external executor finished checkout" {
+		return fmt.Errorf("external tool result should be sent to resumed model call, got %#v text=%#v", resumedResult, text)
+	}
+	if opts.SetDetails != nil {
+		opts.SetDetails(map[string]any{"model_calls": len(model.requests), "external_tool": required.ToolCalls[0].Name})
 	}
 	return nil
 }

@@ -16,6 +16,8 @@ package permission_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/yuluo-yx/agentscope-go/permission"
@@ -27,6 +29,7 @@ type fakeTool struct {
 	inputReadOnly *bool
 	decision      *permission.Decision
 	decisionFunc  func(*permission.Context) *permission.Decision
+	errFunc       func(*permission.Context) error
 }
 
 func (f fakeTool) Name() string {
@@ -42,6 +45,11 @@ func (f fakeTool) IsReadOnlyInput(map[string]any) bool {
 }
 
 func (f fakeTool) CheckPermissions(_ context.Context, _ map[string]any, ctx *permission.Context) (*permission.Decision, error) {
+	if f.errFunc != nil {
+		if err := f.errFunc(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if f.decisionFunc != nil {
 		return f.decisionFunc(ctx), nil
 	}
@@ -66,6 +74,15 @@ func (f fakeTool) GenerateSuggestions(map[string]any) []permission.Rule {
 		Behavior:    permission.BehaviorAllow,
 		Source:      "test",
 	}}
+}
+
+type describedFakeTool struct {
+	fakeTool
+	description string
+}
+
+func (f describedFakeTool) Description() string {
+	return f.description
 }
 
 func TestEngineRulePriorityDenyAskAllow(t *testing.T) {
@@ -262,15 +279,19 @@ func TestEngineToolDecisionsAndInputDefaults(t *testing.T) {
 }
 
 type fakeAutoClassifier struct {
-	calls    []permission.ClassifierRequest
-	decision *permission.Decision
-	err      error
+	calls     []permission.ClassifierRequest
+	decision  *permission.Decision
+	err       error
+	returnNil bool
 }
 
 func (f *fakeAutoClassifier) Classify(_ context.Context, request permission.ClassifierRequest) (*permission.Decision, error) {
 	f.calls = append(f.calls, request)
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.returnNil {
+		return nil, nil
 	}
 	if f.decision != nil {
 		cp := *f.decision
@@ -352,6 +373,141 @@ func TestEngineAutoModeFastPathsAndClassifier(t *testing.T) {
 		}
 		if decision.Behavior != permission.BehaviorDeny || decision.DecisionReason == "" {
 			t.Fatalf("classifier failure should fail closed with reason, got %#v", decision)
+		}
+	})
+
+	t.Run("classifier nil decision denies closed", func(t *testing.T) {
+		t.Parallel()
+
+		classifier := &fakeAutoClassifier{returnNil: true}
+		decision, err := permission.NewEngine(
+			permission.NewContext(permission.ModeAuto),
+			permission.WithAutoPermissionClassifier(classifier),
+		).CheckPermission(context.Background(), fakeTool{name: "Bash"}, map[string]any{"command": "deploy"})
+		if err != nil {
+			t.Fatalf("CheckPermission returned error: %v", err)
+		}
+		if decision.Behavior != permission.BehaviorDeny || !strings.Contains(decision.DecisionReason, "Auto classifier") {
+			t.Fatalf("nil classifier decision should deny closed, got %#v", decision)
+		}
+	})
+
+	t.Run("classifier ask returns prompt decision", func(t *testing.T) {
+		t.Parallel()
+
+		classifier := &fakeAutoClassifier{decision: &permission.Decision{Behavior: permission.BehaviorAsk}}
+		decision, err := permission.NewEngine(
+			permission.NewContext(permission.ModeAuto),
+			permission.WithAutoPermissionClassifier(classifier),
+		).CheckPermission(context.Background(), fakeTool{name: "Bash"}, map[string]any{"command": "deploy"})
+		if err != nil {
+			t.Fatalf("CheckPermission returned error: %v", err)
+		}
+		if decision.Behavior != permission.BehaviorAsk || len(decision.SuggestedRules) != 1 {
+			t.Fatalf("classifier ask should return original prompt decision: %#v", decision)
+		}
+	})
+
+	t.Run("classifier invalid behavior denies closed", func(t *testing.T) {
+		t.Parallel()
+
+		classifier := &fakeAutoClassifier{decision: &permission.Decision{Behavior: permission.Behavior("later")}}
+		decision, err := permission.NewEngine(
+			permission.NewContext(permission.ModeAuto),
+			permission.WithAutoPermissionClassifier(classifier),
+		).CheckPermission(context.Background(), fakeTool{name: "Bash"}, map[string]any{"command": "deploy"})
+		if err != nil {
+			t.Fatalf("CheckPermission returned error: %v", err)
+		}
+		if decision.Behavior != permission.BehaviorDeny || !strings.Contains(decision.DecisionReason, "Invalid auto classifier behavior") {
+			t.Fatalf("invalid classifier behavior should deny closed, got %#v", decision)
+		}
+	})
+
+	t.Run("classifier deny fills defaults before threshold", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := permission.NewContext(permission.ModeAuto)
+		classifier := &fakeAutoClassifier{decision: &permission.Decision{Behavior: permission.BehaviorDeny}}
+		decision, err := permission.NewEngine(
+			ctx,
+			permission.WithAutoPermissionClassifier(classifier),
+		).CheckPermission(context.Background(), fakeTool{name: "Bash"}, map[string]any{"command": "deploy"})
+		if err != nil {
+			t.Fatalf("CheckPermission returned error: %v", err)
+		}
+		if decision.Behavior != permission.BehaviorDeny ||
+			!strings.Contains(decision.Message, "auto classifier") ||
+			decision.DecisionReason != "Auto classifier denied the operation" {
+			t.Fatalf("classifier deny defaults mismatch: %#v", decision)
+		}
+		if ctx.AutoDenialState.ConsecutiveDenials != 1 || ctx.AutoDenialState.TotalDenials != 1 {
+			t.Fatalf("denial counters mismatch: %#v", ctx.AutoDenialState)
+		}
+	})
+
+	t.Run("classifier allow fills defaults and request metadata", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := permission.NewContext(permission.ModeAuto)
+		ctx.AutoDenialState = permission.AutoDenialState{ConsecutiveDenials: 2, TotalDenials: 5}
+		ctx.WorkingDirectories["repo"] = permission.AdditionalWorkingDirectory{Path: "/repo", Source: "test"}
+		ctx.AllowRules["Bash"] = []permission.Rule{{ToolName: "Bash", RuleContent: "go test:*", Behavior: permission.BehaviorAllow}}
+		classifier := &fakeAutoClassifier{decision: &permission.Decision{Behavior: permission.BehaviorAllow}}
+		input := map[string]any{"command": "deploy"}
+		decision, err := permission.NewEngine(
+			ctx,
+			permission.WithAutoPermissionClassifier(classifier),
+			permission.WithAutoPermissionTranscript("transcript"),
+		).CheckPermission(context.Background(), describedFakeTool{
+			fakeTool:    fakeTool{name: "Bash"},
+			description: "Runs shell commands.",
+		}, input)
+		if err != nil {
+			t.Fatalf("CheckPermission returned error: %v", err)
+		}
+		if decision.Behavior != permission.BehaviorAllow ||
+			!strings.Contains(decision.Message, "auto classifier") ||
+			decision.DecisionReason != "Auto classifier allowed the operation" ||
+			decision.UpdatedInput["command"] != "deploy" {
+			t.Fatalf("classifier allow defaults mismatch: %#v", decision)
+		}
+		if ctx.AutoDenialState.ConsecutiveDenials != 0 || ctx.AutoDenialState.TotalDenials != 5 {
+			t.Fatalf("allow should reset consecutive denials only: %#v", ctx.AutoDenialState)
+		}
+		if len(classifier.calls) != 1 ||
+			classifier.calls[0].ToolDescription != "Runs shell commands." ||
+			classifier.calls[0].WorkingDirectories["repo"].Path != "/repo" ||
+			len(classifier.calls[0].AllowRules["Bash"]) != 1 {
+			t.Fatalf("classifier request metadata mismatch: %#v", classifier.calls)
+		}
+	})
+
+	t.Run("accept edits fast path propagates tool error", func(t *testing.T) {
+		t.Parallel()
+
+		fastPathErr := errors.New("accept edits failed")
+		tool := fakeTool{
+			name: "Write",
+			decisionFunc: func(ctx *permission.Context) *permission.Decision {
+				if ctx != nil && ctx.Mode == permission.ModeAuto {
+					return &permission.Decision{Behavior: permission.BehaviorAsk}
+				}
+				return &permission.Decision{Behavior: permission.BehaviorPassthrough}
+			},
+			errFunc: func(ctx *permission.Context) error {
+				if ctx != nil && ctx.Mode == permission.ModeAcceptEdits {
+					return fastPathErr
+				}
+				return nil
+			},
+		}
+		_, err := permission.NewEngine(
+			permission.NewContext(permission.ModeAuto),
+			permission.WithAutoPermissionClassifier(&fakeAutoClassifier{decision: &permission.Decision{Behavior: permission.BehaviorAllow}}),
+		).CheckPermission(context.Background(), tool, map[string]any{"file_path": "/tmp/a.txt"})
+		if !errors.Is(err, fastPathErr) {
+			t.Fatalf("fast path error = %v", err)
 		}
 	})
 }

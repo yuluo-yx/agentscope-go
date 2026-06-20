@@ -261,6 +261,78 @@ func TestRealtimeModelManualSessionCommitAndProviderErrors(t *testing.T) {
 	}
 }
 
+func TestRealtimeModelRecognizeOneShotManualSession(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan realtimeSTTClientMessage, 8)
+	server := newRealtimeSTTServer(t, func(t *testing.T, conn *websocket.Conn, r *http.Request) {
+		if r.URL.Query().Get("model") != "qwen3-asr-flash-realtime" {
+			t.Fatalf("model query mismatch: %s", r.URL.RawQuery)
+		}
+		writeSTTRealtimeEvent(t, conn, map[string]any{
+			"type":    "session.created",
+			"session": map[string]any{"id": "sess-recognize"},
+		})
+		for {
+			var msg realtimeSTTClientMessage
+			if err := conn.ReadJSON(&msg); err != nil {
+				return
+			}
+			received <- msg
+			switch msg.Type {
+			case "session.update":
+				writeSTTRealtimeEvent(t, conn, map[string]any{
+					"type":    "session.updated",
+					"session": map[string]any{"id": "sess-recognize"},
+				})
+			case "input_audio_buffer.commit":
+				writeSTTRealtimeEvent(t, conn, map[string]any{
+					"type":       "conversation.item.input_audio_transcription.completed",
+					"language":   "en",
+					"transcript": "recognized",
+				})
+			case "session.finish":
+				writeSTTRealtimeEvent(t, conn, map[string]any{"type": "session.finished"})
+				return
+			}
+		}
+	})
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	model, err := dashscope.NewRealtimeModel(
+		dashscope.NewCredential("dash-key"),
+		"qwen3-asr-flash-realtime",
+		dashscope.WithRealtimeEndpoint(server.URL+"/api-ws/v1/realtime"),
+		dashscope.WithRealtimeDialer(websocket.DefaultDialer),
+		dashscope.WithRealtimeConnectTimeout(time.Second),
+		dashscope.WithRealtimeParameters(dashscope.RealtimeParameters{Mode: dashscope.RealtimeModeManual}),
+	)
+	if err != nil {
+		t.Fatalf("NewRealtimeModel returned error: %v", err)
+	}
+	responses, err := model.Recognize(ctx, stt.Request{
+		Audio:    stt.NewAudioBlock([]byte("pcm"), "audio/pcm"),
+		Metadata: map[string]any{"request_id": "req-recognize"},
+	})
+	if err != nil {
+		t.Fatalf("Recognize returned error: %v", err)
+	}
+	got := collectSTTResponses(responses)
+	if len(got) != 1 || got[0].Text != "recognized" || !got[0].IsLast ||
+		got[0].Language != "en" || got[0].Metadata["request_id"] != "req-recognize" {
+		t.Fatalf("recognize response mismatch: %#v", got)
+	}
+	wantTypes := []string{"session.update", "input_audio_buffer.append", "input_audio_buffer.commit", "session.finish"}
+	for _, want := range wantTypes {
+		msg := receiveSTTRealtimeMessage(t, received)
+		if msg.Type != want {
+			t.Fatalf("message type = %s, want %s", msg.Type, want)
+		}
+	}
+}
+
 func newRealtimeSTTServer(
 	t *testing.T,
 	handler func(*testing.T, *websocket.Conn, *http.Request),

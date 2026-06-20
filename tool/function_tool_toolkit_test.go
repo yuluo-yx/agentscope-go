@@ -30,7 +30,7 @@ const (
 	coverageResetToolsName   = "reset_tools"
 )
 
-func TestFunctionToolOptionsAndInternalBranches(t *testing.T) {
+func TestFunctionToolOptionsAndErrorBranches(t *testing.T) {
 	t.Parallel()
 
 	if _, err := NewFunctionTool("Missing", "desc", nil, nil); err == nil {
@@ -115,7 +115,7 @@ func TestFunctionToolOptionsAndInternalBranches(t *testing.T) {
 	}
 }
 
-func TestToolkitInternalErrorBranches(t *testing.T) {
+func TestToolkitErrorBranches(t *testing.T) {
 	t.Parallel()
 
 	canceled, cancel := context.WithCancel(context.Background())

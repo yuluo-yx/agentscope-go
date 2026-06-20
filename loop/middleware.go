@@ -166,35 +166,44 @@ func (m *Middleware) OnReply(
 		stopReason := statepkg.LoopStopCompleted
 		started := false
 		for event := range events {
-			loopCtx := ensureLoopContext(agent, m.spec)
 			replyID = replyIDFromEventOrState(event, agent)
 			switch typed := event.(type) {
 			case *message.ReplyStartEvent:
 				replyID = typed.ReplyID()
-				m.startRun(agent, loopCtx, replyID)
+				m.startRun(agent, replyID)
 				started = true
 				out <- event
 				m.emit(ctx, out, agent, EventStart, "", replyID)
 				continue
 			case *message.ModelCallEndEvent:
-				loopCtx.ModelCalls++
-				loopCtx.InputTokens += typed.InputTokens
-				loopCtx.OutputTokens += typed.OutputTokens
-				loopCtx.UpdatedAt = time.Now()
+				m.updateLoopContext(agent, func(loopCtx *statepkg.LoopContext) {
+					loopCtx.ModelCalls++
+					loopCtx.InputTokens += typed.InputTokens
+					loopCtx.OutputTokens += typed.OutputTokens
+					loopCtx.UpdatedAt = time.Now()
+				})
 			case *message.ToolResultStartEvent:
-				loopCtx.ToolCalls++
-				loopCtx.UpdatedAt = time.Now()
+				m.updateLoopContext(agent, func(loopCtx *statepkg.LoopContext) {
+					loopCtx.ToolCalls++
+					loopCtx.UpdatedAt = time.Now()
+				})
 			case *message.RequireUserConfirmEvent:
 				stopReason = statepkg.LoopStopWaitingUser
-				loopCtx.StopReason = stopReason
+				m.updateLoopContext(agent, func(loopCtx *statepkg.LoopContext) {
+					loopCtx.StopReason = stopReason
+				})
 			case *message.RequireExternalExecutionEvent:
 				stopReason = statepkg.LoopStopWaitingExternal
-				loopCtx.StopReason = stopReason
+				m.updateLoopContext(agent, func(loopCtx *statepkg.LoopContext) {
+					loopCtx.StopReason = stopReason
+				})
 			case *message.ExceedMaxItersEvent:
 				stopReason = statepkg.LoopStopMaxIterations
-				loopCtx.StopReason = stopReason
+				m.updateLoopContext(agent, func(loopCtx *statepkg.LoopContext) {
+					loopCtx.StopReason = stopReason
+				})
 			case *message.CustomEvent:
-				recordCustomEvent(loopCtx, typed.Name)
+				m.recordCustomEvent(agent, typed.Name)
 			}
 			out <- event
 			if _, ok := event.(*message.ReplyEndEvent); ok {
@@ -222,11 +231,9 @@ func (m *Middleware) OnReasoning(
 	if m == nil {
 		return next(ctx)
 	}
-	loopCtx := ensureLoopContext(agent, m.spec)
-	loopCtx.Iteration++
-	loopCtx.UpdatedAt = time.Now()
 	wrappedUp := false
-	if m.exceeded(loopCtx) {
+	exceeded := m.beginReasoning(agent)
+	if exceeded {
 		input["tool_choice"] = &types.ToolChoice{Mode: string(types.ToolChoiceNone)}
 		if m.markHinted(agent) {
 			if err := appendHint(agent, m.spec.Policy.WrapUpHint); err != nil {
@@ -234,7 +241,6 @@ func (m *Middleware) OnReasoning(
 			}
 			wrappedUp = true
 		}
-		loopCtx.StopReason = statepkg.LoopStopBudgetExceeded
 	}
 	events, err := next(ctx)
 	if err != nil {
@@ -247,13 +253,13 @@ func (m *Middleware) OnReasoning(
 	go func() {
 		defer close(out)
 		if wrappedUp {
-			m.emit(ctx, out, agent, EventWrapUp, string(statepkg.LoopStopBudgetExceeded), "", loopCtx)
+			m.emit(ctx, out, agent, EventWrapUp, string(statepkg.LoopStopBudgetExceeded), "")
 		}
-		m.emit(ctx, out, agent, EventIterationStart, "", "", loopCtx)
+		m.emit(ctx, out, agent, EventIterationStart, "", "")
 		for event := range events {
 			out <- event
 		}
-		m.emit(ctx, out, agent, EventIterationEnd, "", "", loopCtx)
+		m.emit(ctx, out, agent, EventIterationEnd, "", "")
 	}()
 	return out, nil
 }
@@ -265,7 +271,7 @@ func (m *Middleware) OnModelCall(
 	input agentpkg.HookInput,
 	next agentpkg.ModelCallHandler,
 ) (<-chan modelpkg.ChatResponse, error) {
-	if m != nil && m.exceeded(ensureLoopContext(agent, m.spec)) {
+	if m != nil && m.exceededAgent(agent) {
 		choice := &types.ToolChoice{Mode: string(types.ToolChoiceNone)}
 		switch request := input["request"].(type) {
 		case modelpkg.CallRequest:
@@ -369,17 +375,9 @@ func (m *Middleware) emit(ctx context.Context, out chan<- message.Event, agent a
 	if m == nil || !m.emitEvents {
 		return
 	}
-	current := firstLoopContext(loopCtx)
-	if current == nil {
-		current = ensureLoopContext(agent, m.spec)
-	}
-	if replyID == "" && agent != nil && agent.AgentState() != nil {
-		replyID = agent.AgentState().ReplyID
-	}
 	agentName, sessionID := agentInfo(agent)
-	event := m.customEvent(agentName, sessionID, replyID, eventType, reason, current)
-	recordCustomEvent(current, event.Name)
-	m.observe(ctx, eventType, reason, agentName, sessionID, replyID, current)
+	event, snapshot, replyID := m.loopEvent(agent, agentName, sessionID, replyID, eventType, reason, firstLoopContext(loopCtx))
+	m.observe(ctx, eventType, reason, agentName, sessionID, replyID, snapshot)
 	out <- event
 }
 
@@ -392,11 +390,7 @@ func firstLoopContext(contexts []*statepkg.LoopContext) *statepkg.LoopContext {
 
 func (m *Middleware) verifyAfterReply(ctx context.Context, out chan<- message.Event, agent agentpkg.AgentAccessor, replyID string, fallback statepkg.LoopStopReason) statepkg.LoopStopReason {
 	if m == nil || m.verifier == nil {
-		loopCtx := ensureLoopContext(agent, m.spec)
-		if loopCtx.StopReason != "" {
-			return loopCtx.StopReason
-		}
-		return fallback
+		return m.stopReasonOrFallback(agent, fallback)
 	}
 	m.emit(ctx, out, agent, EventVerifyStart, "", replyID)
 	result, err := m.verifier.Verify(ctx, VerificationInput{
@@ -409,32 +403,24 @@ func (m *Middleware) verifyAfterReply(ctx context.Context, out chan<- message.Ev
 	if err != nil {
 		result = VerificationResult{Passed: false, Reason: err.Error(), NextAction: "escalate"}
 	}
-	loopCtx := ensureLoopContext(agent, m.spec)
-	loopCtx.LastVerification = &statepkg.LoopVerification{
-		Passed:     result.Passed,
-		Reason:     result.Reason,
-		Evidence:   append([]string(nil), result.Evidence...),
-		NextAction: result.NextAction,
-		UpdatedAt:  time.Now(),
-	}
-	if !result.Passed {
-		loopCtx.StopReason = statepkg.LoopStopVerifierFailed
-	}
-	verifyEvent := m.customEvent(agentName(agent), sessionID(agent), replyID, EventVerifyEnd, result.Reason, loopCtx)
+	verifyEvent, snapshot, stopReason := m.recordVerification(agent, replyID, result)
 	verifyEvent.Value["verification_passed"] = result.Passed
 	verifyEvent.Value["verification_reason"] = result.Reason
 	verifyEvent.Value["verification_evidence"] = append([]string(nil), result.Evidence...)
 	verifyEvent.Value["verification_next_action"] = result.NextAction
-	recordCustomEvent(loopCtx, verifyEvent.Name)
-	m.observe(ctx, EventVerifyEnd, result.Reason, agentName(agent), sessionID(agent), replyID, loopCtx)
+	m.observe(ctx, EventVerifyEnd, result.Reason, agentName(agent), sessionID(agent), replyID, snapshot)
 	out <- verifyEvent
-	if loopCtx.StopReason != "" {
-		return loopCtx.StopReason
+	if stopReason != "" {
+		return stopReason
 	}
 	return fallback
 }
 
-func (m *Middleware) startRun(agent agentpkg.AgentAccessor, loopCtx *statepkg.LoopContext, replyID string) {
+func (m *Middleware) startRun(agent agentpkg.AgentAccessor, replyID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	loopCtx := ensureLoopContextLocked(agent, m.spec)
 	now := time.Now()
 	loopCtx.Name = m.spec.Name
 	loopCtx.Goal = m.spec.Goal
@@ -456,11 +442,14 @@ func (m *Middleware) startRun(agent agentpkg.AgentAccessor, loopCtx *statepkg.Lo
 	loopCtx.StartedAt = now
 	loopCtx.UpdatedAt = now
 	loopCtx.Runs = append(loopCtx.Runs, statepkg.LoopRun{ReplyID: replyID, StartedAt: now})
-	m.clearHint(agent)
+	m.clearHintLocked(agent)
 }
 
 func (m *Middleware) stopRun(agent agentpkg.AgentAccessor, reason statepkg.LoopStopReason) {
-	loopCtx := ensureLoopContext(agent, m.spec)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	loopCtx := ensureLoopContextLocked(agent, m.spec)
 	if reason == "" {
 		reason = statepkg.LoopStopCompleted
 	}
@@ -479,7 +468,28 @@ func (m *Middleware) stopRun(agent agentpkg.AgentAccessor, reason statepkg.LoopS
 	run.StopReason = reason
 }
 
-func (m *Middleware) exceeded(loopCtx *statepkg.LoopContext) bool {
+func (m *Middleware) beginReasoning(agent agentpkg.AgentAccessor) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	loopCtx := ensureLoopContextLocked(agent, m.spec)
+	loopCtx.Iteration++
+	loopCtx.UpdatedAt = time.Now()
+	if !m.exceededLocked(loopCtx) {
+		return false
+	}
+	loopCtx.StopReason = statepkg.LoopStopBudgetExceeded
+	return true
+}
+
+func (m *Middleware) exceededAgent(agent agentpkg.AgentAccessor) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.exceededLocked(ensureLoopContextLocked(agent, m.spec))
+}
+
+func (m *Middleware) exceededLocked(loopCtx *statepkg.LoopContext) bool {
 	if m == nil || loopCtx == nil {
 		return false
 	}
@@ -492,9 +502,10 @@ func (m *Middleware) exceeded(loopCtx *statepkg.LoopContext) bool {
 }
 
 func (m *Middleware) markHinted(agent agentpkg.AgentAccessor) bool {
-	key := loopKey(agent)
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	key := loopKey(agent)
 	if m.hinted[key] {
 		return false
 	}
@@ -502,10 +513,8 @@ func (m *Middleware) markHinted(agent agentpkg.AgentAccessor) bool {
 	return true
 }
 
-func (m *Middleware) clearHint(agent agentpkg.AgentAccessor) {
+func (m *Middleware) clearHintLocked(agent agentpkg.AgentAccessor) {
 	key := loopKey(agent)
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	delete(m.hinted, key)
 }
 
@@ -517,7 +526,79 @@ func loopKey(agent agentpkg.AgentAccessor) string {
 	return state.SessionID + ":" + state.ReplyID
 }
 
-func ensureLoopContext(agent agentpkg.AgentAccessor, spec Spec) *statepkg.LoopContext {
+func (m *Middleware) updateLoopContext(agent agentpkg.AgentAccessor, update func(*statepkg.LoopContext)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	update(ensureLoopContextLocked(agent, m.spec))
+}
+
+func (m *Middleware) recordCustomEvent(agent agentpkg.AgentAccessor, name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	recordCustomEventLocked(ensureLoopContextLocked(agent, m.spec), name)
+}
+
+func (m *Middleware) stopReasonOrFallback(agent agentpkg.AgentAccessor, fallback statepkg.LoopStopReason) statepkg.LoopStopReason {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if stopReason := ensureLoopContextLocked(agent, m.spec).StopReason; stopReason != "" {
+		return stopReason
+	}
+	return fallback
+}
+
+func (m *Middleware) loopEvent(
+	agent agentpkg.AgentAccessor,
+	agentName string,
+	sessionID string,
+	replyID string,
+	eventType string,
+	reason string,
+	loopCtx *statepkg.LoopContext,
+) (*message.CustomEvent, *statepkg.LoopContext, string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	current := loopCtx
+	if current == nil {
+		current = ensureLoopContextLocked(agent, m.spec)
+	}
+	if replyID == "" && agent != nil && agent.AgentState() != nil {
+		replyID = agent.AgentState().ReplyID
+	}
+	event := m.customEvent(agentName, sessionID, replyID, eventType, reason, current)
+	recordCustomEventLocked(current, event.Name)
+	return event, current.Clone(), replyID
+}
+
+func (m *Middleware) recordVerification(
+	agent agentpkg.AgentAccessor,
+	replyID string,
+	result VerificationResult,
+) (*message.CustomEvent, *statepkg.LoopContext, statepkg.LoopStopReason) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	loopCtx := ensureLoopContextLocked(agent, m.spec)
+	loopCtx.LastVerification = &statepkg.LoopVerification{
+		Passed:     result.Passed,
+		Reason:     result.Reason,
+		Evidence:   append([]string(nil), result.Evidence...),
+		NextAction: result.NextAction,
+		UpdatedAt:  time.Now(),
+	}
+	if !result.Passed {
+		loopCtx.StopReason = statepkg.LoopStopVerifierFailed
+	}
+	verifyEvent := m.customEvent(agentName(agent), sessionID(agent), replyID, EventVerifyEnd, result.Reason, loopCtx)
+	recordCustomEventLocked(loopCtx, verifyEvent.Name)
+	return verifyEvent, loopCtx.Clone(), loopCtx.StopReason
+}
+
+func ensureLoopContextLocked(agent agentpkg.AgentAccessor, spec Spec) *statepkg.LoopContext {
 	state := agentState(agent)
 	if state == nil {
 		return &statepkg.LoopContext{Name: spec.Name, Goal: spec.Goal, Mode: string(spec.Mode)}
@@ -549,7 +630,7 @@ func appendHint(agent agentpkg.AgentAccessor, hint string) error {
 	return nil
 }
 
-func recordCustomEvent(loopCtx *statepkg.LoopContext, name string) {
+func recordCustomEventLocked(loopCtx *statepkg.LoopContext, name string) {
 	if loopCtx == nil || name == "" || !strings.HasPrefix(name, "loop.") || len(loopCtx.Runs) == 0 {
 		return
 	}

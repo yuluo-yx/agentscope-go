@@ -30,7 +30,7 @@ import (
 	astool "github.com/yuluo-yx/agentscope-go/tool"
 )
 
-func TestBashInternalSafetyAndPrefixBranches(t *testing.T) {
+func TestBashSafetyAndPrefixMatching(t *testing.T) {
 	t.Parallel()
 
 	riskCases := []struct {
@@ -216,32 +216,32 @@ func TestGlobGrepAndFileToolErrorBranches(t *testing.T) {
 	if len(globSuggestions) != 1 || !strings.HasSuffix(globSuggestions[0].RuleContent, "/**") {
 		t.Fatalf("Glob suggestions should default to current working directory, got %#v", globSuggestions)
 	}
-	assertToolTextContains(t, runInternalTool(t, NewGlob(), map[string]any{}, nil), message.ToolResultError, "pattern is required")
-	assertToolTextContains(t, runInternalTool(t, NewGlob(), map[string]any{"pattern": "*.go", "path": filepath.Join(dir, "missing")}, nil), message.ToolResultError, "Directory not found")
-	assertToolTextContains(t, runInternalTool(t, NewGlob(), map[string]any{"pattern": "*.go", "path": filePath}, nil), message.ToolResultError, "not a directory")
-	assertToolTextContains(t, runInternalTool(t, NewGlob(), map[string]any{"pattern": "*.go", "path": dir}, nil), message.ToolResultSuccess, "No files found")
-	assertToolTextContains(t, runInternalTool(t, NewGlob(), map[string]any{"pattern": "*.txt", "path": dir}, nil), message.ToolResultSuccess, "alpha.txt")
+	assertToolTextContains(t, runBuiltinTool(t, NewGlob(), map[string]any{}, nil), message.ToolResultError, "pattern is required")
+	assertToolTextContains(t, runBuiltinTool(t, NewGlob(), map[string]any{"pattern": "*.go", "path": filepath.Join(dir, "missing")}, nil), message.ToolResultError, "Directory not found")
+	assertToolTextContains(t, runBuiltinTool(t, NewGlob(), map[string]any{"pattern": "*.go", "path": filePath}, nil), message.ToolResultError, "not a directory")
+	assertToolTextContains(t, runBuiltinTool(t, NewGlob(), map[string]any{"pattern": "*.go", "path": dir}, nil), message.ToolResultSuccess, "No files found")
+	assertToolTextContains(t, runBuiltinTool(t, NewGlob(), map[string]any{"pattern": "*.txt", "path": dir}, nil), message.ToolResultSuccess, "alpha.txt")
 
 	grepSuggestions := NewGrep().GenerateSuggestions(map[string]any{})
 	if len(grepSuggestions) != 1 || !strings.HasSuffix(grepSuggestions[0].RuleContent, "/**") {
 		t.Fatalf("Grep suggestions should default to current working directory, got %#v", grepSuggestions)
 	}
-	assertToolTextContains(t, runInternalTool(t, NewGrep(), map[string]any{}, nil), message.ToolResultError, "pattern is required")
-	assertToolTextContains(t, runInternalTool(t, NewGrep(), map[string]any{"pattern": "["}, nil), message.ToolResultError, "invalid regex")
-	assertToolTextContains(t, runInternalTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": filepath.Join(dir, "missing")}, nil), message.ToolResultError, "path not found")
-	assertToolTextContains(t, runInternalTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": filePath, "glob": "*.go"}, nil), message.ToolResultSuccess, "No matches")
-	assertToolTextContains(t, runInternalTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": dir, "output_mode": "count", "case_insensitive": true}, nil), message.ToolResultSuccess, "alpha.txt:2")
-	assertToolTextContains(t, runInternalTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": dir, "output_mode": "files"}, nil), message.ToolResultSuccess, "alpha.txt")
-	assertToolTextContains(t, runInternalTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": dir, "head_limit": 1}, nil), message.ToolResultSuccess, "needle")
+	assertToolTextContains(t, runBuiltinTool(t, NewGrep(), map[string]any{}, nil), message.ToolResultError, "pattern is required")
+	assertToolTextContains(t, runBuiltinTool(t, NewGrep(), map[string]any{"pattern": "["}, nil), message.ToolResultError, "invalid regex")
+	assertToolTextContains(t, runBuiltinTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": filepath.Join(dir, "missing")}, nil), message.ToolResultError, "path not found")
+	assertToolTextContains(t, runBuiltinTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": filePath, "glob": "*.go"}, nil), message.ToolResultSuccess, "No matches")
+	assertToolTextContains(t, runBuiltinTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": dir, "output_mode": "count", "case_insensitive": true}, nil), message.ToolResultSuccess, "alpha.txt:2")
+	assertToolTextContains(t, runBuiltinTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": dir, "output_mode": "files"}, nil), message.ToolResultSuccess, "alpha.txt")
+	assertToolTextContains(t, runBuiltinTool(t, NewGrep(), map[string]any{"pattern": "needle", "path": dir, "head_limit": 1}, nil), message.ToolResultSuccess, "needle")
 
-	assertToolTextContains(t, runInternalTool(t, NewRead(), map[string]any{"file_path": ""}, nil), message.ToolResultError, "file_path is required")
-	assertToolTextContains(t, runInternalTool(t, NewRead(), map[string]any{"file_path": dir}, astate.NewAgentState()), message.ToolResultError, "directory")
-	assertToolTextContains(t, runInternalTool(t, NewRead(), map[string]any{"file_path": filepath.Join(dir, "missing.txt")}, astate.NewAgentState()), message.ToolResultError, "does not exist")
-	assertToolTextContains(t, runInternalTool(t, NewWrite(), map[string]any{"file_path": "", "content": "x"}, nil), message.ToolResultError, "file_path is required")
-	assertToolTextContains(t, runInternalTool(t, NewWrite(), map[string]any{"file_path": filePath, "content": "changed"}, nil), message.ToolResultError, "agent state required")
-	assertToolTextContains(t, runInternalTool(t, NewWrite(), map[string]any{"file_path": filePath, "content": "changed"}, astate.NewAgentState()), message.ToolResultError, "has not been read yet")
-	assertToolTextContains(t, runInternalTool(t, NewEdit(), map[string]any{"file_path": filePath, "old_string": "same", "new_string": "same"}, astate.NewAgentState()), message.ToolResultError, "identical")
-	assertToolTextContains(t, runInternalTool(t, NewEdit(), map[string]any{"file_path": filepath.Join(dir, "missing.txt"), "old_string": "x", "new_string": "y"}, astate.NewAgentState()), message.ToolResultError, "File not found")
+	assertToolTextContains(t, runBuiltinTool(t, NewRead(), map[string]any{"file_path": ""}, nil), message.ToolResultError, "file_path is required")
+	assertToolTextContains(t, runBuiltinTool(t, NewRead(), map[string]any{"file_path": dir}, astate.NewAgentState()), message.ToolResultError, "directory")
+	assertToolTextContains(t, runBuiltinTool(t, NewRead(), map[string]any{"file_path": filepath.Join(dir, "missing.txt")}, astate.NewAgentState()), message.ToolResultError, "does not exist")
+	assertToolTextContains(t, runBuiltinTool(t, NewWrite(), map[string]any{"file_path": "", "content": "x"}, nil), message.ToolResultError, "file_path is required")
+	assertToolTextContains(t, runBuiltinTool(t, NewWrite(), map[string]any{"file_path": filePath, "content": "changed"}, nil), message.ToolResultError, "agent state required")
+	assertToolTextContains(t, runBuiltinTool(t, NewWrite(), map[string]any{"file_path": filePath, "content": "changed"}, astate.NewAgentState()), message.ToolResultError, "has not been read yet")
+	assertToolTextContains(t, runBuiltinTool(t, NewEdit(), map[string]any{"file_path": filePath, "old_string": "same", "new_string": "same"}, astate.NewAgentState()), message.ToolResultError, "identical")
+	assertToolTextContains(t, runBuiltinTool(t, NewEdit(), map[string]any{"file_path": filepath.Join(dir, "missing.txt"), "old_string": "x", "new_string": "y"}, astate.NewAgentState()), message.ToolResultError, "File not found")
 }
 
 func TestCommonHelperBranches(t *testing.T) {
@@ -342,7 +342,7 @@ func TestCommonHelperBranches(t *testing.T) {
 	}
 }
 
-func runInternalTool(t *testing.T, tool astool.Tool, input map[string]any, state *astate.AgentState) *astool.ToolResponse {
+func runBuiltinTool(t *testing.T, tool astool.Tool, input map[string]any, state *astate.AgentState) *astool.ToolResponse {
 	t.Helper()
 
 	chunks, err := tool.Execute(context.Background(), input, state)
