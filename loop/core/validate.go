@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package loop
+package core
 
 import (
 	"fmt"
@@ -63,7 +63,8 @@ func validatePolicy(policy Policy) error {
 	}
 }
 
-func normalizeSpec(spec Spec) Spec {
+// NormalizeSpec applies mode and policy defaults without mutating the input.
+func NormalizeSpec(spec Spec) Spec {
 	spec = spec.clone()
 	if spec.Mode == "" {
 		spec.Mode = ModeReportOnly

@@ -19,7 +19,13 @@ package agentscope
 
 import (
 	asagent "github.com/yuluo-yx/agentscope-go/agent"
-	asloop "github.com/yuluo-yx/agentscope-go/loop"
+	automationevent "github.com/yuluo-yx/agentscope-go/loop/automation/event"
+	automationgoal "github.com/yuluo-yx/agentscope-go/loop/automation/goal"
+	automationrunner "github.com/yuluo-yx/agentscope-go/loop/automation/runner"
+	automationstore "github.com/yuluo-yx/agentscope-go/loop/automation/store"
+	automationtemplate "github.com/yuluo-yx/agentscope-go/loop/automation/template"
+	asloop "github.com/yuluo-yx/agentscope-go/loop/core"
+	loopruntime "github.com/yuluo-yx/agentscope-go/loop/runtime"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	astool "github.com/yuluo-yx/agentscope-go/tool"
@@ -83,6 +89,59 @@ type (
 	LoopObserverFunc       = asloop.ObserverFunc
 	LoopRunEvent           = asloop.RunEvent
 	LoopMetrics            = asloop.Metrics
+	LoopRuntime            = loopruntime.Runtime
+	LoopRuntimeOption      = loopruntime.Option
+)
+
+type (
+	AutomationEvent                    = automationevent.Event
+	AutomationEventSource              = automationevent.EventSource
+	AutomationEventHandler             = automationevent.EventHandler
+	AutomationEventHandlerFunc         = automationevent.EventHandlerFunc
+	AutomationRouter                   = automationevent.Router
+	AutomationRouterFunc               = automationevent.RouterFunc
+	AutomationRouteDecision            = automationevent.RouteDecision
+	AutomationStaticRouter             = automationevent.StaticRouter
+	AutomationRouteRule                = automationevent.RouteRule
+	AutomationRuleRouter               = automationevent.RuleRouter
+	AutomationInputMapper              = automationrunner.InputMapper
+	AutomationInputMapperFunc          = automationrunner.InputMapperFunc
+	AutomationTemplateMapper           = automationrunner.TemplateMapper
+	AutomationTemplateMapperOption     = automationrunner.TemplateMapperOption
+	AutomationTemplateData             = automationrunner.TemplateData
+	AutomationAgentResolver            = automationrunner.AgentResolver
+	AutomationAgentResolverFunc        = automationrunner.AgentResolverFunc
+	AutomationStaticAgentResolver      = automationrunner.StaticAgentResolver
+	AutomationRunStore                 = automationstore.RunStore
+	AutomationRunRecord                = automationstore.RunRecord
+	AutomationMemoryRunStore           = automationstore.MemoryRunStore
+	AutomationWorkspaceAllocator       = automationrunner.WorkspaceAllocator
+	AutomationWorkspaceAllocatorFunc   = automationrunner.WorkspaceAllocatorFunc
+	AutomationWorkspaceLease           = automationrunner.WorkspaceLease
+	AutomationNoopWorkspaceAllocator   = automationrunner.NoopWorkspaceAllocator
+	AutomationStaticWorkspaceLease     = automationrunner.StaticWorkspaceLease
+	AutomationTickerSource             = automationevent.TickerSource
+	AutomationRunner                   = automationrunner.Runner
+	AutomationContinuePolicy           = automationgoal.ContinuePolicy
+	AutomationGoalResult               = automationgoal.GoalResult
+	AutomationGoalRunEvent             = automationgoal.GoalRunEvent
+	AutomationGoalRunner               = automationgoal.GoalRunner
+	AutomationNextActionMapper         = automationgoal.NextActionMapper
+	AutomationNextActionMapperFunc     = automationgoal.NextActionMapperFunc
+	AutomationTemplateNextActionMapper = automationgoal.TemplateNextActionMapper
+	AutomationNextActionTemplateData   = automationgoal.NextActionTemplateData
+	AutomationReportRecorder           = automationstore.ReportRecorder
+	AutomationFindingRecorder          = automationstore.FindingRecorder
+	AutomationSink                     = automationstore.Sink
+	AutomationSinkFunc                 = automationstore.SinkFunc
+	AutomationMultiSink                = automationstore.MultiSink
+	AutomationLoopReport               = automationstore.LoopReport
+	AutomationFindingStatus            = automationstore.FindingStatus
+	AutomationFinding                  = automationstore.Finding
+	AutomationFileRunStore             = automationstore.FileRunStore
+	AutomationLoopTemplate             = automationtemplate.LoopTemplate
+	AutomationSkillRef                 = automationtemplate.SkillRef
+	AutomationLoopTemplateConfig       = automationtemplate.LoopTemplateConfig
 )
 
 type (
@@ -110,20 +169,34 @@ const (
 	TaskInProgress = asstate.TaskInProgress
 	TaskCompleted  = asstate.TaskCompleted
 
-	LoopModeReportOnly = asloop.ModeReportOnly
-	LoopModeAssisted   = asloop.ModeAssisted
-	LoopModeUnattended = asloop.ModeUnattended
-	LoopStopCompleted  = asstate.LoopStopCompleted
-	LoopStopMaxIters   = asstate.LoopStopMaxIterations
-	LoopStopBudget     = asstate.LoopStopBudgetExceeded
-	LoopStopUser       = asstate.LoopStopWaitingUser
-	LoopStopExternal   = asstate.LoopStopWaitingExternal
-	LoopStopVerifyFail = asstate.LoopStopVerifierFailed
-	LoopStopError      = asstate.LoopStopError
-	LoopEventStart     = asloop.EventStart
-	LoopEventStop      = asloop.EventStop
-	LoopEventVerifyEnd = asloop.EventVerifyEnd
-	LoopEventWrapUp    = asloop.EventWrapUp
+	LoopModeReportOnly                       = asloop.ModeReportOnly
+	LoopModeAssisted                         = asloop.ModeAssisted
+	LoopModeUnattended                       = asloop.ModeUnattended
+	LoopStopCompleted                        = asstate.LoopStopCompleted
+	LoopStopMaxIters                         = asstate.LoopStopMaxIterations
+	LoopStopBudget                           = asstate.LoopStopBudgetExceeded
+	LoopStopUser                             = asstate.LoopStopWaitingUser
+	LoopStopExternal                         = asstate.LoopStopWaitingExternal
+	LoopStopVerifyFail                       = asstate.LoopStopVerifierFailed
+	LoopStopError                            = asstate.LoopStopError
+	LoopEventStart                           = asloop.EventStart
+	LoopEventStop                            = asloop.EventStop
+	LoopEventVerifyEnd                       = asloop.EventVerifyEnd
+	LoopEventWrapUp                          = asloop.EventWrapUp
+	AutomationRouteMetadataWorkspaceRoot     = automationrunner.RouteMetadataWorkspaceRoot
+	AutomationRouteMetadataWorkspaceMetadata = automationrunner.RouteMetadataWorkspaceMetadata
+	AutomationEventTypeScheduleTick          = automationevent.EventTypeScheduleTick
+	AutomationGoalStopCompleted              = automationgoal.GoalStopCompleted
+	AutomationGoalStopMaxAttempts            = automationgoal.GoalStopMaxAttempts
+	AutomationGoalStopMaxDuration            = automationgoal.GoalStopMaxDuration
+	AutomationGoalStopWaitingUser            = automationgoal.GoalStopWaitingUser
+	AutomationGoalStopWaitingExternal        = automationgoal.GoalStopWaitingExternal
+	AutomationGoalStopError                  = automationgoal.GoalStopError
+	AutomationFindingOpen                    = automationstore.FindingOpen
+	AutomationFindingAccepted                = automationstore.FindingAccepted
+	AutomationFindingDismissed               = automationstore.FindingDismissed
+	AutomationFindingRunning                 = automationstore.FindingRunning
+	AutomationFindingDone                    = automationstore.FindingDone
 
 	ChatResponseType       = asmodel.ChatResponseType
 	StructuredResponseType = asmodel.StructuredResponseType
@@ -140,20 +213,25 @@ var (
 	WithContextStrategies = asagent.WithContextStrategies
 	WithReActConfig       = asagent.WithReActConfig
 	WithMiddlewares       = asagent.WithMiddlewares
-	WithLoopSpec          = asloop.WithSpec
+	WithLoopSpec          = loopruntime.WithSpec
 
-	DefaultContextConfig     = asagent.DefaultContextConfig
-	DefaultContextStrategies = asagent.DefaultContextStrategies
-	DefaultSummarySchema     = asagent.DefaultSummarySchema
-	DefaultReActConfig       = asagent.DefaultReActConfig
-	DefaultModelConfig       = asagent.DefaultModelConfig
-	ApplySystemPromptHooks   = asagent.ApplySystemPromptHooks
-	DefaultLoopPolicy        = asloop.DefaultPolicy
-	ValidateLoopSpec         = asloop.Validate
-	NewLoopMiddleware        = asloop.NewMiddleware
-	WithLoopVerifier         = asloop.WithVerifier
-	WithLoopObserver         = asloop.WithObserver
-	WithLoopEventEmission    = asloop.WithEventEmission
+	DefaultContextConfig                  = asagent.DefaultContextConfig
+	DefaultContextStrategies              = asagent.DefaultContextStrategies
+	DefaultSummarySchema                  = asagent.DefaultSummarySchema
+	DefaultReActConfig                    = asagent.DefaultReActConfig
+	DefaultModelConfig                    = asagent.DefaultModelConfig
+	ApplySystemPromptHooks                = asagent.ApplySystemPromptHooks
+	DefaultLoopPolicy                     = asloop.DefaultPolicy
+	ValidateLoopSpec                      = asloop.Validate
+	NewLoopRuntime                        = loopruntime.New
+	WithLoopVerifier                      = loopruntime.WithVerifier
+	WithLoopObserver                      = loopruntime.WithObserver
+	WithLoopEventEmission                 = loopruntime.WithEventEmission
+	NewAutomationTemplateMapper           = automationrunner.NewTemplateMapper
+	WithAutomationTemplateMapperUserName  = automationrunner.WithTemplateMapperUserName
+	NewAutomationMemoryRunStore           = automationstore.NewMemoryRunStore
+	NewAutomationTemplateNextActionMapper = automationgoal.NewTemplateNextActionMapper
+	NewAutomationFileRunStore             = automationstore.NewFileRunStore
 
 	NewAgentState  = asstate.NewAgentState
 	NewToolContext = asstate.NewToolContext

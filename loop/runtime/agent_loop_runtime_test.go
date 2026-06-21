@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package loop_test
+package runtime_test
 
 import (
 	"context"
@@ -21,7 +21,8 @@ import (
 	"testing"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
-	"github.com/yuluo-yx/agentscope-go/loop"
+	"github.com/yuluo-yx/agentscope-go/loop/core"
+	"github.com/yuluo-yx/agentscope-go/loop/runtime"
 	"github.com/yuluo-yx/agentscope-go/message"
 	modelpkg "github.com/yuluo-yx/agentscope-go/model"
 	"github.com/yuluo-yx/agentscope-go/permission"
@@ -80,16 +81,16 @@ func TestWithSpecInjectsPromptTracksStateAndEmitsEvents(t *testing.T) {
 			modelpkg.WithChatResponseUsage(&modelpkg.ChatUsage{InputTokens: 5, OutputTokens: 3}),
 		),
 	}}
-	spec := loop.Spec{
+	spec := core.Spec{
 		Name: "daily-triage",
 		Goal: "scan repository signals and produce a report",
-		SuccessCriteria: []loop.SuccessCriterion{
+		SuccessCriteria: []core.SuccessCriterion{
 			{Name: "report", Description: "final answer contains the findings", Required: true},
 		},
-		Mode:   loop.ModeReportOnly,
-		Policy: loop.DefaultPolicy(loop.ModeReportOnly),
+		Mode:   core.ModeReportOnly,
+		Policy: core.DefaultPolicy(core.ModeReportOnly),
 	}
-	agent, err := agentpkg.NewAgent("Friday", "You are helpful.", model, loop.WithSpec(spec))
+	agent, err := agentpkg.NewAgent("Friday", "You are helpful.", model, runtime.WithSpec(spec))
 	if err != nil {
 		t.Fatalf("NewAgent returned error: %v", err)
 	}
@@ -112,11 +113,11 @@ func TestWithSpecInjectsPromptTracksStateAndEmitsEvents(t *testing.T) {
 	if !strings.Contains(systemText, "Loop Engineering") || !strings.Contains(systemText, spec.Goal) {
 		t.Fatalf("system prompt should include loop guidance and goal, got %q", systemText)
 	}
-	assertCustomEvents(t, customNames, []string{
-		loop.EventStart,
-		loop.EventIterationStart,
-		loop.EventIterationEnd,
-		loop.EventStop,
+	assertCustomEventSubsequence(t, customNames, []string{
+		core.EventStart,
+		core.EventIterationStart,
+		core.EventIterationEnd,
+		core.EventStop,
 	})
 	loopState := agent.AgentState().LoopContext
 	if loopState == nil {
@@ -137,16 +138,16 @@ func TestWithSpecRejectsUnattendedWithoutVerifier(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptedChatModel{}
-	_, err := agentpkg.NewAgent("Friday", "You are helpful.", model, loop.WithSpec(loop.Spec{
+	_, err := agentpkg.NewAgent("Friday", "You are helpful.", model, runtime.WithSpec(core.Spec{
 		Name: "ci-sweeper",
 		Goal: "fix ci failures",
-		Mode: loop.ModeUnattended,
-		Policy: loop.Policy{
+		Mode: core.ModeUnattended,
+		Policy: core.Policy{
 			MaxAttempts:   3,
 			MaxModelCalls: 6,
 			MaxToolCalls:  6,
 		},
-		HumanGates: []loop.HumanGate{{Name: "security", Description: "security-sensitive files require human review"}},
+		HumanGates: []core.HumanGate{{Name: "security", Description: "security-sensitive files require human review"}},
 	}))
 	if err == nil || !strings.Contains(err.Error(), "verifier") {
 		t.Fatalf("NewAgent error = %v, want verifier validation error", err)
@@ -159,20 +160,20 @@ func TestVerifierResultIsRecorded(t *testing.T) {
 	model := &scriptedChatModel{responses: []*modelpkg.ChatResponse{
 		modelpkg.NewChatResponse(message.ContentBlockList{message.NewTextBlock("fixed")}, true),
 	}}
-	spec := loop.Spec{
+	spec := core.Spec{
 		Name:       "ci-sweeper",
 		Goal:       "fix ci failures",
-		Mode:       loop.ModeAssisted,
-		Policy:     loop.DefaultPolicy(loop.ModeAssisted),
-		HumanGates: []loop.HumanGate{{Name: "fallback", Description: "escalate unclear failures"}},
+		Mode:       core.ModeAssisted,
+		Policy:     core.DefaultPolicy(core.ModeAssisted),
+		HumanGates: []core.HumanGate{{Name: "fallback", Description: "escalate unclear failures"}},
 	}
-	agent, err := agentpkg.NewAgent("Friday", "You are helpful.", model, loop.WithSpec(
+	agent, err := agentpkg.NewAgent("Friday", "You are helpful.", model, runtime.WithSpec(
 		spec,
-		loop.WithVerifier(loop.VerifierFunc(func(_ context.Context, input loop.VerificationInput) (loop.VerificationResult, error) {
+		runtime.WithVerifier(core.VerifierFunc(func(_ context.Context, input core.VerificationInput) (core.VerificationResult, error) {
 			if input.Spec.Name != spec.Name || input.State == nil {
 				t.Fatalf("verification input mismatch: %#v", input)
 			}
-			return loop.VerificationResult{Passed: false, Reason: "missing test evidence", Evidence: []string{"go test not run"}, NextAction: "escalate"}, nil
+			return core.VerificationResult{Passed: false, Reason: "missing test evidence", Evidence: []string{"go test not run"}, NextAction: "escalate"}, nil
 		})),
 	))
 	if err != nil {
@@ -193,7 +194,7 @@ func TestVerifierResultIsRecorded(t *testing.T) {
 		t.Fatalf("ReplyStream returned error: %v", err)
 	}
 
-	assertCustomEvents(t, customNames, []string{loop.EventVerifyStart, loop.EventVerifyEnd, loop.EventStop})
+	assertCustomEventSubsequence(t, customNames, []string{core.EventVerifyStart, core.EventVerifyEnd, core.EventStop})
 	verification := agent.AgentState().LoopContext.LastVerification
 	if verification == nil || verification.Passed || verification.Reason != "missing test evidence" {
 		t.Fatalf("verification state mismatch: %#v", verification)
@@ -232,11 +233,11 @@ func TestBudgetExhaustionForcesWrapUpModelCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewToolkit returned error: %v", err)
 	}
-	spec := loop.Spec{
+	spec := core.Spec{
 		Name: "ci-sweeper",
 		Goal: "look up data and wrap up",
-		Mode: loop.ModeAssisted,
-		Policy: loop.Policy{
+		Mode: core.ModeAssisted,
+		Policy: core.Policy{
 			MaxIterations: 3,
 			MaxModelCalls: 1,
 			MaxToolCalls:  3,
@@ -249,7 +250,7 @@ func TestBudgetExhaustionForcesWrapUpModelCall(t *testing.T) {
 		"You are helpful.",
 		model,
 		agentpkg.WithToolkit(kit),
-		loop.WithSpec(spec),
+		runtime.WithSpec(spec),
 	)
 	if err != nil {
 		t.Fatalf("NewAgent returned error: %v", err)
@@ -294,10 +295,10 @@ func TestBudgetExhaustionForcesWrapUpModelCall(t *testing.T) {
 	if agent.AgentState().LoopContext.StopReason != "budget_exceeded" {
 		t.Fatalf("stop reason = %q, want budget_exceeded", agent.AgentState().LoopContext.StopReason)
 	}
-	assertCustomEvents(t, customNames, []string{loop.EventWrapUp, loop.EventStop})
+	assertCustomEventSubsequence(t, customNames, []string{core.EventWrapUp, core.EventStop})
 }
 
-func assertCustomEvents(t *testing.T, got, expected []string) {
+func assertCustomEventSubsequence(t *testing.T, got, expected []string) {
 	t.Helper()
 	next := 0
 	for _, name := range got {

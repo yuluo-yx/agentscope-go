@@ -53,6 +53,7 @@ func (*Profile) GetTestCases() []string {
 		"message-event-apply",
 		"message-state-types-contracts",
 		"context-compression",
+		"loop-automation-contracts",
 		"model-provider-metadata-contracts",
 	}
 }

@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package loop_test
+package core_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/yuluo-yx/agentscope-go/loop"
+	"github.com/yuluo-yx/agentscope-go/loop/core"
 )
 
 func TestValidateRejectsInvalidSpec(t *testing.T) {
@@ -26,41 +26,41 @@ func TestValidateRejectsInvalidSpec(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		spec     loop.Spec
+		spec     core.Spec
 		contains string
 	}{
 		{
 			name:     "empty name",
-			spec:     loop.Spec{Goal: "triage issues", Mode: loop.ModeReportOnly},
+			spec:     core.Spec{Goal: "triage issues", Mode: core.ModeReportOnly},
 			contains: "name",
 		},
 		{
 			name:     "empty goal",
-			spec:     loop.Spec{Name: "daily-triage", Mode: loop.ModeReportOnly},
+			spec:     core.Spec{Name: "daily-triage", Mode: core.ModeReportOnly},
 			contains: "goal",
 		},
 		{
 			name:     "unknown mode",
-			spec:     loop.Spec{Name: "daily-triage", Goal: "triage issues", Mode: loop.Mode("bad")},
+			spec:     core.Spec{Name: "daily-triage", Goal: "triage issues", Mode: core.Mode("bad")},
 			contains: "mode",
 		},
 		{
 			name: "negative budget",
-			spec: loop.Spec{
+			spec: core.Spec{
 				Name:   "daily-triage",
 				Goal:   "triage issues",
-				Mode:   loop.ModeReportOnly,
-				Policy: loop.Policy{MaxModelCalls: -1},
+				Mode:   core.ModeReportOnly,
+				Policy: core.Policy{MaxModelCalls: -1},
 			},
 			contains: "max model calls",
 		},
 		{
 			name: "unattended missing human gate",
-			spec: loop.Spec{
+			spec: core.Spec{
 				Name:   "ci-sweeper",
 				Goal:   "fix ci failures",
-				Mode:   loop.ModeUnattended,
-				Policy: loop.Policy{MaxAttempts: 3, MaxModelCalls: 6},
+				Mode:   core.ModeUnattended,
+				Policy: core.Policy{MaxAttempts: 3, MaxModelCalls: 6},
 			},
 			contains: "human gate",
 		},
@@ -68,7 +68,7 @@ func TestValidateRejectsInvalidSpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := loop.Validate(tt.spec)
+			err := core.Validate(tt.spec)
 			if err == nil || !strings.Contains(err.Error(), tt.contains) {
 				t.Fatalf("Validate error = %v, want substring %q", err, tt.contains)
 			}
@@ -79,9 +79,9 @@ func TestValidateRejectsInvalidSpec(t *testing.T) {
 func TestDefaultPolicyByMode(t *testing.T) {
 	t.Parallel()
 
-	report := loop.DefaultPolicy(loop.ModeReportOnly)
-	assisted := loop.DefaultPolicy(loop.ModeAssisted)
-	unattended := loop.DefaultPolicy(loop.ModeUnattended)
+	report := core.DefaultPolicy(core.ModeReportOnly)
+	assisted := core.DefaultPolicy(core.ModeAssisted)
+	unattended := core.DefaultPolicy(core.ModeUnattended)
 
 	if report.MaxAttempts != 1 {
 		t.Fatalf("report-only max attempts = %d, want 1", report.MaxAttempts)

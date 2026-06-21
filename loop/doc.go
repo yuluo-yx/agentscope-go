@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package loop provides Loop Engineering building blocks for AgentScope agents.
+// Package loop provides the Loop Engineering package overview.
 //
-// The package does not replace the agent package's ReAct execution loop. It
-// adds a higher-level API for goals, success criteria, budgets, verifier
-// handoffs, state, and lifecycle events so applications can assemble their own
-// loop patterns.
+// Import loop/core for the foundational contract types, loop/runtime to attach
+// a loop contract to an Agent, and loop/automation for event-driven orchestration.
 package loop
