@@ -37,4 +37,6 @@ jobs:
       - uses: ./tools/github-setup-deps
       - run: make download
       - run: make ci
-      - run: make ci-e2e
+      - run: make e2e E2E_PROFILE=docker
+      - run: tools/agentsandbox/install-kind.sh
+      - run: make e2e E2E_PROFILE=agent-sandbox

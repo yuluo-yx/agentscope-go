@@ -13,10 +13,6 @@ install-docs: python-venv
 	"$(PYTHON_VENV_BIN)/python" -m pip install -e "$(DOCS_DIR)[dev]"
 	@"$(JUPYTER_BOOK)" --version
 
-.PHONY: docs
-docs: ## Build documentation
-docs: docs-build
-
 .PHONY: docs-build
 docs-build: ## Build the Jupyter Book documentation site
 docs-build: install-docs

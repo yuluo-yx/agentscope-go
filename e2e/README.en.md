@@ -4,24 +4,16 @@ This directory contains the end-to-end test entry point for AgentScope Go. It ve
 
 ## How To Run
 
-Download dependencies for the standalone E2E module before the first run:
+The unified entry point is `make e2e`. By default, it runs the `local` profile and removes `DASHSCOPE_API_KEY` and `AI_DASHSCOPE_API_KEY` from the child process environment. Use it for deterministic scenarios that do not depend on live model services.
 
 ```bash
-make e2e-deps
+make e2e
 ```
-
-Run local E2E without external provider keys:
-
-```bash
-make e2e-test-no-key
-```
-
-This command runs the `local` profile and removes `DASHSCOPE_API_KEY` and `AI_DASHSCOPE_API_KEY` from the child process environment. Use it for deterministic scenarios that do not depend on live model services.
 
 Run live DashScope E2E:
 
 ```bash
-DASHSCOPE_API_KEY=your-key make e2e-test-dashscope
+DASHSCOPE_API_KEY=your-key make e2e E2E_PROFILE=dashscope-live
 ```
 
 The default chat model is `qwen-plus`. Override it with `AGENTSCOPE_TEST_DASHSCOPE_MODEL` or `AI_DASHSCOPE_MODEL`. The default text embedding model is `text-embedding-v4`. Override it with `AGENTSCOPE_TEST_DASHSCOPE_EMBEDDING_MODEL` or `AI_DASHSCOPE_EMBEDDING_MODEL`.
@@ -29,39 +21,32 @@ The default chat model is `qwen-plus`. Override it with `AGENTSCOPE_TEST_DASHSCO
 Run explicit provider smoke tests:
 
 ```bash
-make test-provider-smoke
+make e2e E2E_PROFILE=provider-smoke
 ```
 
-This command runs the `provider-smoke` profile. Each live provider case requires its matching `AGENTSCOPE_TEST_*` switch and API key. Cases that are not explicitly enabled are reported as `SKIPPED` and do not fail the profile.
+Each live provider case requires its matching `AGENTSCOPE_TEST_*` switch and API key. Cases that are not explicitly enabled are reported as `SKIPPED` and do not fail the profile.
 
 Run Docker workspace E2E:
 
 ```bash
-make test-e2e-docker
+make e2e E2E_PROFILE=docker
 ```
 
-This command requires a working local Docker environment.
+This profile requires a working local Docker environment.
 
 Run Agent Sandbox workspace E2E:
 
 ```bash
-make test-e2e-agent-sandbox
+make e2e E2E_PROFILE=agent-sandbox
 ```
 
-This command prepares Agent Sandbox resources through KinD. It requires Kubernetes, KinD, and a container runtime on the local machine.
-
-Run a specific profile:
-
-```bash
-make e2e-test E2E_PROFILE=local
-make e2e-test E2E_PROFILE=dashscope-live
-```
+This profile prepares Agent Sandbox resources through KinD. It requires Kubernetes, KinD, and a container runtime on the local machine.
 
 Run specific testcases:
 
 ```bash
-make e2e-test-specific E2E_TESTS=agent-tool-loop
-make e2e-test-specific E2E_PROFILE=local E2E_TESTS=agent-tool-loop,workspace-local-files
+make e2e E2E_TESTS=agent-tool-loop
+make e2e E2E_PROFILE=local E2E_TESTS=agent-tool-loop,workspace-local-files
 ```
 
 Run the runner directly:
@@ -72,6 +57,13 @@ make build-e2e
 ```
 
 Reports are written to `e2e/reports/<profile>/` in JSON and Markdown formats.
+
+For standalone E2E module maintenance, run:
+
+```bash
+make e2e-deps
+make e2e-tidy
+```
 
 ## Design
 

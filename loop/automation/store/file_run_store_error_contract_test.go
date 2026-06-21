@@ -112,7 +112,7 @@ func TestFileRunStoreReportIncludesOnlyNonEmptySections(t *testing.T) {
 		LoopName:   "release-loop",
 		Summary:    "verified release readiness",
 		Changes:    []string{"updated loop tests", "   "},
-		Evidence:   []string{"make coverage-unit"},
+		Evidence:   []string{"make coverage"},
 		Blockers:   []string{"none"},
 		Risks:      []string{"coverage regression"},
 		NextAction: "monitor CI",
