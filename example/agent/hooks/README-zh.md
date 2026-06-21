@@ -12,12 +12,12 @@
 - `OnModelCall` 在 `ChatModel.Stream` 执行前修改 `CallRequest`，并观察模型响应流。
 - `OnActing` 包裹本地工具执行，并观察流式工具 chunk。
 
-示例使用脚本化 ChatModel 和本地 `TaskCreate` 工具，因此不需要 API Key 或外部服务。
+示例使用 DashScope ChatModel 和本地 `TaskCreate` 工具，因此 hook 会观察真实模型流和本地工具执行。
 
 ## 前置条件
 
 - Go 1.26.3 或更新版本。
-- 不需要 API Key。
+- DashScope ChatModel 需要 `AI_DASHSCOPE_API_KEY`。
 
 ## 运行
 
@@ -29,7 +29,9 @@ go run .
 预期输出包含最终回复、创建的任务数量和 hook trace：
 
 ```text
-reply=hooks observed tasks=1 trace=reply:before,reasoning:before,system_prompt:Friday,model_call:before,...
+reply=...
+tasks=1
+trace=reply:before,reasoning:before,system_prompt:Friday,model_call:before,...
 ```
 
 ## 测试

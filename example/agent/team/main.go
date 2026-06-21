@@ -17,89 +17,95 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model/dashscope"
 	teampkg "github.com/yuluo-yx/agentscope-go/team"
 	astool "github.com/yuluo-yx/agentscope-go/tool"
 )
 
 func main() {
-	ctx := context.Background()
-	model := scriptedChatModel{}
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "agent team example: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
+	model, err := newDashScopeChatModel(false)
+	if err != nil {
+		return fmt.Errorf("create DashScope chat model: %w", err)
+	}
 	manager := teampkg.NewManager(teampkg.WithTeamWorkerModel(model))
-	leader := mustAgent(agentpkg.NewAgent("leader", "Coordinate the team.", model, teampkg.WithTeam(manager, teampkg.TeamRoleLeader)))
-	leaderTools := mustToolkit(manager.Toolkit(teampkg.TeamRoleLeader))
+	leader, err := agentpkg.NewAgent("leader", "Coordinate the team.", model, teampkg.WithTeam(manager, teampkg.TeamRoleLeader))
+	if err != nil {
+		return fmt.Errorf("create leader agent: %w", err)
+	}
+	leaderTools, err := manager.Toolkit(teampkg.TeamRoleLeader)
+	if err != nil {
+		return fmt.Errorf("create leader toolkit: %w", err)
+	}
 
-	fmt.Println(runTool(leaderTools, "TeamCreate", `{"name":"Launch","description":"Prepare a release summary"}`, leader.AgentState()))
-	fmt.Println(runTool(leaderTools, "AgentCreate", `{"name":"researcher","description":"Collects release facts","prompt":"Find the three most important release facts and report back."}`, leader.AgentState()))
+	output, err := runTool(leaderTools, "TeamCreate", `{"name":"Launch","description":"Prepare a release summary"}`, leader.AgentState())
+	if err != nil {
+		return err
+	}
+	fmt.Println(output)
+	output, err = runTool(leaderTools, "AgentCreate", `{"name":"researcher","description":"Collects release facts","prompt":"Find the three most important release facts and report back."}`, leader.AgentState())
+	if err != nil {
+		return err
+	}
+	fmt.Println(output)
 
-	worker := onlyPendingAgent(manager)
-	must(manager.DrainInbox(ctx, worker))
+	worker, err := onlyPendingAgent(manager)
+	if err != nil {
+		return err
+	}
+	if err := manager.DrainInbox(ctx, worker); err != nil {
+		return fmt.Errorf("drain worker inbox: %w", err)
+	}
 	workerInput := worker.AgentState().Context[0].GetTextContent("")
 
-	workerTools := mustToolkit(manager.Toolkit(teampkg.TeamRoleWorker))
-	fmt.Println(runTool(workerTools, "TeamSay", `{"content":"Release facts collected: API, examples, and tests are ready."}`, worker.AgentState()))
-	must(manager.DrainInbox(ctx, leader))
+	workerTools, err := manager.Toolkit(teampkg.TeamRoleWorker)
+	if err != nil {
+		return fmt.Errorf("create worker toolkit: %w", err)
+	}
+	output, err = runTool(workerTools, "TeamSay", `{"content":"Release facts collected: API, examples, and tests are ready."}`, worker.AgentState())
+	if err != nil {
+		return err
+	}
+	fmt.Println(output)
+	if err := manager.DrainInbox(ctx, leader); err != nil {
+		return fmt.Errorf("drain leader inbox: %w", err)
+	}
 	leaderInput := leader.AgentState().Context[len(leader.AgentState().Context)-1].GetTextContent("")
 
-	team, _ := manager.TeamForSession(leader.AgentState().SessionID)
-	fmt.Printf("team=%s members=%d worker_received=%q leader_received=%q\n", team.Name, len(team.Members), shorten(value(workerInput), 72), shorten(value(leaderInput), 72))
-}
-
-type scriptedChatModel struct{}
-
-func (scriptedChatModel) Name() string { return "scripted-team-example" }
-
-func (scriptedChatModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
-	return asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("ok")}, true), nil
-}
-
-func (m scriptedChatModel) Stream(ctx context.Context, request asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
-	response, err := m.Call(ctx, request)
-	if err != nil {
-		return nil, err
+	team, ok := manager.TeamForSession(leader.AgentState().SessionID)
+	if !ok {
+		return fmt.Errorf("team not found for leader session")
 	}
-	out := make(chan asmodel.ChatResponse, 1)
-	out <- *response
-	close(out)
-	return out, nil
+	fmt.Printf("team=%s members=%d worker_received=%q leader_received=%q\n", team.Name, len(team.Members), shorten(value(workerInput), 72), shorten(value(leaderInput), 72))
+	return nil
 }
 
-func (scriptedChatModel) CountTokens(request asmodel.CallRequest) (int, error) {
-	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
-}
-
-func runTool(kit *astool.Toolkit, name, input string, state *agentpkg.AgentState) string {
+func runTool(kit *astool.Toolkit, name, input string, state *agentpkg.AgentState) (string, error) {
 	response, err := kit.RunTool(context.Background(), message.NewToolCallBlock("call-"+name, name, input), state)
-	must(err)
-	return value(response.GetTextContent(""))
+	if err != nil {
+		return "", fmt.Errorf("run %s tool: %w", name, err)
+	}
+	return value(response.GetTextContent("")), nil
 }
 
-func onlyPendingAgent(manager *teampkg.Manager) *agentpkg.Agent {
+func onlyPendingAgent(manager *teampkg.Manager) (*agentpkg.Agent, error) {
 	agents := manager.PendingAgents()
 	if len(agents) != 1 {
-		panic(fmt.Sprintf("expected one pending agent, got %d", len(agents)))
+		return nil, fmt.Errorf("expected one pending agent, got %d", len(agents))
 	}
-	return agents[0]
-}
-
-func mustAgent(agent *agentpkg.Agent, err error) *agentpkg.Agent {
-	must(err)
-	return agent
-}
-
-func mustToolkit(kit *astool.Toolkit, err error) *astool.Toolkit {
-	must(err)
-	return kit
-}
-
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
+	return agents[0], nil
 }
 
 func value(value *string) string {
@@ -115,4 +121,16 @@ func shorten(text string, limit int) string {
 		return text
 	}
 	return text[:limit] + "..."
+}
+
+func newDashScopeChatModel(stream bool) (*dashscope.ChatModel, error) {
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
+	}
+	return dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
+		"qwen3.7-max",
+		dashscope.WithStream(stream),
+	)
 }

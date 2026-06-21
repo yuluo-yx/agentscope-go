@@ -6,13 +6,12 @@
 
 本示例演示如何把 MCP server 接入 AgentScope Go 工具体系。
 
-程序会启动一个本地 in-process MCP server，通过 `tool/mcp` 连接它，把 MCP tool 包装成 AgentScope `tool.Tool`，注册到 `tool.Toolkit`，然后执行工具。如果设置了 `AI_DASHSCOPE_API_KEY`，示例还会让 DashScope 自主决定调用 MCP tool，并把工具结果回填给模型生成最终回复。
+程序会启动一个本地 in-process MCP server，通过 `tool/mcp` 连接它，把 MCP tool 包装成 AgentScope `tool.Tool`，注册到 `tool.Toolkit`，先直接执行工具，再让 DashScope 自主决定调用 MCP tool，并把工具结果回填给模型生成最终回复。
 
 ## 前置条件
 
 - Go 1.26.3 或更新版本。
-- 本地 MCP 路径不需要 API Key。
-- 可选：设置 `AI_DASHSCOPE_API_KEY` 后运行真实 ChatModel 工具调用闭环。
+- DashScope ChatModel 工具调用闭环需要 `AI_DASHSCOPE_API_KEY`。
 - 可选：设置 `AI_DASHSCOPE_MODEL` 覆盖 DashScope 模型，默认是 `qwen3.7-max`。
 
 ## 运行
@@ -21,17 +20,11 @@
 go run .
 ```
 
-离线输出会包含已连接 MCP client、包装后的工具名、直接 MCP 工具结果，以及 ChatModel 请求的 token 估算：
+输出会包含已连接 MCP client、包装后的工具名、直接 MCP 工具结果，以及模型选择的 MCP 工具调用：
 
 ```text
 mcp_client=people connected=true tools=mcp__people__lookup_profile direct_state=success direct_output="Ada maintains AgentScope Go examples and MCP tool integrations."
-chat_tool=mcp__people__lookup_profile mode=offline chat_model=dashscope/qwen3.7-max estimated_tokens=...
-```
-
-运行真实模型路径：
-
-```bash
-AI_DASHSCOPE_API_KEY=your-key go run .
+chat_tool=mcp__people__lookup_profile mode=live chat_model=dashscope/qwen3.7-max input=... state=success response="..."
 ```
 
 ## 关注点

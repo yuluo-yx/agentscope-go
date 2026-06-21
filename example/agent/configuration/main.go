@@ -17,11 +17,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model/dashscope"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 )
 
@@ -46,60 +49,16 @@ func (m *failingChatModel) CountTokens(request asmodel.CallRequest) (int, error)
 	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
 }
 
-type scriptedChatModel struct {
-	streamCalls int
-	responses   []*asmodel.ChatResponse
-}
-
-func (m *scriptedChatModel) Name() string {
-	return "fallback-scripted"
-}
-
-func (m *scriptedChatModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
-	return m.nextResponse()
-}
-
-func (m *scriptedChatModel) Stream(ctx context.Context, _ asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
-	m.streamCalls++
-	response, err := m.nextResponse()
-	if err != nil {
-		return nil, err
-	}
-	out := make(chan asmodel.ChatResponse)
-	go func() {
-		defer close(out)
-		delta := response.Clone()
-		delta.IsLast = false
-		delta.Usage = nil
-		select {
-		case <-ctx.Done():
-			return
-		case out <- *delta:
-		}
-		select {
-		case <-ctx.Done():
-		case out <- *response:
-		}
-	}()
-	return out, nil
-}
-
-func (m *scriptedChatModel) CountTokens(request asmodel.CallRequest) (int, error) {
-	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
-}
-
-func (m *scriptedChatModel) nextResponse() (*asmodel.ChatResponse, error) {
-	if len(m.responses) == 0 {
-		return nil, fmt.Errorf("scripted model has no response")
-	}
-	response := m.responses[0]
-	m.responses = m.responses[1:]
-	return response.Clone(), nil
-}
-
 func main() {
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "agent configuration example: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
 	state := asstate.NewAgentState()
-	longResult := mustMessage(message.NewAssistantMessage("Friday", message.ContentBlockList{
+	longResult, err := message.NewAssistantMessage("Friday", message.ContentBlockList{
 		message.NewToolResultBlock(
 			"read-call",
 			"Read",
@@ -111,13 +70,17 @@ func main() {
 			},
 			message.ToolResultSuccess,
 		),
-	}))
+	})
+	if err != nil {
+		return fmt.Errorf("create long result message: %w", err)
+	}
 	state.Context = []*message.Message{longResult}
 
 	primary := &failingChatModel{}
-	fallback := &scriptedChatModel{responses: []*asmodel.ChatResponse{
-		asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("fallback model replied")}, true),
-	}}
+	fallback, err := newDashScopeChatModel(true)
+	if err != nil {
+		return fmt.Errorf("create DashScope fallback model: %w", err)
+	}
 	modelConfig := agentpkg.DefaultModelConfig()
 	modelConfig.MaxRetries = 1
 	modelConfig.FallbackModel = fallback
@@ -127,7 +90,7 @@ func main() {
 	reactConfig := agentpkg.DefaultReActConfig()
 	reactConfig.MaxIters = 2
 
-	agent := mustAgent(agentpkg.NewAgent(
+	agent, err := agentpkg.NewAgent(
 		"Friday",
 		"Use the fallback model if the primary model fails.",
 		primary,
@@ -135,18 +98,29 @@ func main() {
 		agentpkg.WithModelConfig(modelConfig),
 		agentpkg.WithContextConfig(contextConfig),
 		agentpkg.WithReActConfig(reactConfig),
-	))
-	reply := mustReply(agent.Reply(context.Background(), mustMessage(message.NewUserMessage("user", "Use configured fallback."))))
+	)
+	if err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+	user, err := message.NewUserMessage("user", "Use the configured fallback model and reply with one short sentence.")
+	if err != nil {
+		return fmt.Errorf("create user message: %w", err)
+	}
+	reply, err := agent.Reply(ctx, user)
+	if err != nil {
+		return fmt.Errorf("agent reply: %w", err)
+	}
 	replyText := ""
 	if text := reply.GetTextContent(); text != nil {
 		replyText = *text
 	}
-	fmt.Printf("reply=%s primary_stream_calls=%d fallback_stream_calls=%d compressed=%t\n",
+	fmt.Printf("reply=%s primary_stream_calls=%d fallback_model=%s compressed=%t\n",
 		replyText,
 		primary.streamCalls,
-		fallback.streamCalls,
+		fallback.Name(),
 		contextCompressed(state),
 	)
+	return nil
 }
 
 func contextCompressed(state *asstate.AgentState) bool {
@@ -168,23 +142,14 @@ func contextCompressed(state *asstate.AgentState) bool {
 		strings.Contains(*text, "truncated")
 }
 
-func mustAgent(agent *agentpkg.Agent, err error) *agentpkg.Agent {
-	if err != nil {
-		panic(err)
+func newDashScopeChatModel(stream bool) (*dashscope.ChatModel, error) {
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
 	}
-	return agent
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
-}
-
-func mustReply(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
+	return dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
+		"qwen3.7-max",
+		dashscope.WithStream(stream),
+	)
 }

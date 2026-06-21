@@ -17,81 +17,50 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model/dashscope"
 	"github.com/yuluo-yx/agentscope-go/tool"
 	tasktool "github.com/yuluo-yx/agentscope-go/tool/task"
 )
 
-type scriptedChatModel struct {
-	responses []*asmodel.ChatResponse
-}
-
-func (m *scriptedChatModel) Name() string {
-	return "scripted-example"
-}
-
-func (m *scriptedChatModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
-	return m.nextResponse()
-}
-
-func (m *scriptedChatModel) Stream(ctx context.Context, _ asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
-	response, err := m.nextResponse()
-	if err != nil {
-		return nil, err
-	}
-	out := make(chan asmodel.ChatResponse)
-	go func() {
-		defer close(out)
-		delta := response.Clone()
-		delta.IsLast = false
-		delta.Usage = nil
-		select {
-		case <-ctx.Done():
-			return
-		case out <- *delta:
-		}
-		select {
-		case <-ctx.Done():
-		case out <- *response:
-		}
-	}()
-	return out, nil
-}
-
-func (m *scriptedChatModel) nextResponse() (*asmodel.ChatResponse, error) {
-	if len(m.responses) == 0 {
-		return nil, fmt.Errorf("scripted model has no response")
-	}
-	response := m.responses[0]
-	m.responses = m.responses[1:]
-	return response.Clone(), nil
-}
-
-func (m *scriptedChatModel) CountTokens(request asmodel.CallRequest) (int, error) {
-	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
-}
-
 func main() {
-	kit := mustToolkit(tool.NewToolkit(tasktool.NewTaskCreate()))
-	model := &scriptedChatModel{responses: []*asmodel.ChatResponse{
-		asmodel.NewChatResponse(
-			message.ContentBlockList{
-				message.NewToolCallBlock("task-call", "TaskCreate", `{"subject":"Write examples","description":"Create standalone examples for AgentScope Go."}`),
-			},
-			true,
-		),
-		asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("task tracked")}, true),
-	}}
-	agent := mustAgent(agentpkg.NewAgent("Friday", "Track work with task tools.", model, agentpkg.WithToolkit(kit)))
-	user := mustMessage(message.NewUserMessage("user", "Track the example task."))
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "agent basic example: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
+	kit, err := tool.NewToolkit(tasktool.NewTaskCreate())
+	if err != nil {
+		return fmt.Errorf("create toolkit: %w", err)
+	}
+	model, err := newDashScopeChatModel(true)
+	if err != nil {
+		return fmt.Errorf("create DashScope chat model: %w", err)
+	}
+	agent, err := agentpkg.NewAgent(
+		"Friday",
+		"Track work with task tools. Use TaskCreate when the user asks to track a task.",
+		model,
+		agentpkg.WithToolkit(kit),
+	)
+	if err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+	user, err := message.NewUserMessage("user", "Use TaskCreate to track: write standalone examples for AgentScope Go.")
+	if err != nil {
+		return fmt.Errorf("create user message: %w", err)
+	}
 
 	var replyText strings.Builder
 	var seenEvents []string
-	err := agent.ReplyStream(context.Background(), user, func(event message.Event) error {
+	err = agent.ReplyStream(ctx, user, func(event message.Event) error {
 		switch e := event.(type) {
 		case *message.ToolCallStartEvent:
 			seenEvents = append(seenEvents, "tool_call:"+e.ToolCallName)
@@ -103,29 +72,21 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("reply stream: %w", err)
 	}
 
 	fmt.Printf("agent_stream=%s tasks=%d events=%s\n", replyText.String(), len(agent.AgentState().TaskContext.Tasks), strings.Join(seenEvents, ","))
+	return nil
 }
 
-func mustToolkit(kit *tool.Toolkit, err error) *tool.Toolkit {
-	if err != nil {
-		panic(err)
+func newDashScopeChatModel(stream bool) (*dashscope.ChatModel, error) {
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
 	}
-	return kit
-}
-
-func mustAgent(agent *agentpkg.Agent, err error) *agentpkg.Agent {
-	if err != nil {
-		panic(err)
-	}
-	return agent
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
+	return dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
+		"qwen3.7-max",
+		dashscope.WithStream(stream),
+	)
 }

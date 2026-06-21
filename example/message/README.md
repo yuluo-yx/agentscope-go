@@ -9,11 +9,12 @@ This example demonstrates the `message` package:
 - Build a conversation history with system, user, and assistant messages.
 - Read role order and text content from the history.
 - Show that system messages are finished immediately while assistant messages can represent model output.
+- Send the same history to a DashScope ChatModel.
 
 ## Prerequisites
 
 - Go 1.26.3.
-- No API key is required.
+- `AI_DASHSCOPE_API_KEY` for the DashScope ChatModel.
 
 ## Run
 

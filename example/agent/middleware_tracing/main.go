@@ -17,60 +17,19 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/middleware"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model/dashscope"
 	"github.com/yuluo-yx/agentscope-go/permission"
 	asstate "github.com/yuluo-yx/agentscope-go/state"
 	"github.com/yuluo-yx/agentscope-go/tool"
 )
-
-type scriptedTracingModel struct {
-	responses []*asmodel.ChatResponse
-	requests  []asmodel.CallRequest
-}
-
-func (m *scriptedTracingModel) Name() string {
-	return "scripted-tracing"
-}
-
-func (m *scriptedTracingModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
-	return nil, fmt.Errorf("streaming model path is expected")
-}
-
-func (m *scriptedTracingModel) Stream(ctx context.Context, request asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
-	m.requests = append(m.requests, request.Clone())
-	if len(m.responses) == 0 {
-		return nil, fmt.Errorf("scripted tracing model has no response")
-	}
-	response := m.responses[0]
-	m.responses = m.responses[1:]
-	out := make(chan asmodel.ChatResponse)
-	go func() {
-		defer close(out)
-		delta := response.Clone()
-		delta.IsLast = false
-		delta.Usage = nil
-		select {
-		case <-ctx.Done():
-			return
-		case out <- *delta:
-		}
-		select {
-		case <-ctx.Done():
-		case out <- *response.Clone():
-		}
-	}()
-	return out, nil
-}
-
-func (m *scriptedTracingModel) CountTokens(request asmodel.CallRequest) (int, error) {
-	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
-}
 
 type memoryTracer struct {
 	mu    sync.Mutex
@@ -117,7 +76,14 @@ func (s *memorySpan) End() {
 }
 
 func main() {
-	echo := mustTool(tool.NewFunctionTool(
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "agent middleware tracing example: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
+	echo, err := tool.NewFunctionTool(
 		"Echo",
 		"Echo one text value.",
 		map[string]any{
@@ -132,41 +98,56 @@ func main() {
 			return message.ContentBlockList{message.NewTextBlock("echo " + text)}, nil
 		},
 		tool.WithFunctionReadOnly(true),
-	))
-	kit := mustToolkit(tool.NewToolkit(echo))
-	model := &scriptedTracingModel{responses: []*asmodel.ChatResponse{
-		asmodel.NewChatResponse(message.ContentBlockList{
-			message.NewToolCallBlock("echo-call", "Echo", `{"text":"Ada"}`),
-		}, true),
-		asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("trace complete")}, true),
-	}}
+	)
+	if err != nil {
+		return fmt.Errorf("create echo tool: %w", err)
+	}
+	kit, err := tool.NewToolkit(echo)
+	if err != nil {
+		return fmt.Errorf("create toolkit: %w", err)
+	}
+	model, err := newDashScopeChatModel(true)
+	if err != nil {
+		return fmt.Errorf("create DashScope chat model: %w", err)
+	}
 	state := asstate.NewAgentState()
 	state.PermissionContext = permission.NewContext(permission.ModeExplore)
 	tracer := &memoryTracer{}
-	agent := mustAgent(agentpkg.NewAgent(
+	agent, err := agentpkg.NewAgent(
 		"Friday",
 		"Use the Echo tool once.",
 		model,
 		agentpkg.WithToolkit(kit),
 		agentpkg.WithAgentState(state),
 		agentpkg.WithMiddlewares(middleware.NewTracingMiddleware(tracer)),
-	))
-	reply := mustReply(agent.Reply(context.Background(), mustMessage(message.NewUserMessage("user", "Echo Ada"))))
+	)
+	if err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+	user, err := message.NewUserMessage("user", "Use Echo with text Ada, then reply with the echoed value.")
+	if err != nil {
+		return fmt.Errorf("create user message: %w", err)
+	}
+	reply, err := agent.Reply(ctx, user)
+	if err != nil {
+		return fmt.Errorf("agent reply: %w", err)
+	}
 
 	fmt.Printf(
 		"reply=%q spans=%s tool_result=%q\n",
 		textContent(reply),
 		strings.Join(tracer.Names(), ","),
-		lastToolResultText(model),
+		lastToolResultText(state),
 	)
+	return nil
 }
 
-func lastToolResultText(model *scriptedTracingModel) string {
-	if len(model.requests) == 0 {
+func lastToolResultText(state *asstate.AgentState) string {
+	if state == nil {
 		return ""
 	}
-	last := model.requests[len(model.requests)-1]
-	for _, msg := range last.Messages {
+	for i := len(state.Context) - 1; i >= 0; i-- {
+		msg := state.Context[i]
 		if msg == nil {
 			continue
 		}
@@ -198,37 +179,14 @@ func cloneMap(in map[string]any) map[string]any {
 	return out
 }
 
-func mustTool(tool tool.Tool, err error) tool.Tool {
-	if err != nil {
-		panic(err)
+func newDashScopeChatModel(stream bool) (*dashscope.ChatModel, error) {
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
 	}
-	return tool
-}
-
-func mustToolkit(toolkit *tool.Toolkit, err error) *tool.Toolkit {
-	if err != nil {
-		panic(err)
-	}
-	return toolkit
-}
-
-func mustAgent(agent *agentpkg.Agent, err error) *agentpkg.Agent {
-	if err != nil {
-		panic(err)
-	}
-	return agent
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
-}
-
-func mustReply(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
+	return dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
+		"qwen3.7-max",
+		dashscope.WithStream(stream),
+	)
 }

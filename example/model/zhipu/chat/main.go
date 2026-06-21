@@ -28,30 +28,52 @@ import (
 )
 
 func main() {
-	fmt.Println("start zhipu chat call: ------------------")
-	chat()
-
-	fmt.Println("\nstart zhipu stream chat call: ------------------")
-	streamChat()
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "zhipu chat example: %v\n", err)
+		os.Exit(1)
+	}
 }
 
-func chat() {
-	chat := newZhipuModel(false)
+func run() error {
+	fmt.Println("start zhipu chat call: ------------------")
+	if err := chat(); err != nil {
+		return err
+	}
 
-	kit, err := tool.NewToolkit(weatherTool())
+	fmt.Println("\nstart zhipu stream chat call: ------------------")
+	if err := streamChat(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func chat() error {
+	chat, err := newZhipuModel(false)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("create non-stream Zhipu model: %w", err)
+	}
+
+	weather, err := weatherTool()
+	if err != nil {
+		return err
+	}
+	kit, err := tool.NewToolkit(weather)
+	if err != nil {
+		return fmt.Errorf("create toolkit: %w", err)
 	}
 	schemas, err := kit.ToolSchemas()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("build tool schemas: %w", err)
 	}
 
-	liveMessage := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
+	liveMessage, err := message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go.")
+	if err != nil {
+		return fmt.Errorf("create live message: %w", err)
+	}
 	liveRequest := asmodel.CallRequest{Messages: []*message.Message{liveMessage}}
 	tokens, err := chat.CountTokens(liveRequest)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("count tokens: %w", err)
 	}
 
 	fmt.Printf("chat_model=%s zhipu_model=%s estimated_tokens=%d\n", chat.Name(), "glm-5.1", tokens)
@@ -59,62 +81,78 @@ func chat() {
 	ctx := context.Background()
 	response, err := chat.Call(ctx, liveRequest)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("call live chat: %w", err)
 	}
 	fmt.Printf("zhipu_live=ok response=%q\n", shorten(textContent(response), 120))
 
-	weatherMessage := mustMessage(message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？"))
+	weatherMessage, err := message.NewUserMessage("user", "Use the GetWeather tool to answer: 杭州的天气怎么样？")
+	if err != nil {
+		return fmt.Errorf("create weather message: %w", err)
+	}
 	toolCallResponse, err := chat.Call(ctx, asmodel.CallRequest{
 		Messages: []*message.Message{weatherMessage},
 		Tools:    schemas,
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("call weather chat: %w", err)
 	}
 	weatherCall := firstToolCall(toolCallResponse.Content)
 	if weatherCall == nil {
-		panic(fmt.Sprintf("zhipu weather request returned no tool call: %q", shorten(textContent(toolCallResponse), 120)))
+		return fmt.Errorf("zhipu weather request returned no tool call: %q", shorten(textContent(toolCallResponse), 120))
 	}
 	toolResponse, err := kit.RunTool(ctx, weatherCall, asstate.NewAgentState())
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("run weather tool: %w", err)
 	}
 
-	assistantMessage := mustMessage(message.NewAssistantMessage("assistant", toolCallResponse.Content))
-	toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
+	assistantMessage, err := message.NewAssistantMessage("assistant", toolCallResponse.Content)
+	if err != nil {
+		return fmt.Errorf("create assistant message: %w", err)
+	}
+	toolMessage, err := message.NewAssistantMessage("tool", message.ContentBlockList{
 		message.NewToolResultBlock(weatherCall.ID, weatherCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
-	}))
+	})
+	if err != nil {
+		return fmt.Errorf("create tool result message: %w", err)
+	}
 	weatherResponse, err := chat.Call(ctx, asmodel.CallRequest{
 		Messages: []*message.Message{weatherMessage, assistantMessage, toolMessage},
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("call final weather chat: %w", err)
 	}
 
 	fmt.Printf("zhipu_weather=ok tool=%s input=%s response=%q\n", weatherCall.Name, weatherCall.Input, shorten(textContent(weatherResponse), 120))
+	return nil
 }
 
-func streamChat() {
-	streamChat := newZhipuModel(true)
+func streamChat() error {
+	streamChat, err := newZhipuModel(true)
+	if err != nil {
+		return fmt.Errorf("create stream Zhipu model: %w", err)
+	}
 
-	user := mustMessage(message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go."))
+	user, err := message.NewUserMessage("user", "Reply with one short sentence about AgentScope Go.")
+	if err != nil {
+		return fmt.Errorf("create stream user message: %w", err)
+	}
 	request := asmodel.CallRequest{Messages: []*message.Message{user}, Stream: true}
 	tokens, err := streamChat.CountTokens(request)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("count stream tokens: %w", err)
 	}
 
 	fmt.Printf("chat_model=%s zhipu_model=%s estimated_tokens=%d\n", streamChat.Name(), "glm-5.1", tokens)
 
 	responses, err := streamChat.Stream(context.Background(), request)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("stream chat: %w", err)
 	}
 	var streamed strings.Builder
 	var finalText string
 	for response := range responses {
 		if response.Error != nil {
-			panic(response.Error)
+			return fmt.Errorf("stream response: %w", response.Error)
 		}
 		text := textContent(&response)
 		if response.IsLast {
@@ -130,14 +168,19 @@ func streamChat() {
 		finalText = streamed.String()
 	}
 	fmt.Printf("zhipu_stream=ok response=%q\n", shorten(finalText, 120))
+	return nil
 }
 
-func newZhipuModel(stream bool) asmodel.ChatModel {
+func newZhipuModel(stream bool) (asmodel.ChatModel, error) {
+	apiKey := os.Getenv("AI_ZHIPU_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_ZHIPU_API_KEY is required")
+	}
 	temperature := 0.2
 	maxTokens := int64(256)
 
 	chat, err := zhipu.NewChatModel(
-		zhipu.NewCredential(os.Getenv("AI_ZHIPU_API_KEY")),
+		zhipu.NewCredential(apiKey),
 		"glm-5.1",
 		zhipu.WithStream(stream),
 		zhipu.WithChatParameters(zhipu.ChatParameters{
@@ -146,12 +189,12 @@ func newZhipuModel(stream bool) asmodel.ChatModel {
 		}),
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return chat
+	return chat, nil
 }
 
-func weatherTool() *tool.FunctionTool {
+func weatherTool() (*tool.FunctionTool, error) {
 	functionTool, err := tool.NewFunctionTool(
 		"GetWeather",
 		"Return weather for one city.",
@@ -168,9 +211,9 @@ func weatherTool() *tool.FunctionTool {
 		tool.WithFunctionReadOnly(true),
 	)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("create weather tool: %w", err)
 	}
-	return functionTool
+	return functionTool, nil
 }
 
 func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {
@@ -180,13 +223,6 @@ func firstToolCall(blocks message.ContentBlockList) *message.ToolCallBlock {
 		}
 	}
 	return nil
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
 }
 
 func textContent(response *asmodel.ChatResponse) string {

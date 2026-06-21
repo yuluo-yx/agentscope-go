@@ -26,71 +26,100 @@ import (
 )
 
 func main() {
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "message example: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	ctx := context.Background()
+func run(ctx context.Context) error {
+	chatModel, err := newChatModel()
+	if err != nil {
+		return fmt.Errorf("create DashScope chat model: %w", err)
+	}
 
 	fmt.Println("system message: ------------------")
-	system := mustMessage(message.NewSystemMessage(string(message.RoleSystem), "You are tom, is a helpful assistant."))
-	user := mustMessage(message.NewUserMessage(string(message.RoleUser), "What is your name?"))
-	systemCallResponse, err := newChatModel().Call(ctx, model.CallRequest{
+	system, err := message.NewSystemMessage(string(message.RoleSystem), "You are tom, is a helpful assistant.")
+	if err != nil {
+		return fmt.Errorf("create system message: %w", err)
+	}
+	user, err := message.NewUserMessage(string(message.RoleUser), "What is your name?")
+	if err != nil {
+		return fmt.Errorf("create user message: %w", err)
+	}
+	systemCallResponse, err := chatModel.Call(ctx, model.CallRequest{
 		Messages: []*message.Message{
 			system,
 			user,
 		},
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("call system message example: %w", err)
 	}
 	if text := systemCallResponse.GetTextContent(); text != nil {
 		fmt.Println(*text)
 	}
 
 	fmt.Println("\nuser message: ------------------")
-	user1 := mustMessage(message.NewUserMessage(string(message.RoleUser), "hi, please introduce yourself."))
-	userCallResponse, err := newChatModel().Call(ctx, model.CallRequest{
+	user1, err := message.NewUserMessage(string(message.RoleUser), "hi, please introduce yourself.")
+	if err != nil {
+		return fmt.Errorf("create single user message: %w", err)
+	}
+	userCallResponse, err := chatModel.Call(ctx, model.CallRequest{
 		Messages: []*message.Message{
 			user1,
 		},
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("call user message example: %w", err)
 	}
 	if text := userCallResponse.GetTextContent(); text != nil {
 		fmt.Println(*text)
 	}
 
 	fmt.Println("\nhistory message: -----------------")
-	system5 := mustMessage(message.NewSystemMessage(string(message.RoleSystem), "You are tom, is a helpful assistant."))
-	user5 := mustMessage(message.NewUserMessage(string(message.RoleUser), "What is your name?"))
-	ass5 := mustMessage(message.NewAssistantMessage(string(message.RoleAssistant), "I am tom, a helpful assistant."))
-	user6 := mustMessage(message.NewUserMessage(string(message.RoleUser), "Nice, tom, I am very happy, because I can talk with you."))
-	ass6 := mustMessage(message.NewAssistantMessage(string(message.RoleAssistant), "Me too."))
-	user7 := mustMessage(message.NewUserMessage(string(message.RoleUser), "我的心情好吗？"))
+	system5, err := message.NewSystemMessage(string(message.RoleSystem), "You are tom, is a helpful assistant.")
+	if err != nil {
+		return fmt.Errorf("create history system message: %w", err)
+	}
+	user5, err := message.NewUserMessage(string(message.RoleUser), "What is your name?")
+	if err != nil {
+		return fmt.Errorf("create first history user message: %w", err)
+	}
+	ass5, err := message.NewAssistantMessage(string(message.RoleAssistant), "I am tom, a helpful assistant.")
+	if err != nil {
+		return fmt.Errorf("create first history assistant message: %w", err)
+	}
+	user6, err := message.NewUserMessage(string(message.RoleUser), "Nice, tom, I am very happy, because I can talk with you.")
+	if err != nil {
+		return fmt.Errorf("create second history user message: %w", err)
+	}
+	ass6, err := message.NewAssistantMessage(string(message.RoleAssistant), "Me too.")
+	if err != nil {
+		return fmt.Errorf("create second history assistant message: %w", err)
+	}
+	user7, err := message.NewUserMessage(string(message.RoleUser), "我的心情好吗？")
+	if err != nil {
+		return fmt.Errorf("create final history user message: %w", err)
+	}
 	history := []*message.Message{system5, user5, ass5, user6, ass6}
-	historyCallResponse, err := newChatModel().Call(ctx, model.CallRequest{
+	historyCallResponse, err := chatModel.Call(ctx, model.CallRequest{
 		Messages: append(history, user7),
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("call history message example: %w", err)
 	}
 	if text := historyCallResponse.GetTextContent(); text != nil {
 		fmt.Println(*text)
 	}
+	return nil
 }
 
-func newChatModel() model.ChatModel {
-
-	chatModel, err := dashscope.NewChatModel(credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(), "qwen3.7-max")
-	if err != nil {
-		panic(err)
+func newChatModel() (model.ChatModel, error) {
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
 	}
 
-	return chatModel
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
+	return dashscope.NewChatModel(credential.NewDashScope(apiKey).ChatCredential(), "qwen3.7-max")
 }

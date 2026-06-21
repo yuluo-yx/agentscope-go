@@ -17,102 +17,59 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model/dashscope"
 	"github.com/yuluo-yx/agentscope-go/permission"
 	"github.com/yuluo-yx/agentscope-go/tool"
 	"github.com/yuluo-yx/agentscope-go/tool/skill"
 )
 
-type scriptedChatModel struct {
-	responses []*asmodel.ChatResponse
-}
-
-func (m *scriptedChatModel) Name() string {
-	return "scripted-skill-example"
-}
-
-func (m *scriptedChatModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
-	return m.nextResponse()
-}
-
-func (m *scriptedChatModel) Stream(ctx context.Context, _ asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
-	response, err := m.nextResponse()
-	if err != nil {
-		return nil, err
-	}
-	out := make(chan asmodel.ChatResponse)
-	go func() {
-		defer close(out)
-		delta := response.Clone()
-		delta.IsLast = false
-		delta.Usage = nil
-		select {
-		case <-ctx.Done():
-			return
-		case out <- *delta:
-		}
-		select {
-		case <-ctx.Done():
-		case out <- *response:
-		}
-	}()
-	return out, nil
-}
-
-func (m *scriptedChatModel) CountTokens(request asmodel.CallRequest) (int, error) {
-	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
-}
-
-func (m *scriptedChatModel) nextResponse() (*asmodel.ChatResponse, error) {
-	if len(m.responses) == 0 {
-		return nil, fmt.Errorf("scripted model has no response")
-	}
-	response := m.responses[0]
-	m.responses = m.responses[1:]
-	return response.Clone(), nil
-}
-
 func main() {
-	ctx := context.Background()
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "tool skill example: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
 	loader := skill.NewLocalLoader("resources", skill.WithScanSubdirs(true))
 	loadedSkills, err := loader.ListSkills(ctx)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("list skills: %w", err)
 	}
 	if len(loadedSkills) == 0 {
-		panic("no skills loaded from resources")
+		return fmt.Errorf("no skills loaded from resources")
 	}
 
-	skillTools := mustSkillTools(loadedSkills)
-	kit := mustToolkit(tool.NewToolkit(skillTools...))
+	toolsForSkills, err := skillTools(loadedSkills)
+	if err != nil {
+		return err
+	}
+	kit, err := tool.NewToolkit(toolsForSkills...)
+	if err != nil {
+		return fmt.Errorf("create toolkit: %w", err)
+	}
 	skillToolName := pickSkillToolName(loadedSkills)
 
-	model := &scriptedChatModel{
-		responses: []*asmodel.ChatResponse{
-			asmodel.NewChatResponse(
-				message.ContentBlockList{
-					message.NewToolCallBlock(
-						"skill-call",
-						skillToolName,
-						`{"question":"How should I organize implementation work?"}`,
-					),
-				},
-				true,
-			),
-			asmodel.NewChatResponse(
-				message.ContentBlockList{message.NewTextBlock(fmt.Sprintf("I used %s and summarized its guidance.", skillToolName))},
-				true,
-			),
-		},
+	model, err := newDashScopeChatModel(true)
+	if err != nil {
+		return fmt.Errorf("create DashScope chat model: %w", err)
 	}
 
-	agent := mustAgent(agentpkg.NewAgent("Friday", "Use skill tools when they help.", model, agentpkg.WithToolkit(kit)))
-	user := mustMessage(message.NewUserMessage("user", "Use a skill to plan this task."))
+	agent, err := agentpkg.NewAgent("Friday", "Use skill tools when they help.", model, agentpkg.WithToolkit(kit))
+	if err != nil {
+		return fmt.Errorf("create agent: %w", err)
+	}
+	user, err := message.NewUserMessage("user", fmt.Sprintf("Use %s to plan this task, then summarize the guidance.", skillToolName))
+	if err != nil {
+		return fmt.Errorf("create user message: %w", err)
+	}
 
 	var replyText strings.Builder
 	events := []string{}
@@ -128,7 +85,7 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("reply stream: %w", err)
 	}
 
 	skillNames := make([]string, 0, len(loadedSkills))
@@ -137,9 +94,10 @@ func main() {
 	}
 	sort.Strings(skillNames)
 	fmt.Printf("skills=%d names=%s agent_reply=%s events=%s\n", len(loadedSkills), strings.Join(skillNames, ","), replyText.String(), strings.Join(events, ","))
+	return nil
 }
 
-func mustSkillTools(skills []skill.Skill) []tool.Tool {
+func skillTools(skills []skill.Skill) ([]tool.Tool, error) {
 	tools := make([]tool.Tool, 0, len(skills))
 	for _, loaded := range skills {
 		loaded := loaded
@@ -169,17 +127,20 @@ func mustSkillTools(skills []skill.Skill) []tool.Tool {
 				DecisionReason: "Example keeps permissions simple to focus on agent flow",
 			}, nil
 		}
-		skillTool := mustFunctionTool(tool.NewFunctionTool(
+		skillTool, err := tool.NewFunctionTool(
 			toolName,
 			"Reads one loaded skill and returns its description and markdown body.",
 			schema,
 			handler,
 			tool.WithFunctionReadOnly(true),
 			tool.WithFunctionPermissionFunc(permissionFn),
-		))
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create %s skill tool: %w", loaded.Name, err)
+		}
 		tools = append(tools, skillTool)
 	}
-	return tools
+	return tools, nil
 }
 
 func pickSkillToolName(skills []skill.Skill) string {
@@ -191,30 +152,14 @@ func pickSkillToolName(skills []skill.Skill) string {
 	return "Skill_" + skills[0].Name
 }
 
-func mustFunctionTool(value *tool.FunctionTool, err error) *tool.FunctionTool {
-	if err != nil {
-		panic(err)
+func newDashScopeChatModel(stream bool) (*dashscope.ChatModel, error) {
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
 	}
-	return value
-}
-
-func mustToolkit(value *tool.Toolkit, err error) *tool.Toolkit {
-	if err != nil {
-		panic(err)
-	}
-	return value
-}
-
-func mustAgent(value *agentpkg.Agent, err error) *agentpkg.Agent {
-	if err != nil {
-		panic(err)
-	}
-	return value
-}
-
-func mustMessage(value *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return value
+	return dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
+		"qwen3.7-max",
+		dashscope.WithStream(stream),
+	)
 }

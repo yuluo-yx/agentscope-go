@@ -2,7 +2,7 @@
 
 This example shows how `loop/automation/event`, `loop/automation/runner`, and `loop/automation/store` turn a generic event into a loop-enabled Agent run.
 
-It uses a local scripted model, so no model provider credentials are required.
+It uses a DashScope ChatModel, so set `AI_DASHSCOPE_API_KEY` before running it.
 
 Run:
 

@@ -20,8 +20,7 @@
 
 - Go 1.26.3。
 - 本机需要可用 shell。
-- 离线 schema 和 token 估算不需要 API Key。
-- 设置 `AI_DASHSCOPE_API_KEY` 后会运行真实 model -> tool call -> tool result 闭环。
+- DashScope model -> tool call -> tool result 闭环需要 `AI_DASHSCOPE_API_KEY`。
 
 ## 运行
 

@@ -12,12 +12,12 @@
 - 宿主应用发送 `UserConfirmResultEvent`。
 - Agent 恢复执行工具，并再次请求模型生成最终回复。
 
-示例使用脚本化 ChatModel 和本地函数工具，因此不需要 API Key 或外部服务。
+示例使用 DashScope ChatModel 和本地函数工具。模型请求类似写操作的工具，宿主应用控制确认结果。
 
 ## 前置条件
 
 - Go 1.26.3 或更新版本。
-- 不需要 API Key。
+- DashScope ChatModel 需要 `AI_DASHSCOPE_API_KEY`。
 
 ## 运行
 
@@ -30,7 +30,7 @@ go run .
 
 ```text
 confirmation=required tool=WriteThing suggestions=1
-confirmed_reply=write approved executed=true
+confirmed_reply=... executed=true
 ```
 
 ## 测试

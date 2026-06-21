@@ -2,7 +2,7 @@
 
 本示例演示 `loop/automation/event`、`loop/automation/runner` 和 `loop/automation/store` 如何把一个通用事件转换成启用了 `runtime.WithSpec` 的 Agent run。
 
-示例使用本地脚本模型，不需要配置模型供应商凭据。
+示例使用 DashScope ChatModel，运行前需要设置 `AI_DASHSCOPE_API_KEY`。
 
 运行：
 

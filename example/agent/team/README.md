@@ -8,14 +8,14 @@ This example shows process-local Agent team coordination:
 
 - Create a process-local team manager with the standalone `team` package.
 - Attach team tools to a leader with `team.WithTeam`.
-- Let the leader call `TeamCreate` and `AgentCreate`.
+- Let a DashScope-backed leader call `TeamCreate` and `AgentCreate`.
 - Deliver the worker's first task through the team inbox.
 - Let the worker report back with `TeamSay`.
 
 ## Prerequisites
 
 - Go 1.26.3.
-- No API key is required.
+- `AI_DASHSCOPE_API_KEY` for the DashScope ChatModel.
 
 ## Run
 

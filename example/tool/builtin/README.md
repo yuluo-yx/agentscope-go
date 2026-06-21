@@ -20,8 +20,7 @@ The example only writes and edits files in a temporary directory and cleans it u
 
 - Go 1.26.3.
 - A local shell must be available.
-- No API key is required for offline schema and token estimation.
-- `AI_DASHSCOPE_API_KEY` enables the live model -> tool call -> tool result loop.
+- `AI_DASHSCOPE_API_KEY` for the DashScope model -> tool call -> tool result loop.
 
 ## Run
 

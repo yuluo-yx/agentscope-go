@@ -4,11 +4,11 @@
 
 英文文档：[README.md](README.md)。
 
-本目录按功能模块组织示例。每个子目录都是独立 Go 项目，包含自己的 `go.mod`、`main.go`、`README.md` 和 `README-zh.md`，可以单独进入目录运行。
+本目录按功能模块组织示例。多数可运行叶子目录都是独立 Go 项目，包含自己的 `go.mod`、`main.go`、`README.md` 和 `README-zh.md`，可以单独进入目录运行。少数根模块 package，例如 `loop/event-runner` 和 `loop/goal-runner`，通过仓库根模块测试。
 
 ## 运行示例
 
-每个子目录都是独立 Go module。进入要体验的目录后运行：
+对于独立 Go module 形式的示例，进入要体验的目录后运行：
 
 ```bash
 go run .
@@ -35,7 +35,7 @@ go run .
 | `model/openai/chat` | OpenAI ChatModel 非流式、流式、代理 HTTP client 和工具调用闭环 |
 | `model/xai/chat` | xAI ChatModel 多模态消息、token 估算、非流式、流式和工具调用闭环 |
 | `model/zhipu/chat` | 智谱 AI ChatModel 非流式、流式、token 估算和工具调用闭环 |
-| `agent/basic` | Agent + scripted model + task tool 的端到端 ReAct 流程 |
+| `agent/basic` | Agent + DashScope ChatModel + task tool 的端到端 ReAct 流程 |
 | `agent/team` | 进程内 leader/worker Agent team tools 与 inbox 投递 |
 | `agent/configuration` | Agent model fallback、ReAct 配置和本地上下文清理 |
 | `agent/context_strategy` | 摘要压缩、workspace offload 和自定义上下文策略 |
@@ -47,12 +47,12 @@ go run .
 | `integration/kratos` | Kratos HTTP 集成，覆盖底层 ChatModel 流式与 Agent 事件流式 |
 | `tool/function` | 自定义函数工具 |
 | `tool/builtin` | Bash/Edit/Glob/Grep/Read/Write 内置工具 |
-| `tool/mcp` | MCP client 集成、MCP tool 包装、Toolkit 执行和可选真实 ChatModel 工具调用 |
+| `tool/mcp` | MCP client 集成、MCP tool 包装、Toolkit 执行和 DashScope ChatModel 工具调用 |
 | `tool/task` | TaskCreate/TaskGet/TaskList/TaskUpdate |
 | `tool/skill` | 本地 `SKILL.md` 加载 |
 | `workspace/local` | workspace 支撑的工具文件操作、skills、上下文与工具结果 offload |
-| `workspace/docker` | Docker workspace 工具、容器文件操作和可选 ChatModel 回复 |
-| `workspace/microsandbox` | Microsandbox microVM workspace 工具和可选 DashScope ChatModel 回复 |
+| `workspace/docker` | Docker workspace 工具、容器文件操作和 DashScope ChatModel 回复 |
+| `workspace/microsandbox` | Microsandbox microVM workspace 工具和 DashScope ChatModel 回复 |
 | `workspace/daytona` | Daytona 沙箱 workspace，在远端沙箱中执行 Python CSV 数据分析 |
 
 ## 外部服务

@@ -20,37 +20,12 @@ import (
 	"os"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/loop/core"
 	loopruntime "github.com/yuluo-yx/agentscope-go/loop/runtime"
 	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model/dashscope"
 )
-
-type scriptedChatModel struct {
-	response *asmodel.ChatResponse
-}
-
-func (m *scriptedChatModel) Name() string { return "scripted-assisted-loop" }
-
-func (m *scriptedChatModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
-	return m.response.Clone(), nil
-}
-
-func (m *scriptedChatModel) Stream(ctx context.Context, _ asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
-	out := make(chan asmodel.ChatResponse, 1)
-	go func() {
-		defer close(out)
-		select {
-		case <-ctx.Done():
-		case out <- *m.response.Clone():
-		}
-	}()
-	return out, nil
-}
-
-func (m *scriptedChatModel) CountTokens(request asmodel.CallRequest) (int, error) {
-	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
-}
 
 func main() {
 	if err := run(context.Background()); err != nil {
@@ -76,10 +51,11 @@ func run(ctx context.Context) error {
 		if input.State == nil || input.State.LoopContext == nil {
 			return core.VerificationResult{Passed: false, Reason: "missing loop state", NextAction: "escalate"}, nil
 		}
-		return core.VerificationResult{Passed: true, Reason: "scripted verifier accepted the run", Evidence: []string{"local scripted response"}}, nil
+		return core.VerificationResult{Passed: true, Reason: "verifier accepted the run", Evidence: []string{"local verifier result"}}, nil
 	})
-	model := &scriptedChatModel{
-		response: asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("ci failure summarized")}, true),
+	model, err := newDashScopeChatModel(false)
+	if err != nil {
+		return fmt.Errorf("create DashScope chat model: %w", err)
 	}
 	agent, err := agentpkg.NewAgent(
 		"Friday",
@@ -101,4 +77,16 @@ func run(ctx context.Context) error {
 	verification := agent.AgentState().LoopContext.LastVerification
 	fmt.Printf("verified=%v reason=%s\n", verification.Passed, verification.Reason)
 	return nil
+}
+
+func newDashScopeChatModel(stream bool) (*dashscope.ChatModel, error) {
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
+	}
+	return dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
+		"qwen3.7-max",
+		dashscope.WithStream(stream),
+	)
 }

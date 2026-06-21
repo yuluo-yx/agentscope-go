@@ -12,12 +12,12 @@ This example shows the Agent permission pause-and-resume flow:
 - The host application sends `UserConfirmResultEvent`.
 - The Agent resumes, executes the tool, and asks the model for the final reply.
 
-The example uses a scripted ChatModel and local function tool, so it runs without API keys or external services.
+The example uses a DashScope ChatModel and a local function tool. The model requests the write-like tool, and the host application controls confirmation.
 
 ## Prerequisites
 
 - Go 1.26.3 or newer.
-- No API key is required.
+- `AI_DASHSCOPE_API_KEY` for the DashScope ChatModel.
 
 ## Run
 
@@ -30,7 +30,7 @@ Expected output:
 
 ```text
 confirmation=required tool=WriteThing suggestions=1
-confirmed_reply=write approved executed=true
+confirmed_reply=... executed=true
 ```
 
 ## Test

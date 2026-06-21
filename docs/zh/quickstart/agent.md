@@ -34,7 +34,7 @@ if err != nil {
 }
 ```
 
-模型只需要实现 `model.ChatModel`。可以使用内置供应商，也可以在测试中使用自定义脚本模型。
+模型只需要实现 `model.ChatModel`。可以使用内置供应商，也可以在测试中使用自定义测试模型。
 
 ## 创建工具
 
@@ -163,11 +163,11 @@ runner, err := agent.NewAgent(
 
 ## 可运行示例
 
-- `example/agent/basic`：使用脚本模型演示端到端 ReAct 流程。
+- `example/agent/basic`：使用 DashScope ChatModel 演示端到端 ReAct 流程。
 - `example/agent/configuration`：演示 model fallback、ReAct 限制和上下文清理。
 - `example/agent/external`：演示外部工具执行的暂停与恢复。
 - `example/agent/hooks`：演示 reply、reasoning、model call、acting 和 system prompt middleware Hook。
 - `example/agent/permission`：演示权限确认和等待中工具调用的恢复。
 - `example/agent/team`：演示进程内 leader/worker Agent team tools 与 inbox 投递。
-- `example/tool/function`：演示函数工具和可选 DashScope 工具调用循环。
+- `example/tool/function`：演示函数工具和 DashScope 工具调用循环。
 - `example/tool/mcp`：演示 MCP 工具通过 `tool.Toolkit` 注册和执行。
