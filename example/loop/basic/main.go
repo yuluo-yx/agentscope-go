@@ -17,10 +17,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
-	"github.com/yuluo-yx/agentscope-go/loop"
+	"github.com/yuluo-yx/agentscope-go/loop/core"
+	loopruntime "github.com/yuluo-yx/agentscope-go/loop/runtime"
 	"github.com/yuluo-yx/agentscope-go/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/model"
 )
@@ -65,18 +67,25 @@ func (m *scriptedChatModel) nextResponse() (*asmodel.ChatResponse, error) {
 }
 
 func main() {
-	spec := loop.Spec{
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "loop basic example: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
+	spec := core.Spec{
 		Name: "daily-triage",
 		Goal: "produce a report-only triage summary without modifying external systems",
 		NonGoals: []string{
 			"create pull requests",
 			"merge code",
 		},
-		SuccessCriteria: []loop.SuccessCriterion{
+		SuccessCriteria: []core.SuccessCriterion{
 			{Name: "summary", Description: "final reply lists findings and next action", Required: true},
 		},
-		Mode:   loop.ModeReportOnly,
-		Policy: loop.DefaultPolicy(loop.ModeReportOnly),
+		Mode:   core.ModeReportOnly,
+		Policy: core.DefaultPolicy(core.ModeReportOnly),
 	}
 	model := &scriptedChatModel{responses: []*asmodel.ChatResponse{
 		asmodel.NewChatResponse(
@@ -85,18 +94,24 @@ func main() {
 			asmodel.WithChatResponseUsage(&asmodel.ChatUsage{InputTokens: 12, OutputTokens: 5}),
 		),
 	}}
-	agent := mustAgent(agentpkg.NewAgent("Friday", "You are concise.", model, loop.WithSpec(spec)))
-	user := mustMessage(message.NewUserMessage("user", "Run the loop."))
+	agent, err := agentpkg.NewAgent("Friday", "You are concise.", model, loopruntime.WithSpec(spec))
+	if err != nil {
+		return err
+	}
+	user, err := message.NewUserMessage("user", "Run the loop.")
+	if err != nil {
+		return err
+	}
 
 	var events []string
-	err := agent.ReplyStream(context.Background(), user, func(event message.Event) error {
+	err = agent.ReplyStream(ctx, user, func(event message.Event) error {
 		if custom, ok := event.(*message.CustomEvent); ok && strings.HasPrefix(custom.Name, "loop.") {
 			events = append(events, custom.Name)
 		}
 		return nil
 	})
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	loopState := agent.AgentState().LoopContext
@@ -106,18 +121,5 @@ func main() {
 		loopState.ModelCalls,
 		strings.Join(events, ","),
 	)
-}
-
-func mustAgent(agent *agentpkg.Agent, err error) *agentpkg.Agent {
-	if err != nil {
-		panic(err)
-	}
-	return agent
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
+	return nil
 }

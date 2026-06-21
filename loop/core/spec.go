@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package loop
+package core
 
 import "github.com/yuluo-yx/agentscope-go/utils"
 
@@ -76,6 +76,11 @@ func (s Spec) clone() Spec {
 	}
 	cp.Metadata = utils.CloneAnyMap(s.Metadata)
 	return cp
+}
+
+// CloneSpec returns a deep copy of spec's slice and metadata fields.
+func CloneSpec(spec Spec) Spec {
+	return spec.clone()
 }
 
 func validMode(mode Mode) bool {

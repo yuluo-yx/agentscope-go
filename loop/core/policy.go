@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package loop
+package core
 
 const defaultWrapUpHint = "<system-reminder>The current Loop Engineering budget or stop condition has been reached. Do not invoke more tools. Summarize completed work, evidence, blockers, and the next action for the user.</system-reminder>"
 

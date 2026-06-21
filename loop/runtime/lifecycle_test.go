@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package loop
+package runtime
 
 import (
 	"context"
@@ -21,10 +21,28 @@ import (
 	"testing"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/loop/core"
 	"github.com/yuluo-yx/agentscope-go/message"
 	modelpkg "github.com/yuluo-yx/agentscope-go/model"
 	statepkg "github.com/yuluo-yx/agentscope-go/state"
 	"github.com/yuluo-yx/agentscope-go/types"
+)
+
+type (
+	Spec               = core.Spec
+	Policy             = core.Policy
+	Scope              = core.Scope
+	SuccessCriterion   = core.SuccessCriterion
+	HumanGate          = core.HumanGate
+	VerifierFunc       = core.VerifierFunc
+	VerificationInput  = core.VerificationInput
+	VerificationResult = core.VerificationResult
+	ObserverFunc       = core.ObserverFunc
+	RunEvent           = core.RunEvent
+)
+
+const (
+	ModeAssisted = core.ModeAssisted
 )
 
 type hookAgentAccessor struct {
@@ -40,7 +58,7 @@ func (a hookAgentAccessor) AgentState() *agentpkg.AgentState {
 	return a.state
 }
 
-func TestMiddlewareOptionsObserverAndHelpers(t *testing.T) {
+func TestRuntimeOptionsObserverAndHelpers(t *testing.T) {
 	t.Parallel()
 
 	if err := WithObserver(nil)(&options{}); err == nil || !strings.Contains(err.Error(), "observer is nil") {
@@ -91,15 +109,15 @@ func TestMiddlewareOptionsObserverAndHelpers(t *testing.T) {
 		},
 		Metadata: map[string]any{"risk": "low"},
 	}
-	var middlewareEvents []RunEvent
-	middleware, err := NewMiddleware(spec, WithObserver(ObserverFunc(func(_ context.Context, event RunEvent) error {
-		middlewareEvents = append(middlewareEvents, event)
+	var runtimeEvents []RunEvent
+	loopRuntime, err := New(spec, WithObserver(ObserverFunc(func(_ context.Context, event RunEvent) error {
+		runtimeEvents = append(runtimeEvents, event)
 		return errors.New("ignored")
 	})))
 	if err != nil {
-		t.Fatalf("NewMiddleware returned error: %v", err)
+		t.Fatalf("New returned error: %v", err)
 	}
-	if middleware.MiddlewareName() != "loop:coverage-loop" || (*Middleware)(nil).MiddlewareName() != "loop" {
+	if loopRuntime.MiddlewareName() != "loop:coverage-loop" || (*Runtime)(nil).MiddlewareName() != "loop" {
 		t.Fatalf("MiddlewareName mismatch")
 	}
 	state := agentpkg.NewAgentState()
@@ -107,38 +125,38 @@ func TestMiddlewareOptionsObserverAndHelpers(t *testing.T) {
 	state.ReplyID = "reply-state"
 	agent := hookAgentAccessor{name: "Friday", state: state}
 
-	prompt, err := middleware.OnSystemPrompt(context.Background(), agent, "")
+	prompt, err := loopRuntime.OnSystemPrompt(context.Background(), agent, "")
 	if err != nil || !strings.Contains(prompt, "Loop Engineering") || !strings.Contains(prompt, "coverage-loop") {
 		t.Fatalf("empty system prompt = %q, %v", prompt, err)
 	}
-	prompt, err = middleware.OnSystemPrompt(context.Background(), agent, "base")
+	prompt, err = loopRuntime.OnSystemPrompt(context.Background(), agent, "base")
 	if err != nil || !strings.HasPrefix(prompt, "base\n\n<loop_engineering>") {
 		t.Fatalf("combined system prompt = %q, %v", prompt, err)
 	}
-	nilPrompt, err := (*Middleware)(nil).OnSystemPrompt(context.Background(), agent, "base")
+	nilPrompt, err := (*Runtime)(nil).OnSystemPrompt(context.Background(), agent, "base")
 	if err != nil || nilPrompt != "base" {
 		t.Fatalf("nil middleware prompt = %q, %v", nilPrompt, err)
 	}
 
-	middleware.startRun(agent, "reply-1")
+	loopRuntime.startRun(agent, "reply-1")
 	loopCtx := state.LoopContext
 	if loopCtx == nil || loopCtx.Name != spec.Name || loopCtx.Metadata["risk"] != "low" ||
 		len(loopCtx.SuccessCriteria) != 2 || len(loopCtx.HumanGates) != 2 {
 		t.Fatalf("startRun loop context mismatch: %#v", loopCtx)
 	}
-	middleware.updateLoopContext(agent, func(ctx *statepkg.LoopContext) {
+	loopRuntime.updateLoopContext(agent, func(ctx *statepkg.LoopContext) {
 		ctx.ModelCalls = 1
 		ctx.ToolCalls = 1
 		ctx.InputTokens = 1
 		ctx.OutputTokens = 1
 	})
-	if !middleware.exceededAgent(agent) {
+	if !loopRuntime.exceededAgent(agent) {
 		t.Fatalf("budget should be exceeded")
 	}
-	if !middleware.beginReasoning(agent) || state.LoopContext.StopReason != statepkg.LoopStopBudgetExceeded {
+	if !loopRuntime.beginReasoning(agent) || state.LoopContext.StopReason != statepkg.LoopStopBudgetExceeded {
 		t.Fatalf("beginReasoning should mark budget exhaustion: %#v", state.LoopContext)
 	}
-	if !middleware.markHinted(agent) || middleware.markHinted(agent) {
+	if !loopRuntime.markHinted(agent) || loopRuntime.markHinted(agent) {
 		t.Fatalf("markHinted should only return true once per reply")
 	}
 	if err := appendHint(agent, "wrap up"); err != nil {
@@ -152,16 +170,16 @@ func TestMiddlewareOptionsObserverAndHelpers(t *testing.T) {
 	}
 
 	out := make(chan message.Event, 1)
-	middleware.emit(context.Background(), out, agent, EventStart, "started", "")
+	loopRuntime.emit(context.Background(), out, agent, EventStart, "started", "")
 	event := (<-out).(*message.CustomEvent)
 	if event.Name != EventStart || event.Value["reply_id"] != "reply-state" {
 		t.Fatalf("custom event mismatch: %#v", event)
 	}
-	if len(middlewareEvents) == 0 || middlewareEvents[len(middlewareEvents)-1].Metrics.ModelCalls != 1 {
-		t.Fatalf("observer should receive loop metrics: %#v", middlewareEvents)
+	if len(runtimeEvents) == 0 || runtimeEvents[len(runtimeEvents)-1].Metrics.ModelCalls != 1 {
+		t.Fatalf("observer should receive loop metrics: %#v", runtimeEvents)
 	}
-	middleware.recordCustomEvent(agent, EventWrapUp)
-	middleware.stopRun(agent, "")
+	loopRuntime.recordCustomEvent(agent, EventWrapUp)
+	loopRuntime.stopRun(agent, "")
 	lastRun := state.LoopContext.Runs[len(state.LoopContext.Runs)-1]
 	if lastRun.StopReason != statepkg.LoopStopCompleted || len(lastRun.CustomEvents) == 0 {
 		t.Fatalf("stopRun/custom events mismatch: %#v", lastRun)
@@ -183,22 +201,22 @@ func TestMiddlewareOptionsObserverAndHelpers(t *testing.T) {
 	if agentState(nil) != nil || loopKey(nil) != ":" || cloneMap(nil) != nil {
 		t.Fatalf("nil helpers mismatch")
 	}
-	if !middleware.exceededLocked(&statepkg.LoopContext{OutputTokens: 1}) || middleware.exceededLocked(nil) || (*Middleware)(nil).exceededLocked(&statepkg.LoopContext{OutputTokens: 1}) {
+	if !loopRuntime.exceededLocked(&statepkg.LoopContext{OutputTokens: 1}) || loopRuntime.exceededLocked(nil) || (*Runtime)(nil).exceededLocked(&statepkg.LoopContext{OutputTokens: 1}) {
 		t.Fatalf("exceededLocked nil/output-token branches mismatch")
 	}
 }
 
-func TestMiddlewareHookErrorAndRequestBranches(t *testing.T) {
+func TestRuntimeHookErrorAndRequestBranches(t *testing.T) {
 	t.Parallel()
 
-	middleware, err := NewMiddleware(Spec{
+	loopRuntime, err := New(Spec{
 		Name:   "hooks",
 		Goal:   "cover hook branches",
 		Mode:   ModeAssisted,
 		Policy: Policy{MaxIterations: 1, MaxModelCalls: 1, MaxToolCalls: 1, MaxAttempts: 1, WrapUpHint: "wrap"},
 	})
 	if err != nil {
-		t.Fatalf("NewMiddleware returned error: %v", err)
+		t.Fatalf("New returned error: %v", err)
 	}
 	agentState := agentpkg.NewAgentState()
 	agentState.SessionID = "session-2"
@@ -206,17 +224,17 @@ func TestMiddlewareHookErrorAndRequestBranches(t *testing.T) {
 	agent := hookAgentAccessor{name: "Friday", state: agentState}
 
 	nextErr := errors.New("next failed")
-	if _, err := middleware.OnReply(context.Background(), agent, nil, func(context.Context) (<-chan message.Event, error) {
+	if _, err := loopRuntime.OnReply(context.Background(), agent, nil, func(context.Context) (<-chan message.Event, error) {
 		return nil, nextErr
 	}); !errors.Is(err, nextErr) {
 		t.Fatalf("OnReply next error = %v", err)
 	}
-	if _, err := middleware.OnReply(context.Background(), agent, nil, func(context.Context) (<-chan message.Event, error) {
+	if _, err := loopRuntime.OnReply(context.Background(), agent, nil, func(context.Context) (<-chan message.Event, error) {
 		return nil, nil
 	}); err == nil || !strings.Contains(err.Error(), "nil event stream") {
 		t.Fatalf("OnReply nil stream error = %v", err)
 	}
-	if _, err := middleware.OnReasoning(context.Background(), agent, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
+	if _, err := loopRuntime.OnReasoning(context.Background(), agent, agentpkg.HookInput{}, func(context.Context) (<-chan message.Event, error) {
 		return nil, nil
 	}); err == nil || !strings.Contains(err.Error(), "nil reasoning event stream") {
 		t.Fatalf("OnReasoning nil stream error = %v", err)
@@ -229,7 +247,7 @@ func TestMiddlewareHookErrorAndRequestBranches(t *testing.T) {
 	replyEvents <- message.NewRequireUserConfirmEvent("reply-open", []*message.ToolCallBlock{message.NewToolCallBlock("call-1", "Bash", "{}")})
 	replyEvents <- message.NewRequireExternalExecutionEvent("reply-open", []*message.ToolCallBlock{message.NewToolCallBlock("call-2", "Deploy", "{}")})
 	close(replyEvents)
-	out, err := middleware.OnReply(context.Background(), agent, nil, func(context.Context) (<-chan message.Event, error) {
+	out, err := loopRuntime.OnReply(context.Background(), agent, nil, func(context.Context) (<-chan message.Event, error) {
 		return replyEvents, nil
 	})
 	if err != nil {
@@ -242,12 +260,12 @@ func TestMiddlewareHookErrorAndRequestBranches(t *testing.T) {
 		t.Fatalf("OnReply open stream state mismatch: %#v", agentState.LoopContext)
 	}
 
-	middleware.startRun(agent, "reply-budget")
+	loopRuntime.startRun(agent, "reply-budget")
 	agentState.LoopContext.ModelCalls = 1
 	reasoningInput := agentpkg.HookInput{}
 	reasoningEvents := make(chan message.Event)
 	close(reasoningEvents)
-	reasoningOut, err := middleware.OnReasoning(context.Background(), agent, reasoningInput, func(context.Context) (<-chan message.Event, error) {
+	reasoningOut, err := loopRuntime.OnReasoning(context.Background(), agent, reasoningInput, func(context.Context) (<-chan message.Event, error) {
 		return reasoningEvents, nil
 	})
 	if err != nil {
@@ -268,7 +286,7 @@ func TestMiddlewareHookErrorAndRequestBranches(t *testing.T) {
 
 	valueRequest := modelpkg.CallRequest{}
 	valueInput := agentpkg.HookInput{"request": valueRequest}
-	if _, err := middleware.OnModelCall(context.Background(), agent, valueInput, func(context.Context) (<-chan modelpkg.ChatResponse, error) {
+	if _, err := loopRuntime.OnModelCall(context.Background(), agent, valueInput, func(context.Context) (<-chan modelpkg.ChatResponse, error) {
 		ch := make(chan modelpkg.ChatResponse)
 		close(ch)
 		return ch, nil
@@ -280,7 +298,7 @@ func TestMiddlewareHookErrorAndRequestBranches(t *testing.T) {
 	}
 	ptrRequest := &modelpkg.CallRequest{}
 	ptrInput := agentpkg.HookInput{"request": ptrRequest}
-	if _, err := middleware.OnModelCall(context.Background(), agent, ptrInput, func(context.Context) (<-chan modelpkg.ChatResponse, error) {
+	if _, err := loopRuntime.OnModelCall(context.Background(), agent, ptrInput, func(context.Context) (<-chan modelpkg.ChatResponse, error) {
 		ch := make(chan modelpkg.ChatResponse)
 		close(ch)
 		return ch, nil
@@ -292,7 +310,7 @@ func TestMiddlewareHookErrorAndRequestBranches(t *testing.T) {
 	}
 	actingCh := make(chan agentpkg.ToolChunk)
 	close(actingCh)
-	gotActing, err := middleware.OnActing(context.Background(), agent, agentpkg.HookInput{}, func(context.Context) (<-chan agentpkg.ToolChunk, error) {
+	gotActing, err := loopRuntime.OnActing(context.Background(), agent, agentpkg.HookInput{}, func(context.Context) (<-chan agentpkg.ToolChunk, error) {
 		return actingCh, nil
 	})
 	if err != nil || gotActing != actingCh {

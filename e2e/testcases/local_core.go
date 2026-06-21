@@ -108,6 +108,18 @@ func init() {
 			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/agent", "-run", "TestCompressContextPreservesPendingToolCallsTasksAndCleansReadCache", "-count=1")
 		},
 	})
+	testcases.Register("loop-automation-contracts", testcases.TestCase{
+		Description: "Loop automation runners, sources, stores, webhooks, and verifier contracts work together without live services",
+		Tags:        []string{"local", "loop", "automation", "contract"},
+		Fn: func(ctx context.Context, _ testcases.TestCaseOptions) error {
+			return runRepoGoTest(ctx,
+				"github.com/yuluo-yx/agentscope-go/loop/automation/...",
+				"-run",
+				"Test(RunnerHandlesEventAndRecordsRun|RunnerAllocatesWorkspaceForRun|RunnerHandleEventRejectsInvalidSetupBeforeRunningAgent|SourceStartDecodesHandlesAndAcksMessage|SourceStartReturnsAckErrorAfterSuccessfulHandling|FileRunStorePersistsEventsRunsReportsAndFindings|AgentVerifierRunsCheckerAgentAndParsesJSONResult|SourceStartShutsDownConfiguredServerOnContextCancellation)$",
+				"-count=1",
+			)
+		},
+	})
 }
 
 func testChatModelContract(ctx context.Context, opts testcases.TestCaseOptions) error {

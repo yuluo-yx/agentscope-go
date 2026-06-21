@@ -20,6 +20,7 @@ func TestProfileIncludesRegisteredDefaultScenarios(t *testing.T) {
 		"permission-deny-tool-result",
 		"permission-updated-input",
 		"external-tool-resume",
+		"loop-automation-contracts",
 	} {
 		if !profileIncludesTestCase(cases, name) {
 			t.Fatalf("local profile should include %q, got %#v", name, cases)

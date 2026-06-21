@@ -12,27 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package loop
+package runtime
 
 import (
 	"context"
 	"time"
 
+	"github.com/yuluo-yx/agentscope-go/loop/core"
 	"github.com/yuluo-yx/agentscope-go/message"
 	"github.com/yuluo-yx/agentscope-go/state"
 )
 
 const (
-	EventStart          = "loop.start"
-	EventIterationStart = "loop.iteration_start"
-	EventIterationEnd   = "loop.iteration_end"
-	EventVerifyStart    = "loop.verify_start"
-	EventVerifyEnd      = "loop.verify_end"
-	EventWrapUp         = "loop.wrap_up"
-	EventStop           = "loop.stop"
+	EventStart          = core.EventStart
+	EventIterationStart = core.EventIterationStart
+	EventIterationEnd   = core.EventIterationEnd
+	EventVerifyStart    = core.EventVerifyStart
+	EventVerifyEnd      = core.EventVerifyEnd
+	EventWrapUp         = core.EventWrapUp
+	EventStop           = core.EventStop
 )
 
-func (m *Middleware) customEvent(agentName, sessionID, replyID, eventType, reason string, ctx *state.LoopContext) *message.CustomEvent {
+func (m *Runtime) customEvent(agentName, sessionID, replyID, eventType, reason string, ctx *state.LoopContext) *message.CustomEvent {
 	value := map[string]any{
 		"agent_name": agentName,
 		"session_id": sessionID,
@@ -51,13 +52,13 @@ func (m *Middleware) customEvent(agentName, sessionID, replyID, eventType, reaso
 	return message.NewCustomEvent(eventType, value)
 }
 
-func (m *Middleware) observe(ctx context.Context, eventType, reason, agentName, sessionID, replyID string, loopCtx *state.LoopContext) {
+func (m *Runtime) observe(ctx context.Context, eventType, reason, agentName, sessionID, replyID string, loopCtx *state.LoopContext) {
 	if m == nil || m.observer == nil {
 		return
 	}
-	metrics := Metrics{}
+	metrics := core.Metrics{}
 	if loopCtx != nil {
-		metrics = Metrics{
+		metrics = core.Metrics{
 			Iteration:    loopCtx.Iteration,
 			ModelCalls:   loopCtx.ModelCalls,
 			ToolCalls:    loopCtx.ToolCalls,
@@ -65,7 +66,7 @@ func (m *Middleware) observe(ctx context.Context, eventType, reason, agentName, 
 			OutputTokens: loopCtx.OutputTokens,
 		}
 	}
-	_ = m.observer.ObserveLoop(context.WithoutCancel(ctx), RunEvent{
+	_ = m.observer.ObserveLoop(context.WithoutCancel(ctx), core.RunEvent{
 		Type:      eventType,
 		AgentName: agentName,
 		SessionID: sessionID,
