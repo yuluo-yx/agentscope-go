@@ -1,8 +1,8 @@
 # 示例
 
-示例位于 `example/`。每个子目录都是独立 Go Module，包含自己的 `go.mod`、`main.go`、`README.md` 和 `README-zh.md`。
+示例位于 `example/`。多数可运行叶子目录都是独立 Go Module，包含自己的 `go.mod`、`main.go`、`README.md` 和 `README-zh.md`。`loop/event-runner`、`loop/goal-runner` 这类根模块 package 通过仓库根模块测试。
 
-示例按功能拆分，而不是按教程顺序拆分。不依赖在线模型的示例适合本地验证；模型、工具、Agent 和 Sandbox 沙箱示例可按目标单独运行。
+示例按功能拆分，而不是按教程顺序拆分。模型、工具、Agent 和 Sandbox 沙箱示例可按目标单独运行；涉及在线模型的示例需要先配置对应供应商 API Key。
 
 ## 运行示例
 
@@ -13,12 +13,11 @@ go run .
 
 模型相关示例通常会发起真实服务请求。运行前需要设置对应供应商的 API Key。Ollama 示例需要本地 Ollama 服务和已拉取的模型。
 
-不想配置在线模型时，可以先运行：
+不想配置在线模型时，可以先运行不发起在线模型请求的本地示例：
 
 ```bash
-go run ./example/agent/basic
-go run ./example/tool/function
-go run ./example/workspace/local
+cd example/workspace/local
+go run .
 ```
 
 ## 选择路线
@@ -26,7 +25,7 @@ go run ./example/workspace/local
 ```{mermaid}
 flowchart TD
     Start["选择示例"] --> HasKey{"是否配置<br/>在线模型 Key？"}
-    HasKey -- 否 --> Local["本地优先<br/>agent/basic<br/>tool/function<br/>workspace/local"]
+    HasKey -- 否 --> Local["本地优先<br/>workspace/local<br/>或本地 Ollama"]
     HasKey -- 是 --> Goal{"目标能力"}
     Goal -- 模型供应商 --> Model["model/*/chat<br/>embedding / tts / stt"]
     Goal -- 工具开发 --> Tools["tool/function<br/>tool/builtin<br/>tool/mcp<br/>tool/task<br/>tool/skill"]
@@ -68,7 +67,7 @@ flowchart TD
 | `model/openai/chat` | OpenAI ChatModel 非流式、流式、代理 HTTP client 和工具调用闭环 |
 | `model/xai/chat` | xAI ChatModel 多模态消息、token 估算、非流式、流式和工具调用闭环 |
 | `model/zhipu/chat` | 智谱 AI ChatModel 非流式、流式、token 估算和工具调用闭环 |
-| `agent/basic` | 使用脚本模型和任务工具的智能体示例 |
+| `agent/basic` | 使用 DashScope ChatModel 和任务工具的智能体示例 |
 | `agent/team` | 进程内 leader/worker Agent team tools 与 inbox 投递 |
 | `agent/configuration` | Agent model fallback、ReAct 配置和本地上下文清理 |
 | `agent/context_strategy` | 摘要压缩、沙箱 offload 和自定义上下文策略 |
@@ -86,8 +85,8 @@ flowchart TD
 | `tool/task` | 任务工具用法 |
 | `tool/skill` | 加载本地 `SKILL.md` |
 | `workspace/local` | 本地沙箱工具、Skill 和卸载能力 |
-| `workspace/docker` | Docker 沙箱工具、容器文件操作和可选 ChatModel 回复 |
-| `workspace/microsandbox` | Microsandbox microVM 沙箱工具和可选 DashScope ChatModel 回复 |
+| `workspace/docker` | Docker 沙箱工具、容器文件操作和 DashScope ChatModel 回复 |
+| `workspace/microsandbox` | Microsandbox microVM 沙箱工具和 DashScope ChatModel 回复 |
 | `workspace/agentsandbox` | Kubernetes Agent Sandbox 后端工具和可选 Agent 集成 |
 | `o11y` | 轻量 tracing、middleware 事件和模型调用观测示例 |
 

@@ -1,6 +1,6 @@
 # Examples
 
-Examples live under `example/`. Each subdirectory is an independent Go module with its own `go.mod`, `main.go`, `README.md`, and `README-zh.md`.
+Examples live under `example/`. Most runnable leaf directories are independent Go modules with their own `go.mod`, `main.go`, `README.md`, and `README-zh.md`. Root-module packages such as `loop/event-runner` and `loop/goal-runner` are tested through the repository root.
 
 ## Run an Example
 
@@ -14,9 +14,9 @@ go run .
 | Directory | Purpose |
 | --- | --- |
 | `message` | System, user, and assistant message construction |
-| `model/providers` | Provider construction and token estimation |
-| `model/dashscope` | DashScope chat, tool schemas, data-block input, and optional live call |
-| `agent/basic` | Agent with scripted model and task tool |
+| `model/*/chat` | Provider construction, token estimation, streaming, and tool-call loops |
+| `model/dashscope/chat` | DashScope chat, tool schemas, data-block input, and live call |
+| `agent/basic` | Agent with DashScope ChatModel and task tool |
 | `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
 | `agent/context_strategy` | Summary compression, workspace offload, and custom context strategies |
 | `agent/external` | Agent pause/resume flow for external tool execution |
@@ -33,8 +33,8 @@ go run .
 | `tool/task` | Task tool usage |
 | `tool/skill` | Local `SKILL.md` loading |
 | `workspace/local` | Local workspace tools, skills, and offload |
-| `workspace/docker` | Docker workspace tools, container file operations, and optional ChatModel response |
-| `workspace/microsandbox` | Microsandbox microVM workspace tools and optional DashScope ChatModel response |
+| `workspace/docker` | Docker workspace tools, container file operations, and DashScope ChatModel response |
+| `workspace/microsandbox` | Microsandbox microVM workspace tools and DashScope ChatModel response |
 
 ## Live Model Calls
 
@@ -44,4 +44,4 @@ Set `AI_DASHSCOPE_API_KEY` to run live DashScope paths:
 AI_DASHSCOPE_API_KEY=your-key go run .
 ```
 
-Without the key, examples keep a local or offline path when possible.
+DashScope-backed Agent, Tool, Loop, and Workspace examples require this key before they run the model path.

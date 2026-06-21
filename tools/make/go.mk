@@ -50,6 +50,22 @@ test: test-unit test-e2e
 .PHONY: test-all
 test-all: test ## Run all default local Go and E2E tests
 
+.PHONY: test-examples
+test-examples: ## Run tidy checks and tests for standalone example modules
+	@$(LOG_TARGET)
+	@failed=0; \
+	while IFS= read -r dir; do \
+		echo "checking $$dir"; \
+		if ! ( cd "$$dir" && $(GO) mod tidy -diff && $(GO) test -timeout=2m ./... ); then \
+			failed=1; \
+		fi; \
+	done < <(find example -name go.mod -exec dirname {} \; | sort); \
+	echo "checking root example packages"; \
+	if ! $(GO) test -timeout=2m ./example/...; then \
+		failed=1; \
+	fi; \
+	exit $$failed
+
 .PHONY: test-unit
 test-unit: ## Run non-E2E Go tests with race detection
 	@$(LOG_TARGET)

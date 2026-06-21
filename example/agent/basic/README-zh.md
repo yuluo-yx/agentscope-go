@@ -6,8 +6,8 @@
 
 本示例展示一个最小端到端 Agent 流程：
 
-- 使用脚本化 ChatModel，避免依赖外部模型服务。
-- Agent 首轮模型输出 `TaskCreate` 工具调用。
+- 使用 `AI_DASHSCOPE_API_KEY` 创建 DashScope ChatModel。
+- 模型输出 `TaskCreate` 工具调用。
 - Agent 执行 task 工具并把工具结果放回上下文。
 - Agent 第二轮模型输出最终 assistant 回复。
 - 示例通过 `Agent.ReplyStream` 消费事件流，展示 Agent 事件流式用法。
@@ -15,7 +15,7 @@
 ## 前置条件
 
 - Go 1.26.3。
-- 不需要 API Key。
+- DashScope ChatModel 需要 `AI_DASHSCOPE_API_KEY`。
 
 ## 运行
 
@@ -29,5 +29,7 @@ go run .
 输出包含：
 
 ```text
-agent_stream=task tracked
+agent_stream=...
+tasks=1
+events=tool_call:TaskCreate,tool_result:success
 ```

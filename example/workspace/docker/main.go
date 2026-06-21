@@ -33,52 +33,92 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-	root := mustTempDir("agentscope-docker-workspace-example-*")
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "workspace docker example: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
+	root, err := os.MkdirTemp("", "agentscope-docker-workspace-example-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
 	defer func() { _ = os.RemoveAll(root) }()
 
-	image := getenv("AGENTSCOPE_DOCKER_IMAGE", "ubuntu:latest")
+	image := os.Getenv("AGENTSCOPE_DOCKER_IMAGE")
+	if image == "" {
+		image = "ubuntu:latest"
+	}
 	hostWorkdir := filepath.Join(root, "workspace")
-	ws := mustWorkspace(dockerworkspace.NewWorkspace(
+	ws, err := dockerworkspace.NewWorkspace(
 		dockerworkspace.WithImage(image),
 		dockerworkspace.WithHostWorkdir(hostWorkdir),
 		dockerworkspace.WithPullImage(false),
 		dockerworkspace.WithNetworkDisabled(true),
-	))
+	)
+	if err != nil {
+		return fmt.Errorf("create Docker workspace: %w", err)
+	}
 	if err := ws.Initialize(ctx); err != nil {
-		panic(fmt.Sprintf("initialize Docker workspace failed for image %q: %v", image, err))
+		return fmt.Errorf("initialize Docker workspace for image %q: %w", image, err)
 	}
 	defer func() {
-		if err := ws.Close(context.Background()); err != nil {
-			panic(err)
-		}
+		_ = ws.Close(context.Background())
 	}()
 
-	tools := mustTools(ws.ListTools(ctx))
+	tools, err := ws.ListTools(ctx)
+	if err != nil {
+		return fmt.Errorf("list Docker workspace tools: %w", err)
+	}
 	state := asstate.NewAgentState()
 	briefPath := "/workspace/data/brief.md"
-	writeResponse := runTool(ctx, findTool(tools, "Write"), map[string]any{
+	writeTool, err := findTool(tools, "Write")
+	if err != nil {
+		return err
+	}
+	writeResponse, err := runTool(ctx, writeTool, map[string]any{
 		"file_path": briefPath,
 		"content":   fmt.Sprintf("# Docker workspace brief\nAgentScope Go can run workspace tools inside a Docker container. random check: %f\n", rand.Float32()),
 	}, state)
-	readResponse := runTool(ctx, findTool(tools, "Read"), map[string]any{
+	if err != nil {
+		return err
+	}
+	readTool, err := findTool(tools, "Read")
+	if err != nil {
+		return err
+	}
+	readResponse, err := runTool(ctx, readTool, map[string]any{
 		"file_path": briefPath,
 		"limit":     20,
 	}, state)
+	if err != nil {
+		return err
+	}
 	readText := textContent(readResponse.Content)
 	maxTokens := int64(256)
 	temperature := 0.2
-	chat := mustModel(dashscope.NewChatModel(
-		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
+	}
+	chat, err := dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
 		"qwen3.7-max",
 		dashscope.WithStream(false),
 		dashscope.WithChatParameters(dashscope.ChatParameters{MaxTokens: &maxTokens, Temperature: &temperature}),
-	))
-	user := mustMessage(message.NewUserMessage("user", "The Docker workspace Read tool returned, tips: print random float to check:\n"+readText))
+	)
+	if err != nil {
+		return fmt.Errorf("create DashScope chat model: %w", err)
+	}
+	user, err := message.NewUserMessage("user", "The Docker workspace Read tool returned, tips: print random float to check:\n"+readText)
+	if err != nil {
+		return fmt.Errorf("create user message: %w", err)
+	}
 	request := asmodel.CallRequest{Messages: []*message.Message{user}}
 	tokens, err := chat.CountTokens(request)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("count tokens: %w", err)
 	}
 
 	fmt.Printf(
@@ -94,36 +134,37 @@ func main() {
 
 	response, err := chat.Call(ctx, request)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("call DashScope chat: %w", err)
 	}
 	responseText := ""
 	if text := response.GetTextContent(); text != nil {
 		responseText = *text
 	}
 	fmt.Printf("dashscope_live=ok response=%q\n", shorten(responseText, 120))
+	return nil
 }
 
-func findTool(tools []asworkspace.Tool, name string) asworkspace.Tool {
+func findTool(tools []asworkspace.Tool, name string) (asworkspace.Tool, error) {
 	for _, current := range tools {
 		if current.Name() == name {
-			return current
+			return current, nil
 		}
 	}
-	panic("missing workspace tool: " + name)
+	return nil, fmt.Errorf("missing workspace tool: %s", name)
 }
 
-func runTool(ctx context.Context, current asworkspace.Tool, input map[string]any, state *asstate.AgentState) *tool.ToolResponse {
+func runTool(ctx context.Context, current asworkspace.Tool, input map[string]any, state *asstate.AgentState) (*tool.ToolResponse, error) {
 	chunks, err := current.Execute(ctx, input, state)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("execute %s tool: %w", current.Name(), err)
 	}
 	response := tool.NewToolResponse()
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
-			panic(err)
+			return nil, fmt.Errorf("append %s tool chunk: %w", current.Name(), err)
 		}
 	}
-	return response
+	return response, nil
 }
 
 func toolNames(tools []asworkspace.Tool) string {
@@ -144,14 +185,6 @@ func textContent(blocks message.ContentBlockList) string {
 	return builder.String()
 }
 
-func getenv(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
 func shorten(text string, limit int) string {
 	text = strings.TrimSpace(text)
 	runes := []rune(text)
@@ -159,47 +192,4 @@ func shorten(text string, limit int) string {
 		return text
 	}
 	return string(runes[:limit]) + "..."
-}
-
-func mustTempDir(pattern string) string {
-	dir, err := os.MkdirTemp("", pattern)
-	if err != nil {
-		panic(err)
-	}
-	return dir
-}
-
-func mustWorkspace(ws *dockerworkspace.Workspace, err error) *dockerworkspace.Workspace {
-	if err != nil {
-		panic(err)
-	}
-	return ws
-}
-
-func mustTools(tools []asworkspace.Tool, err error) []asworkspace.Tool {
-	if err != nil {
-		panic(err)
-	}
-	return tools
-}
-
-func mustInstructions(instructions string, err error) string {
-	if err != nil {
-		panic(err)
-	}
-	return instructions
-}
-
-func mustModel(model asmodel.ChatModel, err error) asmodel.ChatModel {
-	if err != nil {
-		panic(err)
-	}
-	return model
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
 }

@@ -8,14 +8,14 @@
 
 - 通过独立的 `team` 包创建进程内 team manager。
 - 通过 `team.WithTeam` 给 leader 挂载 team tools。
-- leader 调用 `TeamCreate` 和 `AgentCreate`。
+- 使用 DashScope ChatModel 的 leader 调用 `TeamCreate` 和 `AgentCreate`。
 - worker 的初始任务通过 team inbox 投递。
 - worker 通过 `TeamSay` 汇报结果。
 
 ## 前置条件
 
 - Go 1.26.3。
-- 不需要 API Key。
+- DashScope ChatModel 需要 `AI_DASHSCOPE_API_KEY`。
 
 ## 运行
 

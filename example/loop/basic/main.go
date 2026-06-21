@@ -21,50 +21,12 @@ import (
 	"strings"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
+	"github.com/yuluo-yx/agentscope-go/credential"
 	"github.com/yuluo-yx/agentscope-go/loop/core"
 	loopruntime "github.com/yuluo-yx/agentscope-go/loop/runtime"
 	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
+	"github.com/yuluo-yx/agentscope-go/model/dashscope"
 )
-
-type scriptedChatModel struct {
-	responses []*asmodel.ChatResponse
-}
-
-func (m *scriptedChatModel) Name() string { return "scripted-loop-basic" }
-
-func (m *scriptedChatModel) Call(context.Context, asmodel.CallRequest) (*asmodel.ChatResponse, error) {
-	return m.nextResponse()
-}
-
-func (m *scriptedChatModel) Stream(ctx context.Context, _ asmodel.CallRequest) (<-chan asmodel.ChatResponse, error) {
-	response, err := m.nextResponse()
-	if err != nil {
-		return nil, err
-	}
-	out := make(chan asmodel.ChatResponse, 1)
-	go func() {
-		defer close(out)
-		select {
-		case <-ctx.Done():
-		case out <- *response:
-		}
-	}()
-	return out, nil
-}
-
-func (m *scriptedChatModel) CountTokens(request asmodel.CallRequest) (int, error) {
-	return asmodel.ApproximateTokenCount(request.Messages, request.Tools), nil
-}
-
-func (m *scriptedChatModel) nextResponse() (*asmodel.ChatResponse, error) {
-	if len(m.responses) == 0 {
-		return nil, fmt.Errorf("scripted model has no response")
-	}
-	response := m.responses[0]
-	m.responses = m.responses[1:]
-	return response.Clone(), nil
-}
 
 func main() {
 	if err := run(context.Background()); err != nil {
@@ -87,13 +49,10 @@ func run(ctx context.Context) error {
 		Mode:   core.ModeReportOnly,
 		Policy: core.DefaultPolicy(core.ModeReportOnly),
 	}
-	model := &scriptedChatModel{responses: []*asmodel.ChatResponse{
-		asmodel.NewChatResponse(
-			message.ContentBlockList{message.NewTextBlock("findings=0 next=keep monitoring")},
-			true,
-			asmodel.WithChatResponseUsage(&asmodel.ChatUsage{InputTokens: 12, OutputTokens: 5}),
-		),
-	}}
+	model, err := newDashScopeChatModel(false)
+	if err != nil {
+		return fmt.Errorf("create DashScope chat model: %w", err)
+	}
 	agent, err := agentpkg.NewAgent("Friday", "You are concise.", model, loopruntime.WithSpec(spec))
 	if err != nil {
 		return err
@@ -122,4 +81,16 @@ func run(ctx context.Context) error {
 		strings.Join(events, ","),
 	)
 	return nil
+}
+
+func newDashScopeChatModel(stream bool) (*dashscope.ChatModel, error) {
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
+	}
+	return dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
+		"qwen3.7-max",
+		dashscope.WithStream(stream),
+	)
 }

@@ -12,12 +12,12 @@
 - 宿主应用完成外部工作后发送 `ExternalExecutionResultEvent`。
 - Agent 恢复并请求模型生成最终回复。
 
-示例使用脚本化 ChatModel 和本地占位工具定义，因此不需要 API Key 或外部服务。
+示例使用 DashScope ChatModel 和本地 external tool 定义。宿主应用仍负责提供外部执行结果；模型负责请求工具并生成最终回复。
 
 ## 前置条件
 
 - Go 1.26.3 或更新版本。
-- 不需要 API Key。
+- DashScope ChatModel 需要 `AI_DASHSCOPE_API_KEY`。
 
 ## 运行
 
@@ -30,7 +30,7 @@ go run .
 
 ```text
 external=required tool=DeployJob calls=1
-external_reply=deployment recorded result_state=success
+external_reply=... result_state=success
 ```
 
 ## 测试

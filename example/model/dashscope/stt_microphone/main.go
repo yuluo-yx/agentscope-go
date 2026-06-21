@@ -89,7 +89,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 
 func parseConfig(args []string, stderr io.Writer) (appConfig, error) {
 	cfg := appConfig{
-		apiKey: strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY")),
+		apiKey: os.Getenv("AI_DASHSCOPE_API_KEY"),
 	}
 	fs := flag.NewFlagSet("stt_microphone", flag.ContinueOnError)
 	fs.SetOutput(stderr)

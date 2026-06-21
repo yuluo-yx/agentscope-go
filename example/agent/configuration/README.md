@@ -10,12 +10,12 @@ This example shows common Agent configuration points:
 - `WithContextConfig` controls local tool-result truncation during context cleanup.
 - `WithReActConfig` sets the maximum reasoning/action loop count.
 
-The primary scripted model intentionally fails. The Agent retries according to `ModelConfig`, then uses the fallback model. The example also seeds a long tool result in state so context cleanup truncates it before the model call.
+The primary failing ChatModel intentionally returns an error. The Agent retries according to `ModelConfig`, then uses a DashScope fallback model. The example also seeds a long tool result in state so context cleanup truncates it before the model call.
 
 ## Prerequisites
 
 - Go 1.26.3 or newer.
-- No API key is required.
+- `AI_DASHSCOPE_API_KEY` for the fallback DashScope ChatModel.
 
 ## Run
 
@@ -27,7 +27,10 @@ go run .
 Expected output:
 
 ```text
-reply=fallback model replied primary_stream_calls=1 fallback_stream_calls=1 compressed=true
+reply=...
+primary_stream_calls=1
+fallback_model=dashscope/qwen3.7-max
+compressed=true
 ```
 
 ## Test

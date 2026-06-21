@@ -46,8 +46,14 @@ func run(ctx context.Context) error {
 	}
 	defer func() { _ = os.RemoveAll(root) }()
 
-	image := getenv("AGENTSCOPE_MICROSANDBOX_IMAGE", "python:3.12")
-	sandboxName := getenv("AGENTSCOPE_MICROSANDBOX_NAME", fmt.Sprintf("agentscope-msb-example-%d", time.Now().UnixNano()))
+	image := os.Getenv("AGENTSCOPE_MICROSANDBOX_IMAGE")
+	if image == "" {
+		image = "python:3.12"
+	}
+	sandboxName := os.Getenv("AGENTSCOPE_MICROSANDBOX_NAME")
+	if sandboxName == "" {
+		sandboxName = fmt.Sprintf("agentscope-msb-example-%d", time.Now().UnixNano())
+	}
 	hostWorkdir := filepath.Join(root, "workspace")
 	ws, err := microworkspace.NewWorkspace(
 		microworkspace.WithSandboxName(sandboxName),
@@ -102,10 +108,9 @@ func run(ctx context.Context) error {
 		strings.Contains(readText, "Microsandbox workspace brief"),
 	)
 
-	apiKey := strings.TrimSpace(os.Getenv("AI_DASHSCOPE_API_KEY"))
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
 	if apiKey == "" {
-		fmt.Println("dashscope_live=skipped")
-		return nil
+		return fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
 	}
 	if err := callDashScope(ctx, apiKey, ws, readText); err != nil {
 		return err
@@ -196,14 +201,6 @@ func textContent(blocks message.ContentBlockList) string {
 		}
 	}
 	return builder.String()
-}
-
-func getenv(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
 }
 
 func shorten(text string, limit int) string {

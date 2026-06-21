@@ -20,14 +20,14 @@ import (
 	"testing"
 
 	automationstore "github.com/yuluo-yx/agentscope-go/loop/automation/store"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
 )
 
-func TestGoalRunnerExampleContinuesUntilVerifierPasses(t *testing.T) {
-	t.Parallel()
+func TestGoalRunnerExampleRequiresDashScopeAPIKey(t *testing.T) {
+	t.Setenv("AI_DASHSCOPE_API_KEY", "")
 
-	if err := run(context.Background()); err != nil {
-		t.Fatalf("run returned error: %v", err)
+	err := run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "AI_DASHSCOPE_API_KEY") {
+		t.Fatalf("run error = %v, want missing API key error", err)
 	}
 }
 
@@ -41,16 +41,5 @@ func TestGoalRunnerRunStopsJoinsRecordedStopReasons(t *testing.T) {
 
 	if got := runStops(runs); got != "verifier_failed,completed" {
 		t.Fatalf("runStops = %q, want verifier_failed,completed", got)
-	}
-}
-
-func TestGoalRunnerScriptedModelReportsMissingResponse(t *testing.T) {
-	t.Parallel()
-
-	scripted := &scriptedChatModel{}
-
-	_, err := scripted.Stream(context.Background(), asmodel.CallRequest{})
-	if err == nil || !strings.Contains(err.Error(), "no response") {
-		t.Fatalf("Stream error = %v, want missing response error", err)
 	}
 }

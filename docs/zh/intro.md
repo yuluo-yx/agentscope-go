@@ -150,6 +150,8 @@ func main() {
 | --- | --- |
 | `middleware` | 预算、记忆、事件转换、TTS、工具结果卸载和追踪中间件 |
 | `middleware/otel` | OpenTelemetry 追踪桥接 |
+| `extensions/vectorstore` | 可选向量库接口、内存向量库、Indexer 和 Retriever |
+| `extensions/memory/vectorstore` | 基于向量库的长期记忆存储适配 |
 | `credential` | 供应商凭据、模型发现和模型卡片聚合 |
 | `errors` | AgentScope 框架错误类型 |
 | `types` | 模型、工具和 Agent 边界共享的轻量类型 |

@@ -15,8 +15,7 @@ This example shows how task tools read and write `AgentState.TaskContext`:
 ## Prerequisites
 
 - Go 1.26.3.
-- No API key is required for offline schema and token estimation.
-- `AI_DASHSCOPE_API_KEY` enables the live model -> tool call -> tool result loop.
+- `AI_DASHSCOPE_API_KEY` for the DashScope model -> tool call -> tool result loop.
 
 ## Run
 

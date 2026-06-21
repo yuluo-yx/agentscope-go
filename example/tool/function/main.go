@@ -29,7 +29,14 @@ import (
 )
 
 func main() {
-	greet := mustTool(tool.NewFunctionTool(
+	if err := run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "tool function example: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
+	greet, err := tool.NewFunctionTool(
 		"Greet",
 		"Return a greeting for one name.",
 		map[string]any{
@@ -47,53 +54,77 @@ func main() {
 			return message.ContentBlockList{message.NewTextBlock("hello " + name)}, nil
 		},
 		tool.WithFunctionReadOnly(true),
-	))
+	)
+	if err != nil {
+		return fmt.Errorf("create Greet tool: %w", err)
+	}
 
-	response := runTool(greet, map[string]any{"name": "Go"}, nil)
+	response, err := runTool(greet, map[string]any{"name": "Go"}, nil)
+	if err != nil {
+		return err
+	}
 	output := ""
 	if text := response.GetTextContent(); text != nil {
 		output = *text
 	}
 	fmt.Printf("function_tool=%s state=%s output=%q\n", greet.Name(), response.State, output)
-	kit := mustToolkit(tool.NewToolkit(greet))
-	fmt.Println(runDashScopeToolCall(context.Background(), kit, asstate.NewAgentState(), "Use the Greet tool to greet Go, then answer with the greeting."))
+	kit, err := tool.NewToolkit(greet)
+	if err != nil {
+		return fmt.Errorf("create toolkit: %w", err)
+	}
+	result, err := runDashScopeToolCall(ctx, kit, asstate.NewAgentState(), "Use the Greet tool to greet Go, then answer with the greeting.")
+	if err != nil {
+		return err
+	}
+	fmt.Println(result)
+	return nil
 }
 
-func runTool(t tool.Tool, input map[string]any, state *asstate.AgentState) *tool.ToolResponse {
+func runTool(t tool.Tool, input map[string]any, state *asstate.AgentState) (*tool.ToolResponse, error) {
 	chunks, err := t.Execute(context.Background(), input, state)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("execute %s tool: %w", t.Name(), err)
 	}
 	response := tool.NewToolResponse()
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
-			panic(err)
+			return nil, fmt.Errorf("append %s tool chunk: %w", t.Name(), err)
 		}
 	}
-	return response
+	return response, nil
 }
 
-func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate.AgentState, prompt string) string {
+func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate.AgentState, prompt string) (string, error) {
 	schemas, err := kit.ToolSchemas()
 	if err != nil {
-		panic(err)
+		return "", fmt.Errorf("build tool schemas: %w", err)
 	}
 	maxTokens := int64(256)
 	temperature := 0.2
-	chat := mustModel(dashscope.NewChatModel(
-		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).ChatCredential(),
+	apiKey := os.Getenv("AI_DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		return "", fmt.Errorf("AI_DASHSCOPE_API_KEY is required")
+	}
+	chat, err := dashscope.NewChatModel(
+		credential.NewDashScope(apiKey).ChatCredential(),
 		"qwen3.7-max",
 		dashscope.WithStream(false),
 		dashscope.WithChatParameters(dashscope.ChatParameters{MaxTokens: &maxTokens, Temperature: &temperature}),
-	))
-	user := mustMessage(message.NewUserMessage("user", prompt))
+	)
+	if err != nil {
+		return "", fmt.Errorf("create DashScope chat model: %w", err)
+	}
+	user, err := message.NewUserMessage("user", prompt)
+	if err != nil {
+		return "", fmt.Errorf("create user message: %w", err)
+	}
 	messages := []*message.Message{user}
 	var lastToolCall *message.ToolCallBlock
 	var lastToolResponse *tool.ToolResponse
 	for turn := 0; turn < 4; turn++ {
 		response, err := chat.Call(ctx, asmodel.CallRequest{Messages: messages, Tools: schemas})
 		if err != nil {
-			panic(err)
+			return "", fmt.Errorf("call DashScope turn %d: %w", turn+1, err)
 		}
 		toolCall := firstToolCall(response.Content)
 		if toolCall == nil {
@@ -102,34 +133,32 @@ func runDashScopeToolCall(ctx context.Context, kit *tool.Toolkit, state *asstate
 				text = *responseText
 			}
 			if lastToolCall == nil {
-				panic(fmt.Sprintf("DashScope returned no tool call: %q", text))
+				return "", fmt.Errorf("DashScope returned no tool call: %q", text)
 			}
 			if strings.TrimSpace(text) == "" {
-				panic(fmt.Sprintf("DashScope returned empty final text after %s", lastToolCall.Name))
+				return "", fmt.Errorf("DashScope returned empty final text after %s", lastToolCall.Name)
 			}
-			return fmt.Sprintf("chat_tool=%s mode=live chat_model=%s input=%s state=%s response=%q", lastToolCall.Name, chat.Name(), lastToolCall.Input, lastToolResponse.State, shorten(text, 96))
+			return fmt.Sprintf("chat_tool=%s mode=live chat_model=%s input=%s state=%s response=%q", lastToolCall.Name, chat.Name(), lastToolCall.Input, lastToolResponse.State, shorten(text, 96)), nil
 		}
 		toolResponse, err := kit.RunTool(ctx, toolCall, state)
 		if err != nil {
-			panic(err)
+			return "", fmt.Errorf("run %s tool: %w", toolCall.Name, err)
 		}
-		assistantMessage := mustMessage(message.NewAssistantMessage("assistant", response.Content))
-		toolMessage := mustMessage(message.NewAssistantMessage("tool", message.ContentBlockList{
+		assistantMessage, err := message.NewAssistantMessage("assistant", response.Content)
+		if err != nil {
+			return "", fmt.Errorf("create assistant message: %w", err)
+		}
+		toolMessage, err := message.NewAssistantMessage("tool", message.ContentBlockList{
 			message.NewToolResultBlock(toolCall.ID, toolCall.Name, message.ToolResultOutput{Blocks: toolResponse.Content}, toolResponse.State),
-		}))
+		})
+		if err != nil {
+			return "", fmt.Errorf("create tool result message: %w", err)
+		}
 		messages = append(messages, assistantMessage, toolMessage)
 		lastToolCall = toolCall
 		lastToolResponse = toolResponse
 	}
-	panic("DashScope did not produce final text after tool calls")
-}
-
-func getenv(name, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return fallback
-	}
-	return value
+	return "", fmt.Errorf("DashScope did not produce final text after tool calls")
 }
 
 func textOutputBlocks(blocks message.ContentBlockList) string {
@@ -166,32 +195,4 @@ func shorten(text string, limit int) string {
 		return text
 	}
 	return string(runes[:limit]) + "..."
-}
-
-func mustModel(model asmodel.ChatModel, err error) asmodel.ChatModel {
-	if err != nil {
-		panic(err)
-	}
-	return model
-}
-
-func mustTool(t *tool.FunctionTool, err error) *tool.FunctionTool {
-	if err != nil {
-		panic(err)
-	}
-	return t
-}
-
-func mustToolkit(kit *tool.Toolkit, err error) *tool.Toolkit {
-	if err != nil {
-		panic(err)
-	}
-	return kit
-}
-
-func mustMessage(msg *message.Message, err error) *message.Message {
-	if err != nil {
-		panic(err)
-	}
-	return msg
 }

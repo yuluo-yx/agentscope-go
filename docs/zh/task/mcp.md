@@ -111,7 +111,7 @@ if err != nil {
 kit, err := tool.NewToolkit(tools...)
 ```
 
-完整可运行示例见 `example/tool/mcp`。该示例创建一个进程内 MCP server，把 `lookup_profile` 包装成 `mcp__people__lookup_profile`，并演示直接执行工具和可选真实模型工具调用闭环。
+完整可运行示例见 `example/tool/mcp`。该示例创建一个进程内 MCP server，把 `lookup_profile` 包装成 `mcp__people__lookup_profile`，并演示直接执行工具和真实 DashScope 模型工具调用闭环。
 
 ## 过滤工具
 

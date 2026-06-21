@@ -235,13 +235,13 @@ func agentSandboxOption(dir string) []asw.Option {
 	}
 
 	// 只有显式设置 AGENTSCOPE_AGENT_SANDBOX_API_URL 时，才走 direct URL 模式。
-	if apiURL := strings.TrimSpace(os.Getenv("AGENTSCOPE_AGENT_SANDBOX_API_URL")); apiURL != "" {
+	if apiURL := os.Getenv("AGENTSCOPE_AGENT_SANDBOX_API_URL"); apiURL != "" {
 		opts = append(opts, asw.WithAPIURL(apiURL))
 	}
 
 	// 只有显式设置 AGENTSCOPE_AGENT_SANDBOX_GATEWAY_NAME 时，才走 Gateway 模式。
 	// WithGateway 需要两个参数：gateway name 和 gateway namespace。
-	if gateway := strings.TrimSpace(os.Getenv("AGENTSCOPE_AGENT_SANDBOX_GATEWAY_NAME")); gateway != "" {
+	if gateway := os.Getenv("AGENTSCOPE_AGENT_SANDBOX_GATEWAY_NAME"); gateway != "" {
 		opts = append(opts, asw.WithGateway(
 			gateway,
 			"agent",

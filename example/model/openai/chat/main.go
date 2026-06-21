@@ -193,7 +193,7 @@ func newOpenAIModel(stream bool) asmodel.ChatModel {
 func newOpenAIHTTPClient() (*http.Client, string) {
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	proxyURL := strings.TrimSpace(os.Getenv("AI_OPENAI_PROXY_URL"))
+	proxyURL := os.Getenv("AI_OPENAI_PROXY_URL")
 	if proxyURL == "" {
 		return &http.Client{Transport: transport, Timeout: openAIRequestTimeout}, ""
 	}

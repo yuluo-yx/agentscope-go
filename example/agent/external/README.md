@@ -12,12 +12,12 @@ This example shows how an Agent pauses for a tool that must run outside the curr
 - The host application performs the work and sends `ExternalExecutionResultEvent`.
 - The Agent resumes and asks the model for the final reply.
 
-The example uses a scripted ChatModel and a local placeholder tool definition, so it runs without API keys or external services.
+The example uses a DashScope ChatModel and a local external-tool definition. The host application still supplies the external execution result; the model is responsible for requesting the tool and producing the final reply.
 
 ## Prerequisites
 
 - Go 1.26.3 or newer.
-- No API key is required.
+- `AI_DASHSCOPE_API_KEY` for the DashScope ChatModel.
 
 ## Run
 
@@ -30,7 +30,7 @@ Expected output:
 
 ```text
 external=required tool=DeployJob calls=1
-external_reply=deployment recorded result_state=success
+external_reply=... result_state=success
 ```
 
 ## Test

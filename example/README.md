@@ -4,11 +4,11 @@ Project home: [README.md](../README.md).
 
 Chinese documentation: [README-zh.md](README-zh.md).
 
-This directory organizes examples by feature area. Each subdirectory is a standalone Go module with its own `go.mod`, `main.go`, `README.md`, and `README-zh.md`.
+This directory organizes examples by feature area. Most runnable leaf directories are standalone Go modules with their own `go.mod`, `main.go`, `README.md`, and `README-zh.md`. A few root-module packages, such as `loop/event-runner` and `loop/goal-runner`, are tested through the repository root.
 
 ## Run Examples
 
-Each subdirectory is an independent module. Enter the directory you want to try and run:
+For standalone example modules, enter the directory you want to try and run:
 
 ```bash
 go run .
@@ -35,7 +35,7 @@ These model examples make real provider requests by default. Set the matching pr
 | `model/openai/chat` | OpenAI ChatModel non-streaming call, streaming call, proxy HTTP client, and tool loop |
 | `model/xai/chat` | xAI ChatModel multimodal message, token estimation, non-streaming call, streaming call, and tool loop |
 | `model/zhipu/chat` | Zhipu AI ChatModel non-streaming call, streaming call, token estimation, and tool loop |
-| `agent/basic` | Agent + scripted model + task tool end-to-end ReAct flow |
+| `agent/basic` | Agent + DashScope ChatModel + task tool end-to-end ReAct flow |
 | `agent/team` | Process-local leader/worker Agent team tools and inbox delivery |
 | `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
 | `agent/context_strategy` | Summary compression, workspace offload, and custom context strategies |
@@ -47,12 +47,12 @@ These model examples make real provider requests by default. Set the matching pr
 | `integration/kratos` | Kratos HTTP integration with direct ChatModel streaming and Agent event streaming |
 | `tool/function` | Custom function tool |
 | `tool/builtin` | Built-in Bash/Edit/Glob/Grep/Read/Write tools |
-| `tool/mcp` | MCP client integration, MCP tool wrapping, Toolkit execution, and optional live ChatModel tool call |
+| `tool/mcp` | MCP client integration, MCP tool wrapping, Toolkit execution, and DashScope ChatModel tool call |
 | `tool/task` | TaskCreate/TaskGet/TaskList/TaskUpdate |
 | `tool/skill` | Local `SKILL.md` loading |
 | `workspace/local` | Workspace-backed tool file operations, skills, context offload, and tool result offload |
-| `workspace/docker` | Docker workspace tools, container file operations, and optional ChatModel response |
-| `workspace/microsandbox` | Microsandbox microVM workspace tools and optional DashScope ChatModel response |
+| `workspace/docker` | Docker workspace tools, container file operations, and DashScope ChatModel response |
+| `workspace/microsandbox` | Microsandbox microVM workspace tools and DashScope ChatModel response |
 | `workspace/daytona` | Daytona sandbox workspace running Python CSV data analysis |
 
 ## External Services
