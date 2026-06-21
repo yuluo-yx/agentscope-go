@@ -52,16 +52,6 @@ install-codespell: python-venv
 	@"$(PYTHON_VENV_BIN)/python" -m pip install "codespell==$(CODESPELL_VERSION)"
 	@"$(PYTHON_VENV_BIN)/codespell" --version
 
-.PHONY: install-govulncheck
-install-govulncheck: ## Install govulncheck
-	@$(LOG_TARGET)
-	@if command -v govulncheck >/dev/null 2>&1; then \
-		echo "govulncheck is already installed, skipping..."; \
-	else \
-		go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION); \
-	fi
-	@govulncheck -version
-
 .PHONY: install-gitleaks
 install-gitleaks: ## Install gitleaks
 	@$(LOG_TARGET)

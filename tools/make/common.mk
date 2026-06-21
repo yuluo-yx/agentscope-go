@@ -65,12 +65,7 @@ help:
 			print "Common targets:"; \
 			printf "  make %s%-*s%s  %s\n", cyan, width, "ci", reset, "Run local CI-aligned checks"; \
 			printf "  make %s%-*s%s  %s\n", cyan, width, "test", reset, "Run unit tests and the local E2E profile"; \
-			printf "  make %s%-*s%s  %s\n", cyan, width, "e2e-test-no-key", reset, "Run deterministic local E2E without live provider keys"; \
-			printf "  make %s%-*s%s  %s\n", cyan, width, "e2e-test-dashscope", reset, "Run live DashScope E2E"; \
-			print ""; \
-			print "GitHub workflow targets:"; \
-			printf "  make %s%-*s%s  %s\n", cyan, width, "ci", reset, "Run formatting, linting, security checks, unit tests, and local E2E"; \
-			printf "  make %s%-*s%s  %s\n", cyan, width, "ci-e2e", reset, "Run Docker and Agent Sandbox E2E"; \
+			printf "  make %s%-*s%s  %s\n", cyan, width, "e2e", reset, "Run E2E; set E2E_PROFILE for live or infrastructure profiles"; \
 			printf "  make %s%-*s%s  %s\n", cyan, width, "download", reset, "Download Go module dependencies"; \
 			print ""; \
 			print "Targets:"; \
