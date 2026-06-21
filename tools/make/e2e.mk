@@ -33,6 +33,7 @@ e2e: build-e2e ## Run E2E. Set E2E_PROFILE=local|dashscope-live|provider-smoke|d
 			env -u DASHSCOPE_API_KEY -u AI_DASHSCOPE_API_KEY ./$(E2E_BIN) $(E2E_TEST_ARGS); \
 			;; \
 		docker) \
+			docker image inspect "$(DOCKER_TEST_IMAGE)" >/dev/null 2>&1 || docker pull "$(DOCKER_TEST_IMAGE)"; \
 			AGENTSCOPE_E2E_DOCKER=1 AGENTSCOPE_TEST_DOCKER=1 AGENTSCOPE_DOCKER_IMAGE="$(DOCKER_TEST_IMAGE)" ./$(E2E_BIN) $(E2E_TEST_ARGS); \
 			;; \
 		agent-sandbox) \
