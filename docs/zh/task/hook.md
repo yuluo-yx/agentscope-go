@@ -60,13 +60,13 @@ agent.WithMiddlewares(PromptNote{})
 
 ## 可选 tracing
 
-使用 `github.com/yuluo-yx/agentscope-go/middleware` 获取 tracing middleware：
+使用 `github.com/yuluo-yx/agentscope-go/pkg/middleware` 获取 tracing middleware：
 
 ```go
 agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
 ```
 
-`TracingMiddleware` 只依赖很小的 `middleware.Tracer` 接口。核心 `agent` 包不导入 OpenTelemetry。需要接入 OpenTelemetry 的应用可以通过 `github.com/yuluo-yx/agentscope-go/middleware/otel` 适配 tracer。
+`TracingMiddleware` 只依赖很小的 `middleware.Tracer` 接口。核心 `agent` 包不导入 OpenTelemetry。需要接入 OpenTelemetry 的应用可以通过 `github.com/yuluo-yx/agentscope-go/pkg/middleware/otel` 适配 tracer。
 
 ## 可选 TTS
 

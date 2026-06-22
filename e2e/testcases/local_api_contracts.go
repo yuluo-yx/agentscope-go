@@ -10,19 +10,19 @@ import (
 	"strings"
 
 	agentscope "github.com/yuluo-yx/agentscope-go"
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	pkgtestcases "github.com/yuluo-yx/agentscope-go/e2e/pkg/testcases"
-	asembedding "github.com/yuluo-yx/agentscope-go/embedding"
-	"github.com/yuluo-yx/agentscope-go/message"
-	modelpkg "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/permission"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
-	builtintool "github.com/yuluo-yx/agentscope-go/tool/builtin"
-	tasktool "github.com/yuluo-yx/agentscope-go/tool/task"
-	"github.com/yuluo-yx/agentscope-go/types"
-	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
-	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	asembedding "github.com/yuluo-yx/agentscope-go/pkg/embedding"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	modelpkg "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	builtintool "github.com/yuluo-yx/agentscope-go/pkg/tool/builtin"
+	tasktool "github.com/yuluo-yx/agentscope-go/pkg/tool/task"
+	"github.com/yuluo-yx/agentscope-go/pkg/types"
+	asworkspace "github.com/yuluo-yx/agentscope-go/pkg/workspace"
+	wslocal "github.com/yuluo-yx/agentscope-go/pkg/workspace/local"
 )
 
 func init() {
@@ -55,7 +55,7 @@ func init() {
 		Description: "Workspace gateway edge contracts cover auth, Python-compatible MCP routes, health failures, and lifecycle",
 		Tags:        []string{"local", "gateway", "http"},
 		Fn: func(ctx context.Context, _ pkgtestcases.TestCaseOptions) error {
-			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/workspace/gateway", "-run", "TestHTTPGateway(BootstrapsRegistersMCPExposesToolsAndCloses|ReportsHealthFailure|MCPClientUsesPythonCompatibleRoutesAndAuth)$", "-count=1")
+			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/pkg/workspace/gateway", "-run", "TestHTTPGateway(BootstrapsRegistersMCPExposesToolsAndCloses|ReportsHealthFailure|MCPClientUsesPythonCompatibleRoutesAndAuth)$", "-count=1")
 		},
 	})
 	pkgtestcases.Register("message-state-types-contracts", pkgtestcases.TestCase{
@@ -63,9 +63,9 @@ func init() {
 		Tags:        []string{"local", "message", "state", "types"},
 		Fn: func(ctx context.Context, _ pkgtestcases.TestCaseOptions) error {
 			return runRepoGoTest(ctx,
-				"github.com/yuluo-yx/agentscope-go/message",
-				"github.com/yuluo-yx/agentscope-go/state",
-				"github.com/yuluo-yx/agentscope-go/types",
+				"github.com/yuluo-yx/agentscope-go/pkg/message",
+				"github.com/yuluo-yx/agentscope-go/pkg/state",
+				"github.com/yuluo-yx/agentscope-go/pkg/types",
 				"-run", "Test(ContentBlockJSONRoundTrip|PythonEventGoldenFixtureRoundTrip|ApplyEventAccumulatesStreamingMessage|AgentStateDefaultsAndClone|ToolContextCachesFilesWithLRUEviction|TaskLifecycleHelpers|ToolChoiceValidation|JSONSerializableValidation)$",
 				"-count=1",
 			)
@@ -75,7 +75,7 @@ func init() {
 		Description: "Provider metadata and compatibility registry expose complete model cards",
 		Tags:        []string{"local", "model", "metadata"},
 		Fn: func(ctx context.Context, _ pkgtestcases.TestCaseOptions) error {
-			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/model", "-run", "Test(EveryProviderExposesCompleteModelMetadata|OpenAIResponsesUsesDedicatedProviderPackage|CompatibleProviderConfigValidationAndClone)$", "-count=1")
+			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/pkg/model", "-run", "Test(EveryProviderExposesCompleteModelMetadata|OpenAIResponsesUsesDedicatedProviderPackage|CompatibleProviderConfigValidationAndClone)$", "-count=1")
 		},
 	})
 }

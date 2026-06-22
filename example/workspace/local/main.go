@@ -21,10 +21,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/message"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
-	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	wslocal "github.com/yuluo-yx/agentscope-go/pkg/workspace/local"
 )
 
 func main() {

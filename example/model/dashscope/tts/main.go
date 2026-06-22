@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"os"
 
-	astts "github.com/yuluo-yx/agentscope-go/audio/tts"
-	"github.com/yuluo-yx/agentscope-go/audio/tts/dashscope"
-	"github.com/yuluo-yx/agentscope-go/credential"
-	"github.com/yuluo-yx/agentscope-go/message"
+	astts "github.com/yuluo-yx/agentscope-go/pkg/audio/tts"
+	"github.com/yuluo-yx/agentscope-go/pkg/audio/tts/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
 )
 
 func main() {

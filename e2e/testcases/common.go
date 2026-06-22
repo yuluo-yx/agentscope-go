@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yuluo-yx/agentscope-go/message"
-	modelpkg "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/tool"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	modelpkg "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
 )
 
 type scriptedChatModel struct {
@@ -215,7 +215,8 @@ func repoRoot() (string, error) {
 	for {
 		if data, readErr := os.ReadFile(filepath.Join(wd, "go.mod")); readErr == nil &&
 			strings.Contains(string(data), "module github.com/yuluo-yx/agentscope-go") &&
-			fileExists(filepath.Join(wd, "agent", "agent.go")) {
+			fileExists(filepath.Join(wd, "pkg", "agent", "agent.go")) &&
+			fileExists(filepath.Join(wd, "facade.go")) {
 			return wd, nil
 		}
 		parent := filepath.Dir(wd)

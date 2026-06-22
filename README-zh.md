@@ -39,6 +39,13 @@ AgentScope Go 覆盖智能体、消息、模型适配、工具、状态、工作
 go get github.com/yuluo-yx/agentscope-go@latest
 ```
 
+领域 API 统一组织在 `pkg/` 导入根下。例如，使用
+`github.com/yuluo-yx/agentscope-go/pkg/agent` 导入 Agent 能力，
+使用 `github.com/yuluo-yx/agentscope-go/pkg/message` 导入消息类型，
+使用 `github.com/yuluo-yx/agentscope-go/pkg/model/dashscope` 导入 DashScope
+模型适配器。模块根路径 `github.com/yuluo-yx/agentscope-go` 保留一个小型
+facade 包，用于导出常用核心 API 的别名。
+
 运行一个不需要模型 API Key 的本地示例：
 
 ```bash
@@ -62,9 +69,9 @@ import (
     "fmt"
     "os"
 
-    "github.com/yuluo-yx/agentscope-go/message"
-    asmodel "github.com/yuluo-yx/agentscope-go/model"
-    "github.com/yuluo-yx/agentscope-go/model/dashscope"
+    "github.com/yuluo-yx/agentscope-go/pkg/message"
+    asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
+    "github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
 )
 
 func main() {

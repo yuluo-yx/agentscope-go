@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yuluo-yx/agentscope-go/credential"
-	asembedding "github.com/yuluo-yx/agentscope-go/embedding"
-	"github.com/yuluo-yx/agentscope-go/embedding/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	asembedding "github.com/yuluo-yx/agentscope-go/pkg/embedding"
+	"github.com/yuluo-yx/agentscope-go/pkg/embedding/dashscope"
 )
 
 func main() {

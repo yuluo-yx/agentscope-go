@@ -36,13 +36,13 @@ Middleware runs in registration order. A middleware can call the next handler, i
 
 ## Optional Tracing
 
-Use `github.com/yuluo-yx/agentscope-go/middleware` for tracing middleware:
+Use `github.com/yuluo-yx/agentscope-go/pkg/middleware` for tracing middleware:
 
 ```go
 agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
 ```
 
-`TracingMiddleware` depends on a small `middleware.Tracer` interface. The core `agent` package does not import OpenTelemetry. Applications that want OpenTelemetry can adapt a tracer with `github.com/yuluo-yx/agentscope-go/middleware/otel`.
+`TracingMiddleware` depends on a small `middleware.Tracer` interface. The core `agent` package does not import OpenTelemetry. Applications that want OpenTelemetry can adapt a tracer with `github.com/yuluo-yx/agentscope-go/pkg/middleware/otel`.
 
 ## Optional TTS
 
