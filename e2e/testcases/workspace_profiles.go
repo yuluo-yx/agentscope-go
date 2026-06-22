@@ -7,17 +7,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	pkgtestcases "github.com/yuluo-yx/agentscope-go/e2e/pkg/testcases"
-	"github.com/yuluo-yx/agentscope-go/message"
-	modelpkg "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/permission"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
-	builtintool "github.com/yuluo-yx/agentscope-go/tool/builtin"
-	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
-	agentsandboxworkspace "github.com/yuluo-yx/agentscope-go/workspace/agentsandbox"
-	dockerworkspace "github.com/yuluo-yx/agentscope-go/workspace/docker"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	modelpkg "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	builtintool "github.com/yuluo-yx/agentscope-go/pkg/tool/builtin"
+	asworkspace "github.com/yuluo-yx/agentscope-go/pkg/workspace"
+	agentsandboxworkspace "github.com/yuluo-yx/agentscope-go/pkg/workspace/agentsandbox"
+	dockerworkspace "github.com/yuluo-yx/agentscope-go/pkg/workspace/docker"
 )
 
 func init() {

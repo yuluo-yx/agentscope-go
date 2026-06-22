@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	automationstore "github.com/yuluo-yx/agentscope-go/loop/automation/store"
+	automationstore "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/store"
 )
 
 func TestGoalRunnerExampleRequiresDashScopeAPIKey(t *testing.T) {

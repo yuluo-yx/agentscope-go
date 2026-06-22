@@ -12,10 +12,10 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	pkgtestcases "github.com/yuluo-yx/agentscope-go/e2e/pkg/testcases"
-	"github.com/yuluo-yx/agentscope-go/message"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	astool "github.com/yuluo-yx/agentscope-go/tool"
-	toolmcp "github.com/yuluo-yx/agentscope-go/tool/mcp"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	astool "github.com/yuluo-yx/agentscope-go/pkg/tool"
+	toolmcp "github.com/yuluo-yx/agentscope-go/pkg/tool/mcp"
 )
 
 func init() {

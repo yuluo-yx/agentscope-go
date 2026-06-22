@@ -22,14 +22,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yuluo-yx/agentscope-go/credential"
-	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
-	asworkspace "github.com/yuluo-yx/agentscope-go/workspace"
-	dockerworkspace "github.com/yuluo-yx/agentscope-go/workspace/docker"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	asworkspace "github.com/yuluo-yx/agentscope-go/pkg/workspace"
+	dockerworkspace "github.com/yuluo-yx/agentscope-go/pkg/workspace/docker"
 )
 
 func main() {

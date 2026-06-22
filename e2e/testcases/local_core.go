@@ -13,17 +13,17 @@ import (
 	gomcp "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	"github.com/yuluo-yx/agentscope-go/e2e/pkg/testcases"
-	"github.com/yuluo-yx/agentscope-go/message"
-	"github.com/yuluo-yx/agentscope-go/middleware"
-	modelpkg "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/permission"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
-	asmcp "github.com/yuluo-yx/agentscope-go/tool/mcp"
-	tasktool "github.com/yuluo-yx/agentscope-go/tool/task"
-	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	"github.com/yuluo-yx/agentscope-go/pkg/middleware"
+	modelpkg "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	asmcp "github.com/yuluo-yx/agentscope-go/pkg/tool/mcp"
+	tasktool "github.com/yuluo-yx/agentscope-go/pkg/tool/task"
+	wslocal "github.com/yuluo-yx/agentscope-go/pkg/workspace/local"
 )
 
 func init() {
@@ -91,21 +91,21 @@ func init() {
 		Description: "Workspace gateway HTTP contract covers health, tools, MCP registration, calls, and close",
 		Tags:        []string{"local", "gateway", "http"},
 		Fn: func(ctx context.Context, _ testcases.TestCaseOptions) error {
-			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/workspace/gateway", "-run", "TestGatewayServerServesToolsMCPRegistrationToolCallsAndClose", "-count=1")
+			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/pkg/workspace/gateway", "-run", "TestGatewayServerServesToolsMCPRegistrationToolCallsAndClose", "-count=1")
 		},
 	})
 	testcases.Register("message-event-apply", testcases.TestCase{
 		Description: "Message event application reconstructs streaming text, data, thinking, hints, tools, and usage",
 		Tags:        []string{"local", "message", "events"},
 		Fn: func(ctx context.Context, _ testcases.TestCaseOptions) error {
-			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/message", "-run", "TestApplyEventAccumulatesStreamingMessage", "-count=1")
+			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/pkg/message", "-run", "TestApplyEventAccumulatesStreamingMessage", "-count=1")
 		},
 	})
 	testcases.Register("context-compression", testcases.TestCase{
 		Description: "Context compression preserves pending tool calls, tasks, summaries, and reserved read cache",
 		Tags:        []string{"local", "agent", "context"},
 		Fn: func(ctx context.Context, _ testcases.TestCaseOptions) error {
-			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/agent", "-run", "TestCompressContextPreservesPendingToolCallsTasksAndCleansReadCache", "-count=1")
+			return runRepoGoTest(ctx, "github.com/yuluo-yx/agentscope-go/pkg/agent", "-run", "TestCompressContextPreservesPendingToolCallsTasksAndCleansReadCache", "-count=1")
 		},
 	})
 	testcases.Register("loop-automation-contracts", testcases.TestCase{
@@ -113,7 +113,7 @@ func init() {
 		Tags:        []string{"local", "loop", "automation", "contract"},
 		Fn: func(ctx context.Context, _ testcases.TestCaseOptions) error {
 			return runRepoGoTest(ctx,
-				"github.com/yuluo-yx/agentscope-go/loop/automation/...",
+				"github.com/yuluo-yx/agentscope-go/pkg/loop/automation/...",
 				"-run",
 				"Test(RunnerHandlesEventAndRecordsRun|RunnerAllocatesWorkspaceForRun|RunnerHandleEventRejectsInvalidSetupBeforeRunningAgent|SourceStartDecodesHandlesAndAcksMessage|SourceStartReturnsAckErrorAfterSuccessfulHandling|FileRunStorePersistsEventsRunsReportsAndFindings|AgentVerifierRunsCheckerAgentAndParsesJSONResult|SourceStartShutsDownConfiguredServerOnContextCancellation)$",
 				"-count=1",

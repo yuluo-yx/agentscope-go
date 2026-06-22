@@ -21,13 +21,13 @@ import (
 	"strings"
 	"sync"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
-	"github.com/yuluo-yx/agentscope-go/credential"
-	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	"github.com/yuluo-yx/agentscope-go/tool"
-	tasktool "github.com/yuluo-yx/agentscope-go/tool/task"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	tasktool "github.com/yuluo-yx/agentscope-go/pkg/tool/task"
 )
 
 type auditMiddleware struct {

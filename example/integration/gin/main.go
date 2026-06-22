@@ -11,14 +11,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/yuluo-yx/agentscope-go/agent"
-	"github.com/yuluo-yx/agentscope-go/credential"
-	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	"github.com/yuluo-yx/agentscope-go/permission"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
+	"github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
 )
 
 func main() {

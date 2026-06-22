@@ -19,12 +19,12 @@ import (
 	"fmt"
 	"os"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
-	"github.com/yuluo-yx/agentscope-go/credential"
-	"github.com/yuluo-yx/agentscope-go/loop/core"
-	loopruntime "github.com/yuluo-yx/agentscope-go/loop/runtime"
-	"github.com/yuluo-yx/agentscope-go/message"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/loop/core"
+	loopruntime "github.com/yuluo-yx/agentscope-go/pkg/loop/runtime"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
 )
 
 func main() {

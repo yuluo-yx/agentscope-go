@@ -41,6 +41,13 @@ Install the module in your Go project:
 go get github.com/yuluo-yx/agentscope-go@latest
 ```
 
+Domain APIs are organized under the `pkg/` import root. For example, import
+`github.com/yuluo-yx/agentscope-go/pkg/agent` for agents,
+`github.com/yuluo-yx/agentscope-go/pkg/message` for messages, and
+`github.com/yuluo-yx/agentscope-go/pkg/model/dashscope` for the DashScope
+model adapter. The module root `github.com/yuluo-yx/agentscope-go` keeps a
+small facade package with aliases for common core APIs.
+
 Run a local example without a model API key:
 
 ```bash
@@ -64,9 +71,9 @@ import (
     "fmt"
     "os"
 
-    "github.com/yuluo-yx/agentscope-go/message"
-    asmodel "github.com/yuluo-yx/agentscope-go/model"
-    "github.com/yuluo-yx/agentscope-go/model/dashscope"
+    "github.com/yuluo-yx/agentscope-go/pkg/message"
+    asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
+    "github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
 )
 
 func main() {

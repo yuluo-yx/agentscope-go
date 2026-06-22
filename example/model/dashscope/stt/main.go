@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yuluo-yx/agentscope-go/audio/stt"
-	"github.com/yuluo-yx/agentscope-go/audio/stt/dashscope"
-	"github.com/yuluo-yx/agentscope-go/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/audio/stt"
+	"github.com/yuluo-yx/agentscope-go/pkg/audio/stt/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
 )
 
 func main() {

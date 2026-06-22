@@ -8,16 +8,16 @@ import (
 
 	"github.com/yuluo-yx/agentscope-go/e2e/pkg/framework"
 	pkgtestcases "github.com/yuluo-yx/agentscope-go/e2e/pkg/testcases"
-	"github.com/yuluo-yx/agentscope-go/message"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	"github.com/yuluo-yx/agentscope-go/model/deepseek"
-	"github.com/yuluo-yx/agentscope-go/model/gemini"
-	"github.com/yuluo-yx/agentscope-go/model/moonshot"
-	"github.com/yuluo-yx/agentscope-go/model/openai"
-	"github.com/yuluo-yx/agentscope-go/model/openairesponse"
-	"github.com/yuluo-yx/agentscope-go/model/xai"
-	"github.com/yuluo-yx/agentscope-go/model/zhipu"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/deepseek"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/gemini"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/moonshot"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/openai"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/openairesponse"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/xai"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/zhipu"
 )
 
 type providerSmokeSpec struct {

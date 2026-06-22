@@ -18,17 +18,17 @@ package agentscope
 //revive:disable:exported
 
 import (
-	asagent "github.com/yuluo-yx/agentscope-go/agent"
-	automationevent "github.com/yuluo-yx/agentscope-go/loop/automation/event"
-	automationgoal "github.com/yuluo-yx/agentscope-go/loop/automation/goal"
-	automationrunner "github.com/yuluo-yx/agentscope-go/loop/automation/runner"
-	automationstore "github.com/yuluo-yx/agentscope-go/loop/automation/store"
-	automationtemplate "github.com/yuluo-yx/agentscope-go/loop/automation/template"
-	asloop "github.com/yuluo-yx/agentscope-go/loop/core"
-	loopruntime "github.com/yuluo-yx/agentscope-go/loop/runtime"
-	asmodel "github.com/yuluo-yx/agentscope-go/model"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	astool "github.com/yuluo-yx/agentscope-go/tool"
+	asagent "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	automationevent "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/event"
+	automationgoal "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/goal"
+	automationrunner "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/runner"
+	automationstore "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/store"
+	automationtemplate "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/template"
+	asloop "github.com/yuluo-yx/agentscope-go/pkg/loop/core"
+	loopruntime "github.com/yuluo-yx/agentscope-go/pkg/loop/runtime"
+	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	astool "github.com/yuluo-yx/agentscope-go/pkg/tool"
 )
 
 type (

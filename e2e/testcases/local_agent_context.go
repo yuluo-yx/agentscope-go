@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	pkgtestcases "github.com/yuluo-yx/agentscope-go/e2e/pkg/testcases"
-	"github.com/yuluo-yx/agentscope-go/message"
-	modelpkg "github.com/yuluo-yx/agentscope-go/model"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	modelpkg "github.com/yuluo-yx/agentscope-go/pkg/model"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
 )
 
 func init() {

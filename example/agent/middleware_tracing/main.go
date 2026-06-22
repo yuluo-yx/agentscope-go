@@ -21,14 +21,14 @@ import (
 	"strings"
 	"sync"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
-	"github.com/yuluo-yx/agentscope-go/credential"
-	"github.com/yuluo-yx/agentscope-go/message"
-	"github.com/yuluo-yx/agentscope-go/middleware"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	"github.com/yuluo-yx/agentscope-go/permission"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	"github.com/yuluo-yx/agentscope-go/pkg/middleware"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
 )
 
 type memoryTracer struct {
