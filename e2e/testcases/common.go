@@ -215,7 +215,8 @@ func repoRoot() (string, error) {
 	for {
 		if data, readErr := os.ReadFile(filepath.Join(wd, "go.mod")); readErr == nil &&
 			strings.Contains(string(data), "module github.com/yuluo-yx/agentscope-go") &&
-			fileExists(filepath.Join(wd, "agent", "agent.go")) {
+			fileExists(filepath.Join(wd, "pkg", "agent", "agent.go")) &&
+			fileExists(filepath.Join(wd, "facade.go")) {
 			return wd, nil
 		}
 		parent := filepath.Dir(wd)

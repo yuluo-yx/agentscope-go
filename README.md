@@ -41,11 +41,12 @@ Install the module in your Go project:
 go get github.com/yuluo-yx/agentscope-go@latest
 ```
 
-Public APIs are organized under the `pkg/` import root. For example, import
+Domain APIs are organized under the `pkg/` import root. For example, import
 `github.com/yuluo-yx/agentscope-go/pkg/agent` for agents,
 `github.com/yuluo-yx/agentscope-go/pkg/message` for messages, and
 `github.com/yuluo-yx/agentscope-go/pkg/model/dashscope` for the DashScope
-model adapter.
+model adapter. The module root `github.com/yuluo-yx/agentscope-go` keeps a
+small facade package with aliases for common core APIs.
 
 Run a local example without a model API key:
 

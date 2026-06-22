@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
+	agentscope "github.com/yuluo-yx/agentscope-go"
 	pkgtestcases "github.com/yuluo-yx/agentscope-go/e2e/pkg/testcases"
 	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
-	agentscope "github.com/yuluo-yx/agentscope-go/pkg/agentscope"
 	asembedding "github.com/yuluo-yx/agentscope-go/pkg/embedding"
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
 	modelpkg "github.com/yuluo-yx/agentscope-go/pkg/model"
@@ -47,7 +47,7 @@ func init() {
 		Fn:          testWorkspaceResourceLifecycle,
 	})
 	pkgtestcases.Register("facade-package-contract", pkgtestcases.TestCase{
-		Description: "Facade aliases compose with domain packages for Agent, state, model, and tool APIs",
+		Description: "Root facade aliases compose with domain packages for Agent, state, model, and tool APIs",
 		Tags:        []string{"local", "facade", "architecture"},
 		Fn:          testFacadePackageContract,
 	})
