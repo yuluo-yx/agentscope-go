@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yuluo-yx/agentscope-go/message"
-	modelpkg "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/tool"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	modelpkg "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
 )
 
 type scriptedChatModel struct {

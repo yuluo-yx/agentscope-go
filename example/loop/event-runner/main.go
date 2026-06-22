@@ -20,15 +20,15 @@ import (
 	"os"
 	"strings"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
-	"github.com/yuluo-yx/agentscope-go/credential"
-	automationevent "github.com/yuluo-yx/agentscope-go/loop/automation/event"
-	automationrunner "github.com/yuluo-yx/agentscope-go/loop/automation/runner"
-	automationstore "github.com/yuluo-yx/agentscope-go/loop/automation/store"
-	"github.com/yuluo-yx/agentscope-go/loop/core"
-	loopruntime "github.com/yuluo-yx/agentscope-go/loop/runtime"
-	"github.com/yuluo-yx/agentscope-go/message"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	automationevent "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/event"
+	automationrunner "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/runner"
+	automationstore "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/store"
+	"github.com/yuluo-yx/agentscope-go/pkg/loop/core"
+	loopruntime "github.com/yuluo-yx/agentscope-go/pkg/loop/runtime"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
 )
 
 func main() {

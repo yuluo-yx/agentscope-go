@@ -21,11 +21,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
-	"github.com/yuluo-yx/agentscope-go/credential"
-	"github.com/yuluo-yx/agentscope-go/message"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	wslocal "github.com/yuluo-yx/agentscope-go/workspace/local"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
+	wslocal "github.com/yuluo-yx/agentscope-go/pkg/workspace/local"
 )
 
 type staticContextStrategy struct{}

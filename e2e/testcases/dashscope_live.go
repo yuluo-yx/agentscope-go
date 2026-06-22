@@ -8,17 +8,17 @@ import (
 	"sync"
 	"time"
 
-	agentpkg "github.com/yuluo-yx/agentscope-go/agent"
 	pkgtestcases "github.com/yuluo-yx/agentscope-go/e2e/pkg/testcases"
-	asembedding "github.com/yuluo-yx/agentscope-go/embedding"
-	dashscopeembedding "github.com/yuluo-yx/agentscope-go/embedding/dashscope"
-	"github.com/yuluo-yx/agentscope-go/message"
-	modelpkg "github.com/yuluo-yx/agentscope-go/model"
-	"github.com/yuluo-yx/agentscope-go/model/dashscope"
-	"github.com/yuluo-yx/agentscope-go/permission"
-	asstate "github.com/yuluo-yx/agentscope-go/state"
-	"github.com/yuluo-yx/agentscope-go/tool"
-	"github.com/yuluo-yx/agentscope-go/types"
+	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
+	asembedding "github.com/yuluo-yx/agentscope-go/pkg/embedding"
+	dashscopeembedding "github.com/yuluo-yx/agentscope-go/pkg/embedding/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	modelpkg "github.com/yuluo-yx/agentscope-go/pkg/model"
+	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	"github.com/yuluo-yx/agentscope-go/pkg/types"
 )
 
 func init() {

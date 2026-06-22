@@ -138,7 +138,7 @@ Applications can compose those capabilities with `workspace`, `team`, `tool/mcp`
 
 The `loop/automation` directory provides the orchestration layer above `core` and `runtime`. It keeps events generic so the framework does not depend on GitHub, Linear, CI, DingTalk, or any other platform model.
 
-The core event envelope is `event.Event` from `github.com/yuluo-yx/agentscope-go/loop/automation/event`. It has CloudEvents-like fields such as `ID`, `Source`, `Type`, `Subject`, `Time`, `Data`, `CorrelationID`, `CausationID`, `DedupKey`, `Labels`, and `Priority`. Event types are open strings, for example `schedule.tick`, `manual.requested`, `webhook.received`, `ci.workflow.failed`, or adapter-defined values.
+The core event envelope is `event.Event` from `github.com/yuluo-yx/agentscope-go/pkg/loop/automation/event`. It has CloudEvents-like fields such as `ID`, `Source`, `Type`, `Subject`, `Time`, `Data`, `CorrelationID`, `CausationID`, `DedupKey`, `Labels`, and `Priority`. Event types are open strings, for example `schedule.tick`, `manual.requested`, `webhook.received`, `ci.workflow.failed`, or adapter-defined values.
 
 `runner.Runner` implements `event.EventHandler` and executes this flow:
 

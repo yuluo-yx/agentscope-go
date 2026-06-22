@@ -138,7 +138,7 @@ agent, err := agent.NewAgent(
 
 `loop/automation` 目录提供 `core` 与 `runtime` 之上的编排能力。它保持事件模型通用，避免框架核心依赖 GitHub、Linear、CI、钉钉或其他平台模型。
 
-核心事件信封是 `github.com/yuluo-yx/agentscope-go/loop/automation/event` 下的 `event.Event`。它包含类似 CloudEvents 的字段，例如 `ID`、`Source`、`Type`、`Subject`、`Time`、`Data`、`CorrelationID`、`CausationID`、`DedupKey`、`Labels` 和 `Priority`。事件类型是开放字符串，例如 `schedule.tick`、`manual.requested`、`webhook.received`、`ci.workflow.failed`，也可以由 adapter 自行约定。
+核心事件信封是 `github.com/yuluo-yx/agentscope-go/pkg/loop/automation/event` 下的 `event.Event`。它包含类似 CloudEvents 的字段，例如 `ID`、`Source`、`Type`、`Subject`、`Time`、`Data`、`CorrelationID`、`CausationID`、`DedupKey`、`Labels` 和 `Priority`。事件类型是开放字符串，例如 `schedule.tick`、`manual.requested`、`webhook.received`、`ci.workflow.failed`，也可以由 adapter 自行约定。
 
 `runner.Runner` 实现 `event.EventHandler`，执行以下流程：
 

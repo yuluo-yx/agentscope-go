@@ -1,0 +1,442 @@
+// Copyright The AgentScope Go Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package agentsandbox
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	"github.com/yuluo-yx/agentscope-go/pkg/tool/builtin"
+)
+
+const maxReadLineCharacters = 2000
+
+type sandboxTool struct {
+	workspace       *Workspace
+	delegate        tool.Tool
+	readOnly        bool
+	concurrencySafe bool
+	execute         func(context.Context, map[string]any, *asstate.AgentState) (<-chan tool.ToolChunk, error)
+}
+
+func newBashTool(workspace *Workspace) tool.Tool {
+	return &sandboxTool{workspace: workspace, delegate: builtin.NewBash(), execute: executeBash(workspace)}
+}
+
+func newEditTool(workspace *Workspace) tool.Tool {
+	return &sandboxTool{workspace: workspace, delegate: builtin.NewEdit(), execute: executeEdit(workspace)}
+}
+
+func newGlobTool(workspace *Workspace) tool.Tool {
+	return &sandboxTool{workspace: workspace, delegate: builtin.NewGlob(), readOnly: true, concurrencySafe: true, execute: executeGlob(workspace)}
+}
+
+func newGrepTool(workspace *Workspace) tool.Tool {
+	return &sandboxTool{workspace: workspace, delegate: builtin.NewGrep(), readOnly: true, concurrencySafe: true, execute: executeGrep(workspace)}
+}
+
+func newReadTool(workspace *Workspace) tool.Tool {
+	return &sandboxTool{workspace: workspace, delegate: builtin.NewRead(), readOnly: true, concurrencySafe: true, execute: executeRead(workspace)}
+}
+
+func newWriteTool(workspace *Workspace) tool.Tool {
+	return &sandboxTool{workspace: workspace, delegate: builtin.NewWrite(), execute: executeWrite(workspace)}
+}
+
+func (t *sandboxTool) Name() string {
+	return t.delegate.Name()
+}
+
+func (t *sandboxTool) Description() string {
+	return t.delegate.Description() + " The operation runs inside the Agent Sandbox workspace."
+}
+
+func (t *sandboxTool) InputSchema() map[string]any {
+	return t.delegate.InputSchema()
+}
+
+func (t *sandboxTool) IsConcurrencySafe() bool {
+	return t.concurrencySafe
+}
+
+func (t *sandboxTool) IsReadOnly() bool {
+	return t.readOnly
+}
+
+func (t *sandboxTool) IsExternalTool() bool {
+	return false
+}
+
+func (t *sandboxTool) IsStateInjected() bool {
+	return false
+}
+
+func (t *sandboxTool) IsMCP() bool {
+	return false
+}
+
+func (t *sandboxTool) MCPName() string {
+	return ""
+}
+
+func (t *sandboxTool) CheckPermissions(ctx context.Context, input map[string]any, permissionCtx *permission.Context) (*permission.Decision, error) {
+	return t.delegate.CheckPermissions(ctx, input, permissionCtx)
+}
+
+func (t *sandboxTool) MatchRule(ruleContent string, input map[string]any) bool {
+	return t.delegate.MatchRule(ruleContent, input)
+}
+
+func (t *sandboxTool) GenerateSuggestions(input map[string]any) []permission.Rule {
+	return t.delegate.GenerateSuggestions(input)
+}
+
+func (t *sandboxTool) Execute(ctx context.Context, input map[string]any, state *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	if t.workspace == nil || t.workspace.handle == nil || !t.workspace.alive {
+		return errorText("Error: Agent Sandbox workspace is not initialized."), nil
+	}
+	return t.execute(ctx, input, state)
+}
+
+func executeBash(workspace *Workspace) func(context.Context, map[string]any, *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	return func(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+		command := strings.TrimSpace(stringValue(input, "command"))
+		if command == "" {
+			return errorText("Error: command is required"), nil
+		}
+		timeout := timeoutValue(input, "timeout_ms", defaultBashTimeout, maxBashTimeout)
+		result, err := workspace.handle.Run(ctx, runRequest{
+			Command: command,
+			Workdir: workspace.containerWorkdir,
+			Env:     cloneStringMap(workspace.env),
+			Timeout: timeout,
+		})
+		if err != nil {
+			return errorText("Error: " + err.Error()), nil
+		}
+		output := result.Stdout + result.Stderr
+		if result.ExitCode != 0 {
+			return errorText(fmt.Sprintf("Command failed with exit code %d: %s\n%s", result.ExitCode, command, output)), nil
+		}
+		return successText(output), nil
+	}
+}
+
+func executeRead(workspace *Workspace) func(context.Context, map[string]any, *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	return func(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+		filePath, err := normalizeSandboxPath(stringValue(input, "file_path"), workspace.containerWorkdir)
+		if err != nil {
+			return errorText("Error: " + err.Error()), nil
+		}
+		content, err := workspace.handle.Read(ctx, filePath)
+		if err != nil {
+			return errorText("Error reading file: " + err.Error()), nil
+		}
+		lines := splitLinesPreserve(string(content))
+		offset := intValue(input, "offset", 1)
+		if offset < 1 {
+			offset = 1
+		}
+		limit := intValue(input, "limit", 2000)
+		if limit <= 0 || limit > 2000 {
+			limit = 2000
+		}
+		start := offset - 1
+		if start > len(lines) {
+			start = len(lines)
+		}
+		end := start + limit
+		if end > len(lines) {
+			end = len(lines)
+		}
+		formatted := make([]string, 0, end-start)
+		for index, line := range lines[start:end] {
+			lineContent := strings.TrimRight(line, "\r\n")
+			if len([]rune(lineContent)) > maxReadLineCharacters {
+				runes := []rune(lineContent)
+				lineContent = string(runes[:maxReadLineCharacters]) + "[truncated]"
+			}
+			formatted = append(formatted, fmt.Sprintf("%6d\t%s", offset+index, lineContent))
+		}
+		return successText(strings.Join(formatted, "\n")), nil
+	}
+}
+
+func executeWrite(workspace *Workspace) func(context.Context, map[string]any, *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	return func(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+		filePath, err := normalizeSandboxPath(stringValue(input, "file_path"), workspace.containerWorkdir)
+		if err != nil {
+			return errorText("Error: " + err.Error()), nil
+		}
+		content := stringValue(input, "content")
+		if err := workspace.handle.Write(ctx, filePath, []byte(content)); err != nil {
+			return errorText("Error writing file: " + err.Error()), nil
+		}
+		lineCount := len(strings.Split(content, "\n"))
+		return successText(fmt.Sprintf("The file %s has been written successfully inside the Agent Sandbox workspace (%d lines).", filePath, lineCount)), nil
+	}
+}
+
+func executeEdit(workspace *Workspace) func(context.Context, map[string]any, *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	return func(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+		filePath, err := normalizeSandboxPath(stringValue(input, "file_path"), workspace.containerWorkdir)
+		if err != nil {
+			return errorText("Error: " + err.Error()), nil
+		}
+		oldString := stringValue(input, "old_string")
+		newString := stringValue(input, "new_string")
+		if oldString == newString {
+			return errorText("Error: old_string and new_string are identical. No changes to make."), nil
+		}
+		contentBytes, err := workspace.handle.Read(ctx, filePath)
+		if err != nil {
+			return errorText("Error reading file: " + err.Error()), nil
+		}
+		content := string(contentBytes)
+		occurrences := strings.Count(content, oldString)
+		if occurrences == 0 {
+			return errorText(fmt.Sprintf("Error: old_string not found in %s", filePath)), nil
+		}
+		replaceAll := boolValue(input, "replace_all")
+		if occurrences > 1 && !replaceAll {
+			return errorText(fmt.Sprintf("Error: old_string appears %d times in %s. Set replace_all=true to replace all occurrences, or make old_string more specific.", occurrences, filePath)), nil
+		}
+		updated := strings.Replace(content, oldString, newString, 1)
+		replacementMsg := "1 occurrence"
+		if replaceAll {
+			updated = strings.ReplaceAll(content, oldString, newString)
+			replacementMsg = fmt.Sprintf("all %d occurrences", occurrences)
+		}
+		if err := workspace.handle.Write(ctx, filePath, []byte(updated)); err != nil {
+			return errorText("Error writing file: " + err.Error()), nil
+		}
+		return successText(fmt.Sprintf("Successfully replaced %s in %s inside the Agent Sandbox workspace.", replacementMsg, filePath)), nil
+	}
+}
+
+func executeGlob(workspace *Workspace) func(context.Context, map[string]any, *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	return func(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+		pattern := strings.TrimSpace(stringValue(input, "pattern"))
+		if pattern == "" {
+			return errorText("Error: pattern is required"), nil
+		}
+		baseDir, err := globBaseDir(input, workspace.containerWorkdir)
+		if err != nil {
+			return errorText("Error: " + err.Error()), nil
+		}
+		command := fmt.Sprintf("find %s -type f -print", shellQuote(baseDir))
+		result, err := workspace.handle.Run(ctx, runRequest{
+			Command: command,
+			Workdir: workspace.containerWorkdir,
+			Env:     cloneStringMap(workspace.env),
+			Timeout: defaultBashTimeout,
+		})
+		if err != nil {
+			return errorText("Error: " + err.Error()), nil
+		}
+		if result.ExitCode != 0 {
+			return errorText(strings.TrimSpace(result.Stdout + result.Stderr)), nil
+		}
+		matches := filterGlobMatches(baseDir, result.Stdout, pattern)
+		if len(matches) == 0 {
+			return successText("No files found matching pattern: " + pattern), nil
+		}
+		sort.Strings(matches)
+		return successText(strings.Join(matches, "\n")), nil
+	}
+}
+
+func executeGrep(workspace *Workspace) func(context.Context, map[string]any, *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	return func(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+		pattern := stringValue(input, "pattern")
+		if strings.TrimSpace(pattern) == "" {
+			return errorText("Error: pattern is required"), nil
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return errorText("Error: invalid regex pattern: " + err.Error()), nil
+		}
+		searchPath, err := grepSearchPath(input, workspace.containerWorkdir)
+		if err != nil {
+			return errorText("Error: " + err.Error()), nil
+		}
+		args := "-R -n -E"
+		if boolValue(input, "case_insensitive") {
+			args += " -i"
+		}
+		command := fmt.Sprintf("grep %s -- %s %s", args, shellQuote(pattern), shellQuote(searchPath))
+		result, err := workspace.handle.Run(ctx, runRequest{
+			Command: command,
+			Workdir: workspace.containerWorkdir,
+			Env:     cloneStringMap(workspace.env),
+			Timeout: defaultBashTimeout,
+		})
+		if err != nil {
+			return errorText("Error: " + err.Error()), nil
+		}
+		if result.ExitCode == 1 {
+			return successText("No matches found for pattern: " + pattern), nil
+		}
+		if result.ExitCode != 0 {
+			return errorText(strings.TrimSpace(result.Stdout + result.Stderr)), nil
+		}
+		results := filterGrepOutput(result.Stdout, stringValue(input, "glob"), grepOutputMode(input))
+		results = limitStrings(results, intValue(input, "head_limit", 0))
+		if len(results) == 0 {
+			return successText("No matches found for pattern: " + pattern), nil
+		}
+		return successText(strings.Join(results, "\n")), nil
+	}
+}
+
+func globBaseDir(input map[string]any, workdir string) (string, error) {
+	path := strings.TrimSpace(stringValue(input, "path"))
+	if path == "" {
+		return workdir, nil
+	}
+	return normalizeSandboxPath(path, workdir)
+}
+
+func grepSearchPath(input map[string]any, workdir string) (string, error) {
+	path := strings.TrimSpace(stringValue(input, "path"))
+	if path == "" {
+		return workdir, nil
+	}
+	return normalizeSandboxPath(path, workdir)
+}
+
+func successText(text string) <-chan tool.ToolChunk {
+	return singleTextChunk(text, message.ToolResultSuccess)
+}
+
+func errorText(text string) <-chan tool.ToolChunk {
+	return singleTextChunk(text, message.ToolResultError)
+}
+
+func singleTextChunk(text string, state message.ToolResultState) <-chan tool.ToolChunk {
+	chunks := make(chan tool.ToolChunk, 1)
+	chunks <- *tool.NewToolChunk(
+		message.ContentBlockList{message.NewTextBlock(text)},
+		tool.WithToolChunkState(state),
+	)
+	close(chunks)
+	return chunks
+}
+
+func filterGlobMatches(baseDir, stdout, pattern string) []string {
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	matches := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		rel := strings.TrimPrefix(line, strings.TrimRight(baseDir, "/")+"/")
+		if matchGlob(pattern, rel) {
+			matches = append(matches, line)
+		}
+	}
+	return matches
+}
+
+func matchGlob(pattern, value string) bool {
+	pattern = filepath.ToSlash(pattern)
+	value = filepath.ToSlash(value)
+	ok, err := filepath.Match(pattern, value)
+	if err == nil && ok {
+		return true
+	}
+	if strings.HasPrefix(pattern, "**/") {
+		ok, err = filepath.Match(strings.TrimPrefix(pattern, "**/"), filepath.Base(value))
+		if err == nil && ok {
+			return true
+		}
+	}
+	if !strings.Contains(pattern, "**") {
+		return false
+	}
+	regex := regexp.QuoteMeta(pattern)
+	regex = strings.ReplaceAll(regex, `\*\*`, ".*")
+	regex = strings.ReplaceAll(regex, `\*`, `[^/]*`)
+	matched, _ := regexp.MatchString("^"+regex+"$", value)
+	return matched
+}
+
+func filterGrepOutput(stdout, globPattern, outputMode string) []string {
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	results := make([]string, 0, len(lines))
+	seenFiles := map[string]bool{}
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		filePath := line
+		if colon := strings.Index(line, ":"); colon >= 0 {
+			filePath = line[:colon]
+		}
+		if globPattern != "" {
+			ok, err := filepath.Match(globPattern, filepath.Base(filePath))
+			if err != nil || !ok {
+				continue
+			}
+		}
+		switch outputMode {
+		case "files":
+			if !seenFiles[filePath] {
+				seenFiles[filePath] = true
+				results = append(results, filePath)
+			}
+		case "count":
+			seenFiles[filePath] = true
+		default:
+			results = append(results, line)
+		}
+	}
+	if outputMode == "count" {
+		for filePath := range seenFiles {
+			count := 0
+			for _, line := range lines {
+				if strings.HasPrefix(line, filePath+":") {
+					count++
+				}
+			}
+			results = append(results, fmt.Sprintf("%s:%d", filePath, count))
+		}
+		sort.Strings(results)
+	}
+	return results
+}
+
+func grepOutputMode(input map[string]any) string {
+	outputMode := stringValue(input, "output_mode")
+	if outputMode == "" {
+		return "content"
+	}
+	return outputMode
+}
+
+func limitStrings(values []string, limit int) []string {
+	if limit > 0 && limit < len(values) {
+		return values[:limit]
+	}
+	return values
+}

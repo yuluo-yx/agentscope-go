@@ -1,76 +1,76 @@
 # AgentScope Go E2E
 
-本目录提供 AgentScope Go 的端到端测试入口，用于验证跨包 API、Agent 工作流、工具调用、workspace、MCP、网关和真实模型服务在完整链路中的行为。
+This directory contains the end-to-end test entry point for AgentScope Go. It verifies full workflows across package APIs, Agents, tool calls, workspaces, MCP, gateways, and live model services.
 
-## 运行方式
+## How To Run
 
-统一入口是 `make e2e`。默认运行 `local` profile，并在子进程中清空 `DASHSCOPE_API_KEY` 和 `AI_DASHSCOPE_API_KEY`，用于验证不依赖真实模型服务的确定性场景。
+The unified entry point is `make e2e`. By default, it runs the `local` profile and removes `DASHSCOPE_API_KEY` and `AI_DASHSCOPE_API_KEY` from the child process environment. Use it for deterministic scenarios that do not depend on live model services.
 
 ```bash
 make e2e
 ```
 
-运行 DashScope 真实服务 E2E：
+Run live DashScope E2E:
 
 ```bash
 DASHSCOPE_API_KEY=your-key make e2e E2E_PROFILE=dashscope-live
 ```
 
-默认 chat 模型为 `qwen-plus`，可通过 `AGENTSCOPE_TEST_DASHSCOPE_MODEL` 或 `AI_DASHSCOPE_MODEL` 覆盖。默认 text embedding 模型为 `text-embedding-v4`，可通过 `AGENTSCOPE_TEST_DASHSCOPE_EMBEDDING_MODEL` 或 `AI_DASHSCOPE_EMBEDDING_MODEL` 覆盖。
+The default chat model is `qwen-plus`. Override it with `AGENTSCOPE_TEST_DASHSCOPE_MODEL` or `AI_DASHSCOPE_MODEL`. The default text embedding model is `text-embedding-v4`. Override it with `AGENTSCOPE_TEST_DASHSCOPE_EMBEDDING_MODEL` or `AI_DASHSCOPE_EMBEDDING_MODEL`.
 
-运行显式 provider smoke：
+Run explicit provider smoke tests:
 
 ```bash
 make e2e E2E_PROFILE=provider-smoke
 ```
 
-该 profile 中每个真实 provider 用例都需要设置对应的 `AGENTSCOPE_TEST_*` 开关和 API key；未开启的用例会记为 `SKIPPED`，不会导致整组失败。
+Each live provider case requires its matching `AGENTSCOPE_TEST_*` switch and API key. Cases that are not explicitly enabled are reported as `SKIPPED` and do not fail the profile.
 
-运行 Docker workspace E2E：
+Run Docker workspace E2E:
 
 ```bash
 make e2e E2E_PROFILE=docker
 ```
 
-该 profile 需要本机可用的 Docker 环境。
+This profile requires a working local Docker environment.
 
-运行 Agent Sandbox workspace E2E：
+Run Agent Sandbox workspace E2E:
 
 ```bash
 make e2e E2E_PROFILE=agent-sandbox
 ```
 
-该 profile 会通过 Kind 准备 Agent Sandbox 测试资源，需要本机具备 Kubernetes、Kind 和容器运行环境。
+This profile prepares Agent Sandbox resources through KinD. It requires Kubernetes, KinD, and a container runtime on the local machine.
 
-运行指定 testcase：
+Run specific testcases:
 
 ```bash
 make e2e E2E_TESTS=agent-tool-loop
 make e2e E2E_PROFILE=local E2E_TESTS=agent-tool-loop,workspace-local-files
 ```
 
-直接运行 runner：
+Run the runner directly:
 
 ```bash
 make build-e2e
 ./bin/e2e -profile=local -tests=agent-tool-loop -verbose=true -report-dir=e2e/reports/local
 ```
 
-测试报告输出到 `e2e/reports/<profile>/`，包含 JSON 和 Markdown 两种格式。
+Reports are written to `e2e/reports/<profile>/` in JSON and Markdown formats.
 
-如只需维护 E2E 独立 module，可显式运行：
+For standalone E2E module maintenance, run:
 
 ```bash
 make e2e-deps
 make e2e-tidy
 ```
 
-## 设计思路
+## Design
 
-E2E 使用独立 Go module 和统一 runner 组织，不把旧的单元测试、集成测试或架构测试目录原样复制到 `e2e/`。每个 testcase 应体现一个完整用户链路或跨包 API 合同，重点验证多个模块组合后的真实行为。
+E2E uses a standalone Go module and a unified runner. It does not copy old unit, integration, or architecture test directories into `e2e/`. Each testcase should represent a complete user workflow or cross-package API contract, with emphasis on real behavior after multiple modules are composed.
 
-测试按 profile 划分运行环境。`local` profile 保持确定性，不依赖外部模型服务；`dashscope-live` profile 专门覆盖 DashScope 真实调用；`provider-smoke` profile 只在显式开启后调用第三方 provider；`docker` 和 `agent-sandbox` profile 负责需要真实基础设施的 workspace 场景。
+Tests are grouped by profile. The `local` profile stays deterministic and does not depend on external model services. The `dashscope-live` profile covers real DashScope calls. The `provider-smoke` profile calls third-party providers only when explicitly enabled. The `docker` and `agent-sandbox` profiles cover workspace scenarios that require real infrastructure.
 
-runner 负责 profile 注册、testcase 选择、超时控制、串行或并行执行，以及报告生成。profile 负责编排默认 testcase 顺序和环境准备；testcase 只关注业务链路本身，避免把环境判断、报告写入和执行策略散落在各个测试文件中。
+The runner owns profile registration, testcase selection, timeout handling, serial or parallel execution, and report generation. Profiles own default testcase ordering and environment setup. Testcases focus on workflow behavior instead of scattering environment checks, reporting logic, and execution policy across individual files.
 
-本地无 key 和真实服务两套验证需要分开运行。这样可以保证默认验证稳定可重复，同时让 live E2E 明确暴露外部服务、API key、网络和配额带来的不确定性。
+Local no-key verification and live-service verification should be run separately. This keeps default validation stable and repeatable while making live E2E failures clearly attributable to external services, API keys, network conditions, or provider quotas.
