@@ -16,11 +16,11 @@ package dashscope_test
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,119 +30,88 @@ import (
 	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
 )
 
-func TestModelRecognizeDashScopeAudio(t *testing.T) {
+func TestModelRecognizeRejectsInlineAudio(t *testing.T) {
 	t.Parallel()
 
-	requestCh := make(chan map[string]any, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/services/audio/asr/transcription" {
-			t.Fatalf("unexpected request path: %s", r.URL.Path)
-		}
-		if r.Header.Get("Authorization") != "Bearer dash-key" {
-			t.Fatalf("Authorization header mismatch: %q", r.Header.Get("Authorization"))
-		}
-		if r.Header.Get("Content-Type") != "application/json" {
-			t.Fatalf("Content-Type header mismatch: %q", r.Header.Get("Content-Type"))
-		}
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("Decode request body returned error: %v", err)
-		}
-		requestCh <- body
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"request_id": "req-1",
-			"output": map[string]any{
-				"text":     "hello world",
-				"language": "en",
-				"segments": []any{
-					map[string]any{"text": "hello", "start_time_ms": 1000, "end_time_ms": 1500},
-					map[string]any{"text": "world", "start_time_ms": 1500, "end_time_ms": 2200},
-				},
-			},
-			"usage": map[string]any{
-				"input_tokens":      3,
-				"output_tokens":     5,
-				"audio_duration_ms": 2200,
-			},
-		})
-	}))
-	defer server.Close()
-
 	model, err := dashscope.NewModel(
-		dashscope.NewCredential("dash-key", dashscope.WithBaseURL(server.URL)),
+		dashscope.NewCredential("dash-key", dashscope.WithBaseURL("https://dashscope.example.test")),
 		"paraformer-v2",
-		dashscope.WithParameters(dashscope.Parameters{
-			Language:   "en",
-			SampleRate: 16000,
-			Extra:      map[string]any{"diarization": true},
-		}),
 	)
 	if err != nil {
 		t.Fatalf("NewModel returned error: %v", err)
 	}
-	chunks, err := model.Recognize(context.Background(), stt.Request{
-		Audio:      stt.NewAudioBlock([]byte("raw"), "audio/wav"),
-		Parameters: map[string]any{"language": "zh", "punctuation": true},
+	_, err = model.Recognize(context.Background(), stt.Request{
+		Audio: stt.NewAudioBlock([]byte("raw"), "audio/wav"),
 	})
-	if err != nil {
-		t.Fatalf("Recognize returned error: %v", err)
-	}
-	got := collectSTTResponses(chunks)
-	if len(got) != 1 || !got[0].IsLast {
-		t.Fatalf("expected one final response, got %#v", got)
-	}
-	if got[0].Text != "hello world" || got[0].Language != "en" || len(got[0].Segments) != 2 {
-		t.Fatalf("recognized text mismatch: %#v", got[0])
-	}
-	if got[0].Segments[0].Start != time.Second || got[0].Segments[1].End != 2200*time.Millisecond {
-		t.Fatalf("segment timing mismatch: %#v", got[0].Segments)
-	}
-	if got[0].Usage == nil || got[0].Usage.InputTokens != 3 || got[0].Usage.OutputTokens != 5 ||
-		got[0].Usage.AudioDuration != 2200*time.Millisecond || got[0].Usage.Type != stt.UsageTypeSTT {
-		t.Fatalf("usage mismatch: %#v", got[0].Usage)
-	}
-	if got[0].Metadata["request_id"] != "req-1" || got[0].Metadata["provider"] != "dashscope" {
-		t.Fatalf("metadata mismatch: %#v", got[0].Metadata)
-	}
-
-	body := <-requestCh
-	parameters := body["parameters"].(map[string]any)
-	input := body["input"].(map[string]any)
-	audio := input["audio"].(map[string]any)
-	if body["model"] != "paraformer-v2" {
-		t.Fatalf("model mismatch: %#v", body)
-	}
-	if audio["data"] != base64.StdEncoding.EncodeToString([]byte("raw")) || audio["media_type"] != "audio/wav" {
-		t.Fatalf("audio payload mismatch: %#v", audio)
-	}
-	if parameters["language"] != "zh" || parameters["sample_rate"] != float64(16000) ||
-		parameters["diarization"] != true || parameters["punctuation"] != true {
-		t.Fatalf("request parameters mismatch: %#v", parameters)
+	if err == nil || !strings.Contains(err.Error(), "requires a URL audio source") {
+		t.Fatalf("Recognize should reject inline audio, got %v", err)
 	}
 }
 
-func TestModelRecognizeURLAudioAndProviderErrors(t *testing.T) {
+func TestModelRecognizeURLAudioUsesAsyncTaskAndTranscript(t *testing.T) {
 	t.Parallel()
 
-	status := http.StatusOK
-	requestCh := make(chan map[string]any, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("Decode request body returned error: %v", err)
-		}
-		requestCh <- body
+	const audioURL = "https://example.test/audio.wav"
+	var taskPolls int
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		if status >= http.StatusBadRequest {
-			_ = json.NewEncoder(w).Encode(map[string]any{"code": "InvalidInput", "message": "bad audio"})
-			return
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/services/audio/asr/transcription":
+			if r.Header.Get("X-DashScope-Async") != "enable" {
+				t.Fatalf("X-DashScope-Async header mismatch: %q", r.Header.Get("X-DashScope-Async"))
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("Decode request body returned error: %v", err)
+			}
+			input := body["input"].(map[string]any)
+			if _, exists := input["audio"]; exists {
+				t.Fatalf("request should not send inline audio payload: %#v", input)
+			}
+			fileURLs := input["file_urls"].([]any)
+			if len(fileURLs) != 1 || fileURLs[0] != audioURL {
+				t.Fatalf("file_urls mismatch: %#v", fileURLs)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"request_id": "submit-req",
+				"output": map[string]any{
+					"task_id":     "task-1",
+					"task_status": "PENDING",
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/tasks/task-1":
+			taskPolls++
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"request_id": "task-req",
+				"output": map[string]any{
+					"task_id":     "task-1",
+					"task_status": "SUCCEEDED",
+					"results": []any{map[string]any{
+						"file_url":          audioURL,
+						"transcription_url": server.URL + "/transcript.json",
+						"subtask_status":    "SUCCEEDED",
+					}},
+				},
+				"usage": map[string]any{"duration": 4},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/transcript.json":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"file_url": audioURL,
+				"transcripts": []any{map[string]any{
+					"channel_id":                       0,
+					"content_duration_in_milliseconds": 3720,
+					"text":                             "hello world",
+					"sentences": []any{map[string]any{
+						"begin_time": 100,
+						"end_time":   1500,
+						"text":       "hello world",
+					}},
+				}},
+			})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"request_id": "req-url",
-			"output":     map[string]any{"text": "from url"},
-		})
 	}))
 	defer server.Close()
 
@@ -154,24 +123,54 @@ func TestModelRecognizeURLAudioAndProviderErrors(t *testing.T) {
 		t.Fatalf("NewModel returned error: %v", err)
 	}
 	chunks, err := model.Recognize(context.Background(), stt.Request{
-		Audio: message.NewDataBlock(message.NewURLSource("https://example.test/audio.wav", "audio/wav")),
+		Audio: message.NewDataBlock(message.NewURLSource(audioURL, "audio/wav")),
 	})
 	if err != nil {
 		t.Fatalf("Recognize URL audio returned error: %v", err)
 	}
 	got := collectSTTResponses(chunks)
-	if len(got) != 1 || got[0].Text != "from url" {
-		t.Fatalf("URL audio response mismatch: %#v", got)
+	if len(got) != 1 || got[0].Text != "hello world" || !got[0].IsLast {
+		t.Fatalf("URL transcript response mismatch: %#v", got)
 	}
-	body := <-requestCh
-	audio := body["input"].(map[string]any)["audio"].(map[string]any)
-	if audio["url"] != "https://example.test/audio.wav" || audio["media_type"] != "audio/wav" {
-		t.Fatalf("URL audio payload mismatch: %#v", audio)
+	if taskPolls != 1 {
+		t.Fatalf("task should be polled once, got %d", taskPolls)
 	}
+	if len(got[0].Segments) != 1 || got[0].Segments[0].Start != 100*time.Millisecond ||
+		got[0].Segments[0].End != 1500*time.Millisecond {
+		t.Fatalf("transcript segment mismatch: %#v", got[0].Segments)
+	}
+}
 
-	status = http.StatusBadRequest
+func TestModelRecognizeProviderErrors(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/services/audio/asr/transcription" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("Decode request body returned error: %v", err)
+		}
+		fileURLs := body["input"].(map[string]any)["file_urls"].([]any)
+		if len(fileURLs) != 1 || fileURLs[0] != "https://example.test/audio.wav" {
+			t.Fatalf("file_urls mismatch: %#v", fileURLs)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": "InvalidInput", "message": "bad audio"})
+	}))
+	defer server.Close()
+
+	model, err := dashscope.NewModel(
+		dashscope.NewCredential("dash-key", dashscope.WithBaseURL(server.URL)),
+		"paraformer-v2",
+	)
+	if err != nil {
+		t.Fatalf("NewModel returned error: %v", err)
+	}
 	_, err = model.Recognize(context.Background(), stt.Request{
-		Audio: stt.NewAudioBlock([]byte("bad"), "audio/wav"),
+		Audio: message.NewDataBlock(message.NewURLSource("https://example.test/audio.wav", "audio/wav")),
 	})
 	if err == nil {
 		t.Fatal("Recognize should return provider error")

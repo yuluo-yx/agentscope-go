@@ -34,7 +34,11 @@ const (
 	providerName    = "dashscope"
 	defaultBaseURL  = "https://dashscope.aliyuncs.com"
 	transcribePath  = "/api/v1/services/audio/asr/transcription"
+	taskPathPrefix  = "/api/v1/tasks/"
 	defaultLanguage = "auto"
+	asyncHeader     = "X-DashScope-Async"
+	asyncHeaderOn   = "enable"
+	pollInterval    = 500 * time.Millisecond
 )
 
 // Credential configures the DashScope API key and endpoint.
@@ -174,13 +178,13 @@ func (m *Model) NewSession(context.Context, stt.SessionRequest) (stt.Session, er
 }
 
 func (m *Model) call(ctx context.Context, request stt.Request) (dashScopeResult, error) {
-	audio, err := audioPayload(request.Audio)
+	fileURLs, err := audioFileURLs(request.Audio)
 	if err != nil {
 		return dashScopeResult{}, err
 	}
 	body := map[string]any{
 		"model":      m.model,
-		"input":      map[string]any{"audio": audio},
+		"input":      map[string]any{"file_urls": fileURLs},
 		"parameters": m.parametersForRequest(request.Parameters),
 	}
 	data, err := json.Marshal(body)
@@ -194,6 +198,7 @@ func (m *Model) call(ctx context.Context, request stt.Request) (dashScopeResult,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+m.credential.APIKey)
+	req.Header.Set(asyncHeader, asyncHeaderOn)
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
@@ -208,30 +213,120 @@ func (m *Model) call(ctx context.Context, request stt.Request) (dashScopeResult,
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return dashScopeResult{}, asmodel.NormalizeError(providerName, err, asmodel.WithStatusCode(resp.StatusCode))
 	}
+	if result.Output.TaskID == "" {
+		return result, nil
+	}
+	task, err := m.waitForTask(ctx, result.Output.TaskID)
+	if err != nil {
+		return dashScopeResult{}, err
+	}
+	final, err := m.resultFromTask(ctx, task)
+	if err != nil {
+		return dashScopeResult{}, err
+	}
+	if final.RequestID == "" {
+		final.RequestID = firstNonEmpty(task.RequestID, result.RequestID)
+	}
+	final.Usage = task.Usage
+	return final, nil
+}
+
+func (m *Model) waitForTask(ctx context.Context, taskID string) (dashScopeResult, error) {
+	for {
+		task, err := m.getTask(ctx, taskID)
+		if err != nil {
+			return dashScopeResult{}, err
+		}
+		switch strings.ToUpper(task.Output.TaskStatus) {
+		case "SUCCEEDED":
+			return task, nil
+		case "FAILED", "CANCELED":
+			return dashScopeResult{}, &asmodel.ProviderError{
+				Provider: providerName,
+				Code:     task.Code,
+				Message:  firstNonEmpty(task.Message, "DashScope STT task "+task.Output.TaskStatus),
+				Err:      errors.New(firstNonEmpty(task.Message, "DashScope STT task "+task.Output.TaskStatus)),
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return dashScopeResult{}, ctx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
+}
+
+func (m *Model) getTask(ctx context.Context, taskID string) (dashScopeResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.credential.BaseURL+taskPathPrefix+taskID, nil)
+	if err != nil {
+		return dashScopeResult{}, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+m.credential.APIKey)
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return dashScopeResult{}, asmodel.NormalizeError(providerName, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return dashScopeResult{}, providerError(resp)
+	}
+	var result dashScopeResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return dashScopeResult{}, asmodel.NormalizeError(providerName, err, asmodel.WithStatusCode(resp.StatusCode))
+	}
 	return result, nil
 }
 
-func audioPayload(block *message.DataBlock) (map[string]any, error) {
+func (m *Model) resultFromTask(ctx context.Context, task dashScopeResult) (dashScopeResult, error) {
+	transcriptionURL := task.Output.firstTranscriptionURL()
+	if transcriptionURL == "" {
+		return dashScopeResult{}, fmt.Errorf("dashscope stt: task result has no transcription_url")
+	}
+	transcript, err := m.fetchTranscript(ctx, transcriptionURL)
+	if err != nil {
+		return dashScopeResult{}, err
+	}
+	result := transcript.toResult()
+	result.RequestID = task.RequestID
+	result.Usage = task.Usage
+	return result, nil
+}
+
+func (m *Model) fetchTranscript(ctx context.Context, url string) (dashScopeTranscript, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return dashScopeTranscript{}, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return dashScopeTranscript{}, asmodel.NormalizeError(providerName, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return dashScopeTranscript{}, providerError(resp)
+	}
+	var transcript dashScopeTranscript
+	if err := json.NewDecoder(resp.Body).Decode(&transcript); err != nil {
+		return dashScopeTranscript{}, asmodel.NormalizeError(providerName, err, asmodel.WithStatusCode(resp.StatusCode))
+	}
+	return transcript, nil
+}
+
+func audioFileURLs(block *message.DataBlock) ([]string, error) {
 	if block == nil || block.Source == nil {
 		return nil, fmt.Errorf("dashscope stt: audio source is required")
 	}
 	switch source := block.Source.(type) {
 	case *message.Base64Source:
-		if source.Data == "" {
-			return nil, fmt.Errorf("dashscope stt: base64 audio data is required")
-		}
-		return map[string]any{
-			"data":       source.Data,
-			"media_type": source.MediaType,
-		}, nil
+		_ = source
+		return nil, fmt.Errorf("dashscope stt: batch recognition requires a URL audio source")
 	case *message.URLSource:
 		if source.URL == "" {
 			return nil, fmt.Errorf("dashscope stt: audio url is required")
 		}
-		return map[string]any{
-			"url":        source.URL,
-			"media_type": source.MediaType,
-		}, nil
+		return []string{source.URL}, nil
 	default:
 		return nil, fmt.Errorf("dashscope stt: unsupported audio source %T", block.Source)
 	}
@@ -250,10 +345,14 @@ func responseFromResult(result dashScopeResult, elapsed time.Duration) *stt.Resp
 	if result.RequestID != "" {
 		metadata["request_id"] = result.RequestID
 	}
+	audioDuration := time.Duration(result.Usage.AudioDurationMS) * time.Millisecond
+	if audioDuration == 0 && result.Usage.Duration > 0 {
+		audioDuration = time.Duration(result.Usage.Duration) * time.Second
+	}
 	usage := &stt.Usage{
 		InputTokens:   result.Usage.InputTokens,
 		OutputTokens:  result.Usage.OutputTokens,
-		AudioDuration: time.Duration(result.Usage.AudioDurationMS) * time.Millisecond,
+		AudioDuration: audioDuration,
 		Time:          elapsed,
 		Type:          stt.UsageTypeSTT,
 	}
@@ -331,9 +430,56 @@ type dashScopeResult struct {
 }
 
 type dashScopeOutput struct {
-	Text     string             `json:"text"`
-	Language string             `json:"language"`
-	Segments []dashScopeSegment `json:"segments"`
+	Text       string                `json:"text"`
+	Language   string                `json:"language"`
+	Segments   []dashScopeSegment    `json:"segments"`
+	TaskID     string                `json:"task_id"`
+	TaskStatus string                `json:"task_status"`
+	Results    []dashScopeFileResult `json:"results"`
+}
+
+func (o dashScopeOutput) firstTranscriptionURL() string {
+	for _, result := range o.Results {
+		if url := result.firstTranscriptionURL(); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
+type dashScopeFileResult struct {
+	FileURL          string                `json:"file_url"`
+	TranscriptionURL string                `json:"transcription_url"`
+	SubtaskStatus    string                `json:"subtask_status"`
+	Output           dashScopeFileOutput   `json:"output"`
+	Results          []dashScopeFileResult `json:"results"`
+}
+
+func (r dashScopeFileResult) firstTranscriptionURL() string {
+	if r.TranscriptionURL != "" {
+		return r.TranscriptionURL
+	}
+	if r.Output.TranscriptionURL != "" {
+		return r.Output.TranscriptionURL
+	}
+	for _, nested := range r.Output.Results {
+		if url := nested.firstTranscriptionURL(); url != "" {
+			return url
+		}
+	}
+	for _, nested := range r.Results {
+		if url := nested.firstTranscriptionURL(); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
+type dashScopeFileOutput struct {
+	FileURL          string                `json:"file_url"`
+	TranscriptionURL string                `json:"transcription_url"`
+	SubtaskStatus    string                `json:"subtask_status"`
+	Results          []dashScopeFileResult `json:"results"`
 }
 
 type dashScopeSegment struct {
@@ -346,6 +492,52 @@ type dashScopeUsage struct {
 	InputTokens     int `json:"input_tokens"`
 	OutputTokens    int `json:"output_tokens"`
 	AudioDurationMS int `json:"audio_duration_ms"`
+	Duration        int `json:"duration"`
+}
+
+type dashScopeTranscript struct {
+	FileURL     string                    `json:"file_url"`
+	Properties  dashScopeTranscriptProps  `json:"properties"`
+	Transcripts []dashScopeTranscriptText `json:"transcripts"`
+}
+
+func (t dashScopeTranscript) toResult() dashScopeResult {
+	var texts []string
+	var segments []dashScopeSegment
+	for _, transcript := range t.Transcripts {
+		if transcript.Text != "" {
+			texts = append(texts, transcript.Text)
+		}
+		for _, sentence := range transcript.Sentences {
+			segments = append(segments, dashScopeSegment{
+				Text:        sentence.Text,
+				StartTimeMS: sentence.BeginTime,
+				EndTimeMS:   sentence.EndTime,
+			})
+		}
+	}
+	return dashScopeResult{
+		Output: dashScopeOutput{
+			Text:     strings.Join(texts, "\n"),
+			Segments: segments,
+		},
+		Usage: dashScopeUsage{AudioDurationMS: t.Properties.OriginalDurationMS},
+	}
+}
+
+type dashScopeTranscriptProps struct {
+	OriginalDurationMS int `json:"original_duration_in_milliseconds"`
+}
+
+type dashScopeTranscriptText struct {
+	Text      string                    `json:"text"`
+	Sentences []dashScopeTranscriptLine `json:"sentences"`
+}
+
+type dashScopeTranscriptLine struct {
+	BeginTime int    `json:"begin_time"`
+	EndTime   int    `json:"end_time"`
+	Text      string `json:"text"`
 }
 
 func providerError(resp *http.Response) error {
@@ -362,6 +554,15 @@ func providerError(resp *http.Response) error {
 		Message:    message,
 		Err:        errors.New(message),
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 var _ stt.Model = (*Model)(nil)

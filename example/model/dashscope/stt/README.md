@@ -6,10 +6,11 @@ This example demonstrates speech recognition through `audio/stt/dashscope`. It u
 
 | Feature | Code | Description |
 | --- | --- | --- |
-| Argument check | `flag.NArg() < 1` | Requires a local audio file path. |
-| Audio reading | `os.ReadFile` | Reads local audio file bytes. |
+| Argument check | `flag.NArg() < 1` | Requires a public audio URL for batch mode or a local PCM path for realtime mode. |
+| Batch audio input | `message.NewURLSource` | Sends a public HTTP(S) audio URL to DashScope batch recognition. |
+| Realtime audio reading | `os.ReadFile` | Reads local PCM audio bytes for the realtime WebSocket session. |
 | Model setup | `dashscope.NewModel` | Creates `paraformer-v2` from `AI_DASHSCOPE_API_KEY`. |
-| Request construction | `stt.NewAudioBlock` | Wraps raw bytes as an `audio/wav` input block. |
+| Request construction | `message.NewDataBlock` | Wraps the URL source as an input block for batch recognition. |
 | Recognition call | `model.Recognize` | Starts recognition and returns a response channel. |
 | Realtime recognition | `dashscope.NewRealtimeModel` | Creates `qwen3-asr-flash-realtime` and pushes audio through a `Session`. |
 | Output | `response.Text` | Prints recognized text and language. |
@@ -20,14 +21,14 @@ This example demonstrates speech recognition through `audio/stt/dashscope`. It u
 export AI_DASHSCOPE_API_KEY="your-dashscope-key"
 ```
 
-For batch mode, prepare a WAV file such as `sample.wav`. For realtime mode, prepare 16 kHz PCM data such as `sample.pcm`. This example makes a real DashScope STT request.
+For batch mode, provide a publicly reachable HTTP(S) audio URL. For realtime mode, prepare 16 kHz PCM data such as `sample.pcm`. This example makes a real DashScope STT request.
 
 ## Run
 
 ```bash
 cd example/model/dashscope/stt
 export AI_DASHSCOPE_API_KEY="your-dashscope-key"
-go run . ./sample.wav
+go run . https://dashscope.oss-cn-beijing.aliyuncs.com/samples/audio/paraformer/hello_world_female2.wav
 ```
 
 Realtime recognition:
@@ -50,12 +51,11 @@ dashscope_stt_realtime=final model=dashscope:qwen3-asr-flash-realtime text="ф╜ах
 
 ```go
 if flag.NArg() < 1 {
-    panic("usage: go run . [--mode batch|realtime] ./audio.wav")
+    panic("usage: go run . [--mode batch|realtime] <audio-url-or-local-pcm>")
 }
-rawAudio, err := os.ReadFile(flag.Arg(0))
 ```
 
-The example requires the caller to pass an audio path so test audio does not need to live in the repository.
+Batch mode requires a public audio URL because DashScope recorded-file recognition fetches audio from `file_urls`. Realtime mode still reads local PCM bytes before pushing them to the WebSocket session.
 
 ### Create the STT Model
 
@@ -72,11 +72,11 @@ model, err := dashscope.NewModel(
 
 ```go
 responses, err := model.Recognize(context.Background(), stt.Request{
-    Audio: stt.NewAudioBlock(rawAudio, "audio/wav"),
+    Audio: message.NewDataBlock(message.NewURLSource(audioURL, "audio/wav")),
 })
 ```
 
-`NewAudioBlock` stores the raw file bytes plus MIME type. The example uses `audio/wav`, so the input file should match that format.
+`NewURLSource` stores the public audio URL plus MIME type. The example uses `audio/wav`, so the referenced audio should match that format.
 
 ### Read Recognition Results
 
@@ -117,16 +117,16 @@ Realtime mode uses server-side VAD by default. `input_audio_buffer.append` has n
 
 ### Missing Audio Argument
 
-The command must include a file path:
+The command must include an audio URL for batch mode or a local PCM path for realtime mode:
 
 ```bash
-go run . ./audio.wav
+go run . https://dashscope.oss-cn-beijing.aliyuncs.com/samples/audio/paraformer/hello_world_female2.wav
 ```
 
-### File Read Failed
+### URL Is Not Reachable
 
-Check that the path exists and that the current user can read it.
+For batch mode, make sure the audio URL is reachable by DashScope. Local file paths are only supported by realtime mode.
 
 ### Empty Recognition Result
 
-For batch mode, confirm that the audio format matches `audio/wav`. For realtime mode, confirm that the input is `audio/pcm` or provider-supported Opus data, and that the file contains clear speech.
+For batch mode, confirm that the URL returns provider-supported audio and that the MIME type matches the file. For realtime mode, confirm that the input is `audio/pcm` or provider-supported Opus data, and that the file contains clear speech.

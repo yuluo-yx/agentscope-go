@@ -19,10 +19,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/yuluo-yx/agentscope-go/pkg/audio/stt"
 	"github.com/yuluo-yx/agentscope-go/pkg/audio/stt/dashscope"
 	"github.com/yuluo-yx/agentscope-go/pkg/credential"
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
 )
 
 func main() {
@@ -30,20 +32,20 @@ func main() {
 	language := flag.String("language", "zh", "language hint for realtime recognition")
 	flag.Parse()
 	if flag.NArg() < 1 {
-		panic("usage: go run . [--mode batch|realtime] ./audio.wav")
-	}
-	rawAudio, err := os.ReadFile(flag.Arg(0))
-	if err != nil {
-		panic(err)
+		panic("usage: go run . [--mode batch|realtime] <audio-url-or-local-pcm>")
 	}
 
 	ctx := context.Background()
 	switch *mode {
 	case "batch":
-		if err := runBatch(ctx, rawAudio); err != nil {
+		if err := runBatch(ctx, flag.Arg(0)); err != nil {
 			panic(err)
 		}
 	case "realtime":
+		rawAudio, err := os.ReadFile(flag.Arg(0))
+		if err != nil {
+			panic(err)
+		}
 		if err := runRealtime(ctx, rawAudio, *language); err != nil {
 			panic(err)
 		}
@@ -52,7 +54,10 @@ func main() {
 	}
 }
 
-func runBatch(ctx context.Context, rawAudio []byte) error {
+func runBatch(ctx context.Context, audioURL string) error {
+	if !isHTTPURL(audioURL) {
+		return fmt.Errorf("batch mode requires a publicly reachable HTTP(S) audio URL")
+	}
 	model, err := dashscope.NewModel(
 		credential.NewDashScope(os.Getenv("AI_DASHSCOPE_API_KEY")).STTCredential(),
 		"paraformer-v2",
@@ -62,7 +67,7 @@ func runBatch(ctx context.Context, rawAudio []byte) error {
 	}
 
 	responses, err := model.Recognize(ctx, stt.Request{
-		Audio: stt.NewAudioBlock(rawAudio, "audio/wav"),
+		Audio: message.NewDataBlock(message.NewURLSource(audioURL, "audio/wav")),
 	})
 	if err != nil {
 		return err
@@ -77,6 +82,11 @@ func runBatch(ctx context.Context, rawAudio []byte) error {
 		}
 	}
 	return nil
+}
+
+func isHTTPURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	return strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "http://")
 }
 
 func runRealtime(ctx context.Context, rawAudio []byte, language string) error {

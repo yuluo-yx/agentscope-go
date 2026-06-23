@@ -129,6 +129,11 @@ func WithChatParameters(parameters ChatParameters) ChatModelOption {
 	return openai.WithChatParameters(parameters)
 }
 
+// WithExtraBody sets provider-specific request body fields for DashScope compatible APIs.
+func WithExtraBody(extraBody map[string]any) ChatModelOption {
+	return openai.WithExtraBody(extraBody)
+}
+
 // WithStream forwards the compatibility stream preference.
 // Call and Stream still choose the request transport explicitly.
 func WithStream(stream bool) ChatModelOption { return openai.WithStream(stream) }

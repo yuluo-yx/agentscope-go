@@ -582,18 +582,29 @@ func summaryTextFromResponse(response *ChatResponse, config ContextConfig) (stri
 		return "", fmt.Errorf("agentscope: summary compression returned nil response")
 	}
 	text := response.GetTextContent("")
-	if text == nil || strings.TrimSpace(*text) == "" {
-		return "", fmt.Errorf("agentscope: summary compression returned empty response")
+	if text != nil && strings.TrimSpace(*text) != "" {
+		return summaryTextFromRaw(strings.TrimSpace(*text), config), nil
 	}
-	raw := stripJSONFence(strings.TrimSpace(*text))
+	for _, block := range response.GetContentBlocks("tool_call") {
+		toolCall, ok := block.(*message.ToolCallBlock)
+		if !ok || toolCall == nil || toolCall.Name != "generate_structured_output" || strings.TrimSpace(toolCall.Input) == "" {
+			continue
+		}
+		return summaryTextFromRaw(strings.TrimSpace(toolCall.Input), config), nil
+	}
+	return "", fmt.Errorf("agentscope: summary compression returned empty response")
+}
+
+func summaryTextFromRaw(raw string, config ContextConfig) string {
+	raw = stripJSONFence(raw)
 	values := map[string]any{}
 	if err := json.Unmarshal([]byte(raw), &values); err != nil {
-		return *text, nil
+		return raw
 	}
 	if len(values) == 0 {
-		return *text, nil
+		return raw
 	}
-	return applySummaryTemplate(config.SummaryTemplate, values), nil
+	return applySummaryTemplate(config.SummaryTemplate, values)
 }
 
 func applySummaryTemplate(template string, values map[string]any) string {

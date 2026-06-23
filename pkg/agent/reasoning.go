@@ -153,7 +153,11 @@ func (a *Agent) prepareModelInput(ctx context.Context) (CallRequest, error) {
 		return CallRequest{}, err
 	}
 
-	return CallRequest{Messages: messages, Tools: tools}, nil
+	return CallRequest{
+		Messages:   messages,
+		Tools:      tools,
+		ToolChoice: a.modelConfig.ToolChoice.Clone(),
+	}, nil
 }
 
 func (a *Agent) buildSystemPrompt(ctx context.Context) (string, error) {
