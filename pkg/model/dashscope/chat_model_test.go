@@ -82,6 +82,9 @@ func TestChatModelParsesCompatibleAudioOutput(t *testing.T) {
 		if body["model"] != "qwen-plus" {
 			t.Fatalf("model not forwarded to compatible endpoint: %#v", body)
 		}
+		if got := body["enable_thinking"]; got != false {
+			t.Fatalf("extra body field not forwarded to compatible endpoint: %#v", body)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]any{
 			"id":      "dashscope-audio",
@@ -111,6 +114,7 @@ func TestChatModelParsesCompatibleAudioOutput(t *testing.T) {
 		dashscope.NewCredential("test-key", dashscope.WithBaseURL(server.URL)),
 		"qwen-plus",
 		dashscope.WithStream(false),
+		dashscope.WithExtraBody(map[string]any{"enable_thinking": false}),
 	)
 	if err != nil {
 		t.Fatalf("NewChatModel returned error: %v", err)

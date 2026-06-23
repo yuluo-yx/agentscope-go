@@ -72,7 +72,9 @@ contains a streaming WAV header followed by PCM bytes, and later chunks contain
 additional PCM bytes under the same `audio/wav` media type. `WithStream(false)`
 aggregates provider PCM chunks into one complete WAV payload.
 
-DashScope speech recognition is available through `audio/stt/dashscope`:
+DashScope speech recognition is available through `audio/stt/dashscope`.
+Recorded-file recognition uses DashScope async tasks, so batch input must be a
+public HTTP(S) audio URL:
 
 ```go
 speech, err := dashscopestt.NewModel(
@@ -80,7 +82,7 @@ speech, err := dashscopestt.NewModel(
 	"paraformer-v2",
 )
 chunks, err := speech.Recognize(ctx, stt.Request{
-	Audio: stt.NewAudioBlock(rawWAV, "audio/wav"),
+	Audio: message.NewDataBlock(message.NewURLSource(audioURL, "audio/wav")),
 })
 for chunk := range chunks {
 	if chunk.Error != nil {

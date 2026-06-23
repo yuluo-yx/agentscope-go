@@ -16,6 +16,8 @@ package agent
 
 import (
 	"fmt"
+
+	"github.com/yuluo-yx/agentscope-go/pkg/types"
 )
 
 const (
@@ -106,8 +108,9 @@ func (c ReActConfig) Validate() error {
 
 // ModelConfig controls model retries and fallback model behavior.
 type ModelConfig struct {
-	MaxRetries    int       `json:"max_retries"`
-	FallbackModel ChatModel `json:"-"`
+	MaxRetries    int               `json:"max_retries"`
+	FallbackModel ChatModel         `json:"-"`
+	ToolChoice    *types.ToolChoice `json:"tool_choice,omitempty"`
 }
 
 // DefaultModelConfig returns default model configuration.
@@ -115,10 +118,20 @@ func DefaultModelConfig() ModelConfig {
 	return ModelConfig{MaxRetries: 3}
 }
 
+// Clone returns a deep copy of model configuration.
+func (c ModelConfig) Clone() ModelConfig {
+	cp := c
+	cp.ToolChoice = c.ToolChoice.Clone()
+	return cp
+}
+
 // Validate validates model configuration.
 func (c ModelConfig) Validate() error {
 	if c.MaxRetries <= 0 {
 		return fmt.Errorf("agentscope: max retries must be greater than 0")
+	}
+	if err := c.ToolChoice.Validate(nil); err != nil {
+		return fmt.Errorf("agentscope: invalid tool choice: %w", err)
 	}
 	return nil
 }

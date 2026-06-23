@@ -204,7 +204,7 @@ func WithModelConfig(config ModelConfig) AgentOption {
 			return agenterrors.NewDeveloperError("invalid model config", agenterrors.WithErrorCause(err))
 		}
 
-		agent.modelConfig = config
+		agent.modelConfig = config.Clone()
 
 		return nil
 	}

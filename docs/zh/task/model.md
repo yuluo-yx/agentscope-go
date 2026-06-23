@@ -205,7 +205,8 @@ DashScope TTS model card 通过 `dashscopetts.ListModels()` 暴露，包含普�
 header 和 PCM 字节，后续分块在同一个 `audio/wav` media type 下追加 PCM
 字节。`WithStream(false)` 会把供应商返回的 PCM 分块聚合成一个完整 WAV 载荷。
 
-DashScope 语音识别适配位于 `audio/stt/dashscope`：
+DashScope 语音识别适配位于 `audio/stt/dashscope`。录音文件识别走
+DashScope 异步任务，因此批量输入必须是公网 HTTP(S) 音频 URL：
 
 ```go
 speech, err := dashscopestt.NewModel(
@@ -213,7 +214,7 @@ speech, err := dashscopestt.NewModel(
 	"paraformer-v2",
 )
 chunks, err := speech.Recognize(ctx, stt.Request{
-	Audio: stt.NewAudioBlock(rawWAV, "audio/wav"),
+	Audio: message.NewDataBlock(message.NewURLSource(audioURL, "audio/wav")),
 })
 for chunk := range chunks {
 	if chunk.Error != nil {
