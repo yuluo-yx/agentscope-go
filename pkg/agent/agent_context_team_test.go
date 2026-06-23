@@ -25,6 +25,7 @@ import (
 	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
 	"github.com/yuluo-yx/agentscope-go/pkg/permission"
 	astool "github.com/yuluo-yx/agentscope-go/pkg/tool"
+	"github.com/yuluo-yx/agentscope-go/pkg/types"
 )
 
 func TestAgentOptionsInputAndObservationBranches(t *testing.T) {
@@ -372,6 +373,12 @@ func TestContextStrategyInputAndSummaryBranches(t *testing.T) {
 	if err != nil || text != "plain summary" {
 		t.Fatalf("summaryTextFromResponse plain = %q, %v", text, err)
 	}
+	text, err = summaryTextFromResponse(asmodel.NewChatResponse(message.ContentBlockList{
+		message.NewToolCallBlock("summary-call", "generate_structured_output", `{"task_overview":"tool summary"}`),
+	}, true), input.Config)
+	if err != nil || text != "tool summary" {
+		t.Fatalf("summaryTextFromResponse tool call = %q, %v", text, err)
+	}
 	if got := stripJSONFence("```{\"a\":1}```"); got != "{\"a\":1}" {
 		t.Fatalf("stripJSONFence = %q", got)
 	}
@@ -613,7 +620,6 @@ func TestContextStrategyErrorAndHelperBranches(t *testing.T) {
 	if text, err := summaryTextFromResponse(asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock("{}")}, true), ContextConfig{SummaryTemplate: "{task_overview}"}); err != nil || text != "{}" {
 		t.Fatalf("empty JSON summary should fall back to raw text: %q, %v", text, err)
 	}
-
 	readOne := message.NewToolCallBlock("read-1", "Read", `{"file_path":"one.txt"}`)
 	readDuplicate := message.NewToolCallBlock("read-2", "Read", `{"file_path":"one.txt"}`)
 	readBadJSON := message.NewToolCallBlock("read-3", "Read", `{bad`)
@@ -883,6 +889,23 @@ func TestReasoningModelInputCallModelAndSummaryBranches(t *testing.T) {
 	state.Summary.Blocks = message.ContentBlockList{message.NewTextBlock("block summary")}
 	if summary := agent.summaryMessage(); summary == nil || summary.GetTextContent("") == nil || *summary.GetTextContent("") != "block summary" {
 		t.Fatalf("summary block message mismatch: %#v", summary)
+	}
+
+	agent.modelConfig.ToolChoice = &types.ToolChoice{
+		Mode:  string(types.ToolChoiceRequired),
+		Tools: []string{"Search"},
+	}
+	configuredRequest, err := agent.prepareModelInput(context.Background())
+	if err != nil {
+		t.Fatalf("prepareModelInput with model config returned error: %v", err)
+	}
+	if configuredRequest.ToolChoice == nil || configuredRequest.ToolChoice.Mode != string(types.ToolChoiceRequired) ||
+		len(configuredRequest.ToolChoice.Tools) != 1 || configuredRequest.ToolChoice.Tools[0] != "Search" {
+		t.Fatalf("model config tool choice was not applied: %#v", configuredRequest.ToolChoice)
+	}
+	agent.modelConfig.ToolChoice.Tools[0] = "Mutated"
+	if configuredRequest.ToolChoice.Tools[0] != "Search" {
+		t.Fatalf("request should clone model config tool choice: %#v", configuredRequest.ToolChoice)
 	}
 
 	responses, err := agent.callModel(context.Background(), request)

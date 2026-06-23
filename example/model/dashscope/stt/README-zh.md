@@ -6,10 +6,11 @@
 
 | 功能点 | 代码位置 | 说明 |
 | --- | --- | --- |
-| 参数检查 | `flag.NArg() < 1` | 要求命令行传入本地音频文件路径。 |
-| 音频读取 | `os.ReadFile` | 读取本地音频文件字节。 |
+| 参数检查 | `flag.NArg() < 1` | 批量模式要求传入公网音频 URL，实时模式要求传入本地 PCM 路径。 |
+| 批量音频输入 | `message.NewURLSource` | 把公网 HTTP(S) 音频 URL 传给 DashScope 批量识别。 |
+| 实时音频读取 | `os.ReadFile` | 为实时 WebSocket Session 读取本地 PCM 音频字节。 |
 | 模型初始化 | `dashscope.NewModel` | 使用 `AI_DASHSCOPE_API_KEY` 创建 `paraformer-v2`。 |
-| 请求构造 | `stt.NewAudioBlock` | 把原始音频字节包装成 `audio/wav` 输入块。 |
+| 请求构造 | `message.NewDataBlock` | 把 URL source 包装成批量识别输入块。 |
 | 识别调用 | `model.Recognize` | 发起语音识别请求并返回响应 channel。 |
 | 实时识别 | `dashscope.NewRealtimeModel` | 创建 `qwen3-asr-flash-realtime` 并通过 `Session` 推送音频。 |
 | 结果输出 | `response.Text` | 输出识别文本和语言。 |
@@ -20,14 +21,14 @@
 export AI_DASHSCOPE_API_KEY="your-dashscope-key"
 ```
 
-批量模式需要准备一个 WAV 文件，例如 `sample.wav`。实时模式建议准备 16kHz PCM 文件，例如 `sample.pcm`。示例会发起真实 DashScope STT 请求。
+批量模式需要传入 DashScope 可访问的公网 HTTP(S) 音频 URL。实时模式建议准备 16kHz PCM 文件，例如 `sample.pcm`。示例会发起真实 DashScope STT 请求。
 
 ## 快速运行
 
 ```bash
 cd example/model/dashscope/stt
 export AI_DASHSCOPE_API_KEY="your-dashscope-key"
-go run . ./sample.wav
+go run . https://dashscope.oss-cn-beijing.aliyuncs.com/samples/audio/paraformer/hello_world_female2.wav
 ```
 
 实时识别：
@@ -50,12 +51,11 @@ dashscope_stt_realtime=final model=dashscope:qwen3-asr-flash-realtime text="你�
 
 ```go
 if flag.NArg() < 1 {
-    panic("usage: go run . [--mode batch|realtime] ./audio.wav")
+    panic("usage: go run . [--mode batch|realtime] <audio-url-or-local-pcm>")
 }
-rawAudio, err := os.ReadFile(flag.Arg(0))
 ```
 
-示例要求调用方显式传入音频文件路径。这样可以避免把测试音频写死在仓库中。
+批量模式需要公网音频 URL，因为 DashScope 录音文件识别会从 `file_urls` 拉取音频。实时模式仍然读取本地 PCM 字节，再通过 WebSocket Session 推送。
 
 ### 创建 STT 模型
 
@@ -72,11 +72,11 @@ model, err := dashscope.NewModel(
 
 ```go
 responses, err := model.Recognize(context.Background(), stt.Request{
-    Audio: stt.NewAudioBlock(rawAudio, "audio/wav"),
+    Audio: message.NewDataBlock(message.NewURLSource(audioURL, "audio/wav")),
 })
 ```
 
-`NewAudioBlock` 会把文件字节和 MIME 类型一起放进请求。示例固定使用 `audio/wav`，因此传入文件应与该格式一致。
+`NewURLSource` 会把公网音频 URL 和 MIME 类型一起放进请求。示例固定使用 `audio/wav`，因此 URL 指向的音频应与该格式一致。
 
 ### 读取识别结果
 
@@ -117,16 +117,16 @@ for response := range session.Responses() {
 
 ### 缺少音频参数
 
-命令必须带文件路径：
+批量模式命令必须带音频 URL，实时模式命令必须带本地 PCM 路径：
 
 ```bash
-go run . ./audio.wav
+go run . https://dashscope.oss-cn-beijing.aliyuncs.com/samples/audio/paraformer/hello_world_female2.wav
 ```
 
-### 文件读取失败
+### URL 不可访问
 
-确认路径存在，并确认当前用户有读取权限。
+批量模式需要确认音频 URL 可被 DashScope 访问。本地文件路径只适用于实时模式。
 
 ### 识别结果为空
 
-批量模式确认音频格式与 `audio/wav` 匹配；实时模式确认输入是 `audio/pcm` 或服务端支持的 Opus 数据，并确认文件中包含清晰语音。
+批量模式确认 URL 返回服务端支持的音频，且 MIME 类型和文件格式一致；实时模式确认输入是 `audio/pcm` 或服务端支持的 Opus 数据，并确认文件中包含清晰语音。

@@ -25,6 +25,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/model/dashscope"
 	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
 	"github.com/yuluo-yx/agentscope-go/pkg/tool"
+	"github.com/yuluo-yx/agentscope-go/pkg/types"
 )
 
 func main() {
@@ -57,11 +58,22 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create DashScope chat model: %w", err)
 	}
-	agent, err := agentpkg.NewAgent("Friday", "Ask before writes. Use WriteThing only after confirmation.", model, agentpkg.WithToolkit(kit))
+	modelConfig := agentpkg.DefaultModelConfig()
+	modelConfig.ToolChoice = &types.ToolChoice{
+		Mode:  string(types.ToolChoiceRequired),
+		Tools: []string{"WriteThing"},
+	}
+	agent, err := agentpkg.NewAgent(
+		"Friday",
+		"Ask before writes. You must call WriteThing exactly once when the user asks to write.",
+		model,
+		agentpkg.WithToolkit(kit),
+		agentpkg.WithModelConfig(modelConfig),
+	)
 	if err != nil {
 		return fmt.Errorf("create agent: %w", err)
 	}
-	user, err := message.NewUserMessage("user", "Call WriteThing to write the thing.")
+	user, err := message.NewUserMessage("user", "Call the WriteThing tool now to write the thing. Do not answer without a tool call.")
 	if err != nil {
 		return fmt.Errorf("create user message: %w", err)
 	}
@@ -106,5 +118,6 @@ func newDashScopeChatModel(stream bool) (*dashscope.ChatModel, error) {
 		credential.NewDashScope(apiKey).ChatCredential(),
 		"qwen3.7-max",
 		dashscope.WithStream(stream),
+		dashscope.WithExtraBody(map[string]any{"enable_thinking": false}),
 	)
 }
