@@ -11,7 +11,7 @@ require (
 	github.com/mark3labs/mcp-go v0.55.0
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.1
-	github.com/ollama/ollama v0.30.9
+	github.com/ollama/ollama v0.30.10
 	github.com/openai/openai-go v1.12.0
 	github.com/superradcompany/microsandbox/sdk/go v0.5.7
 	go.opentelemetry.io/otel v1.44.0
