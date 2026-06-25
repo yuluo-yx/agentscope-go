@@ -41,7 +41,11 @@ func TestContentBlockJSONRoundTrip(t *testing.T) {
 			}}),
 			message.WithToolCallExtra("call_id", "provider-call-1"),
 		),
-		message.NewToolResultBlock("call-1", "Bash", message.ToolResultOutput{Raw: "ok"}, message.ToolResultSuccess),
+		func() *message.ToolResultBlock {
+			result := message.NewToolResultBlock("call-1", "Bash", message.ToolResultOutput{Raw: "ok"}, message.ToolResultSuccess)
+			result.Metadata = map[string]any{"diff": "old\nnew", "file_path": "README.md"}
+			return result
+		}(),
 	}
 
 	data, err := json.Marshal(input)
@@ -65,6 +69,9 @@ func TestContentBlockJSONRoundTrip(t *testing.T) {
 	}
 	if got := decoded[5].(*message.ToolResultBlock).Output.Raw; got != "ok" {
 		t.Fatalf("tool result raw output mismatch: %q", got)
+	}
+	if got := decoded[5].(*message.ToolResultBlock).Metadata["file_path"]; got != "README.md" {
+		t.Fatalf("tool result metadata not preserved: %#v", decoded[5])
 	}
 }
 
@@ -221,6 +228,7 @@ func TestBlockConstructorsOptionsAndClone(t *testing.T) {
 	)
 	call := message.NewToolCallBlock("call-1", "Bash", "{}", message.WithToolCallExtra("x", map[string]any{"nested": "y"}))
 	result := message.NewToolResultBlock("call-1", "Bash", message.ToolResultOutput{Blocks: message.ContentBlockList{text}})
+	result.Metadata = map[string]any{"nested": map[string]any{"value": "original"}}
 	successResult := message.NewToolResultBlock("call-1", "Bash", message.ToolResultOutput{Raw: "ok"}, message.ToolResultSuccess)
 
 	blocks := []message.ContentBlock{text, thinking, hint, data, call, result}
@@ -255,5 +263,10 @@ func TestBlockConstructorsOptionsAndClone(t *testing.T) {
 	*clonedData.Name = "changed"
 	if *data.Name != "image" {
 		t.Fatalf("data clone mutated original name: %q", *data.Name)
+	}
+	clonedResult := result.Clone().(*message.ToolResultBlock)
+	clonedResult.Metadata["nested"].(map[string]any)["value"] = "changed"
+	if result.Metadata["nested"].(map[string]any)["value"] != "original" {
+		t.Fatalf("tool result clone mutated original metadata: %#v", result.Metadata)
 	}
 }

@@ -22,13 +22,22 @@ import (
 )
 
 func TestNewIDUsesPythonCompatibleHexUUID(t *testing.T) {
-	t.Parallel()
-
 	id := utils.NewID()
 	if len(id) != 32 {
 		t.Fatalf("id should be 32 hex characters, got %q", id)
 	}
 	if _, err := hex.DecodeString(id); err != nil {
 		t.Fatalf("id should be hex encoded: %v", err)
+	}
+}
+
+func TestNewIDUsesConfiguredFactory(t *testing.T) {
+	utils.SetIDFactory(func() string {
+		return "custom-id"
+	})
+	t.Cleanup(utils.ResetIDFactory)
+
+	if got := utils.NewID(); got != "custom-id" {
+		t.Fatalf("NewID should use configured factory, got %q", got)
 	}
 }

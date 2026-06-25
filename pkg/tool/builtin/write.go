@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
 	"github.com/yuluo-yx/agentscope-go/pkg/permission"
 	astate "github.com/yuluo-yx/agentscope-go/pkg/state"
 	astool "github.com/yuluo-yx/agentscope-go/pkg/tool"
@@ -72,7 +73,13 @@ func (w *Write) Execute(_ context.Context, input map[string]any, state *astate.A
 		return errorText("Error: " + err.Error()), nil
 	}
 	content := stringValue(input, "content")
+	previousContent := ""
 	if _, statErr := os.Stat(filePath); statErr == nil {
+		data, readErr := os.ReadFile(filePath)
+		if readErr != nil {
+			return errorText("Error reading existing file: " + readErr.Error()), nil
+		}
+		previousContent = string(data)
 		if state == nil {
 			return errorText(fmt.Sprintf("Error: agent state required to verify prior Read before writing existing file %s.", filePath)), nil
 		}
@@ -93,5 +100,9 @@ func (w *Write) Execute(_ context.Context, input map[string]any, state *astate.A
 	}
 	cacheFile(state, filePath, splitLinesPreserve(content))
 	lineCount := len(strings.Split(content, "\n"))
-	return successText(fmt.Sprintf("The file %s has been written successfully (%d lines).", filePath, lineCount)), nil
+	return singleTextChunkWithMetadata(
+		fmt.Sprintf("The file %s has been written successfully (%d lines).", filePath, lineCount),
+		message.ToolResultSuccess,
+		fileChangeMetadata(filePath, previousContent, content, nil),
+	), nil
 }

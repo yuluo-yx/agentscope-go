@@ -16,6 +16,7 @@ package tool
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
@@ -258,7 +259,7 @@ func appendContentBlock(response *ToolResponse, index int, chunkBlock message.Co
 		if !ok {
 			return fmt.Errorf("agentscope: cannot append data block with different source type id %q", targetBlock.ID)
 		}
-		targetSource.Data += chunkSource.Data
+		targetSource.Data = mergeBase64Data(targetSource.Data, chunkSource.Data)
 		if chunkSource.MediaType != "" {
 			targetSource.MediaType = chunkSource.MediaType
 		}
@@ -272,6 +273,15 @@ func appendContentBlock(response *ToolResponse, index int, chunkBlock message.Co
 	assignNewBlockID(copied)
 	response.Content = append(response.Content, copied)
 	return nil
+}
+
+func mergeBase64Data(target, chunk string) string {
+	targetData, targetErr := base64.StdEncoding.DecodeString(target)
+	chunkData, chunkErr := base64.StdEncoding.DecodeString(chunk)
+	if targetErr != nil || chunkErr != nil {
+		return target + chunk
+	}
+	return base64.StdEncoding.EncodeToString(append(targetData, chunkData...))
 }
 
 func assignNewBlockID(block message.ContentBlock) {

@@ -148,6 +148,50 @@ func TestChatModelFormatsToolResultHistory(t *testing.T) {
 	assertToolResultRequest(t, <-requestCh)
 }
 
+func TestChatModelFormatsParallelToolResultsInOneUserMessage(t *testing.T) {
+	t.Parallel()
+
+	requestCh := make(chan map[string]any, 1)
+	server := newMessageServer(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		requestCh <- body
+		writeJSON(t, w, textOnlyResponse("ok"))
+	})
+	defer server.Close()
+	model := mustAnthropicModel(t, server.URL)
+	toolMsg, err := message.NewAssistantMessage("Friday", []message.ContentBlock{
+		message.NewTextBlock("checking"),
+		message.NewToolCallBlock("toolu_1", "Read", `{"path":"a"}`),
+		message.NewToolCallBlock("toolu_2", "Read", `{"path":"b"}`),
+		message.NewToolCallBlock("toolu_3", "Read", `{"path":"c"}`),
+		message.NewToolResultBlock("toolu_1", "Read", message.ToolResultOutput{Raw: "a"}, message.ToolResultSuccess),
+		message.NewToolResultBlock("toolu_2", "Read", message.ToolResultOutput{Raw: "b"}, message.ToolResultSuccess),
+		message.NewToolResultBlock("toolu_3", "Read", message.ToolResultOutput{Raw: "c"}, message.ToolResultSuccess),
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage returned error: %v", err)
+	}
+
+	if _, err := model.Call(context.Background(), asmodel.CallRequest{Messages: []*message.Message{toolMsg}}); err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+
+	messages := (<-requestCh)["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("tool use and parallel tool results should produce two messages, got %#v", messages)
+	}
+	resultMsg := messages[1].(map[string]any)
+	results := resultMsg["content"].([]any)
+	if resultMsg["role"] != "user" || len(results) != 3 {
+		t.Fatalf("parallel tool results should be merged into one user message: %#v", resultMsg)
+	}
+	for index, result := range results {
+		block := result.(map[string]any)
+		if block["type"] != "tool_result" || block["tool_use_id"] != fmt.Sprintf("toolu_%d", index+1) {
+			t.Fatalf("tool result %d not formatted correctly: %#v", index, block)
+		}
+	}
+}
+
 func TestChatModelFormatsToolResultBlockOutput(t *testing.T) {
 	t.Parallel()
 

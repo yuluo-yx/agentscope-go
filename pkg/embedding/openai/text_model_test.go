@@ -103,6 +103,49 @@ func TestTextModelFormatsRequestParsesResponseAndUsesCache(t *testing.T) {
 	}
 }
 
+func TestTextModelCanOmitDimensionsFromRequest(t *testing.T) {
+	t.Parallel()
+
+	requestCh := make(chan map[string]any, 1)
+	server := newEmbeddingServer(t, http.StatusOK, func(body map[string]any) map[string]any {
+		requestCh <- body
+		return map[string]any{
+			"object": "list",
+			"model":  "text-embedding-3-small",
+			"data": []any{
+				map[string]any{"object": "embedding", "index": 0, "embedding": []float64{0.1, 0.2}},
+			},
+			"usage": map[string]any{"prompt_tokens": 1, "total_tokens": 1},
+		}
+	})
+	defer server.Close()
+
+	model, err := openai.NewTextModel(
+		openai.NewCredential("test-key", openai.WithBaseURL(server.URL)),
+		"text-embedding-3-small",
+		openai.WithDimensions(2),
+		openai.WithPassDimensions(false),
+		openai.WithMaxRetries(1),
+	)
+	if err != nil {
+		t.Fatalf("NewTextModel returned error: %v", err)
+	}
+	if model.Dimensions() != 2 {
+		t.Fatalf("model dimensions metadata should be retained, got %d", model.Dimensions())
+	}
+
+	if _, err := model.Embed(context.Background(), asembedding.EmbeddingRequest{
+		Inputs: []asembedding.EmbeddingInput{asembedding.NewTextInput("hello")},
+	}); err != nil {
+		t.Fatalf("Embed returned error: %v", err)
+	}
+
+	body := <-requestCh
+	if _, ok := body["dimensions"]; ok {
+		t.Fatalf("OpenAI request should omit dimensions when pass_dimensions=false: %#v", body)
+	}
+}
+
 func TestTextModelMapsProviderErrors(t *testing.T) {
 	t.Parallel()
 

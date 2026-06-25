@@ -46,7 +46,7 @@ func DefaultContextConfig() ContextConfig {
 		CompressionPrompt: defaultCompressionPrompt,
 		SummaryTemplate:   defaultSummaryTemplate,
 		SummarySchema:     DefaultSummarySchema(),
-		ToolResultLimit:   3000,
+		ToolResultLimit:   50000,
 	}
 }
 
@@ -73,11 +73,11 @@ func (c ContextConfig) Validate() error {
 // DefaultSummarySchema returns the JSON Schema for structured context summaries.
 func DefaultSummarySchema() map[string]any {
 	properties := map[string]any{
-		"task_overview":         map[string]any{"type": "string", "maxLength": 300},
-		"current_state":         map[string]any{"type": "string", "maxLength": 300},
-		"important_discoveries": map[string]any{"type": "string", "maxLength": 300},
-		"next_steps":            map[string]any{"type": "string", "maxLength": 200},
-		"context_to_preserve":   map[string]any{"type": "string", "maxLength": 300},
+		"task_overview":         map[string]any{"type": "string"},
+		"current_state":         map[string]any{"type": "string"},
+		"important_discoveries": map[string]any{"type": "string"},
+		"next_steps":            map[string]any{"type": "string"},
+		"context_to_preserve":   map[string]any{"type": "string"},
 	}
 	return map[string]any{
 		"type":                 "object",

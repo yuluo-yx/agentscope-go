@@ -224,6 +224,42 @@ func TestGeminiFormattingHelpersCoverContentDataAndTools(t *testing.T) {
 	if _, _, err := formatTools([]asmodel.ToolSchema{geminiToolSchema("Read")}, &types.ToolChoice{Mode: "Missing"}); err == nil {
 		t.Fatal("expected unavailable tool choice to fail")
 	}
+
+	nullableSchema := types.JSONSchema{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"path": map[string]any{
+				"description": "optional path",
+				"anyOf": []any{
+					map[string]any{"type": "string", "additionalProperties": false},
+					map[string]any{"type": "null"},
+				},
+			},
+		},
+	}
+	tools, _, err = formatTools([]asmodel.ToolSchema{{
+		Type: "function",
+		Function: asmodel.FunctionSchema{
+			Name:        "OptionalRead",
+			Description: "test optional schema",
+			Parameters:  nullableSchema,
+		},
+	}}, nil)
+	if err != nil {
+		t.Fatalf("formatTools nullable schema returned error: %v", err)
+	}
+	parameters := geminiSchemaMap(t, tools[0].FunctionDeclarations[0].ParametersJsonSchema)
+	if _, ok := parameters["additionalProperties"]; ok {
+		t.Fatalf("Gemini schema should remove additionalProperties: %#v", parameters)
+	}
+	path := geminiSchemaMap(t, geminiSchemaMap(t, parameters["properties"])["path"])
+	if _, ok := path["anyOf"]; ok || path["type"] != "string" {
+		t.Fatalf("Gemini schema should inline nullable anyOf: %#v", path)
+	}
+	if _, ok := nullableSchema["additionalProperties"]; !ok {
+		t.Fatalf("formatTools should not mutate the original schema: %#v", nullableSchema)
+	}
 }
 
 func TestGeminiResponseStreamAndErrorHelpers(t *testing.T) {
@@ -257,8 +293,24 @@ func TestGeminiResponseStreamAndErrorHelpers(t *testing.T) {
 		t.Fatalf("usage mismatch: %#v", resp.Usage)
 	}
 	call := resp.GetContentBlocks("tool_call")[0].(*message.ToolCallBlock)
-	if call.ID != "gemini-call-Read" {
+	if call.ID == "" {
 		t.Fatalf("fallback tool call id mismatch: %#v", call)
+	}
+	duplicateCalls := parseGenerateContentResponse(&genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{{
+			Content: genai.NewContentFromParts([]*genai.Part{
+				{FunctionCall: &genai.FunctionCall{Name: "Read", Args: map[string]any{"path": "a"}}},
+				{FunctionCall: &genai.FunctionCall{Name: "Read", Args: map[string]any{"path": "b"}}},
+			}, genai.RoleModel),
+		}},
+	}, true, time.Second).GetContentBlocks("tool_call")
+	if len(duplicateCalls) != 2 {
+		t.Fatalf("expected two tool calls, got %#v", duplicateCalls)
+	}
+	firstCall := duplicateCalls[0].(*message.ToolCallBlock)
+	secondCall := duplicateCalls[1].(*message.ToolCallBlock)
+	if firstCall.ID == "" || secondCall.ID == "" || firstCall.ID == secondCall.ID {
+		t.Fatalf("id-less Gemini function calls should receive unique ids: %#v %#v", firstCall, secondCall)
 	}
 	if got := usage(nil, time.Second); got != nil {
 		t.Fatalf("nil usage should stay nil: %#v", got)
@@ -329,6 +381,19 @@ func geminiToolSchema(name string) asmodel.ToolSchema {
 			Description: "test tool",
 			Parameters:  types.JSONSchema{"type": "object"},
 		},
+	}
+}
+
+func geminiSchemaMap(t *testing.T, value any) map[string]any {
+	t.Helper()
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed
+	case types.JSONSchema:
+		return map[string]any(typed)
+	default:
+		t.Fatalf("expected schema map, got %T %#v", value, value)
+		return nil
 	}
 }
 

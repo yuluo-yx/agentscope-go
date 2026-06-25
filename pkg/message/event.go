@@ -214,6 +214,7 @@ type ToolResultEndEvent struct {
 	ReplyEventBase
 	ToolCallID string          `json:"tool_call_id"`
 	State      ToolResultState `json:"state"`
+	Metadata   map[string]any  `json:"metadata,omitempty"`
 }
 
 type ExceedMaxItersEvent struct {
@@ -257,8 +258,17 @@ func (e *CustomEvent) ReplyID() string { return "" }
 
 type HintBlockEventOption func(*HintBlockEvent)
 
+type ToolResultEndEventOption func(*ToolResultEndEvent)
+
 func WithHintBlockEventSource(source string) HintBlockEventOption {
 	return func(e *HintBlockEvent) { e.Source = cloneString(source) }
+}
+
+// WithToolResultEndMetadata 设置工具结果结束事件携带的元数据。
+func WithToolResultEndMetadata(metadata map[string]any) ToolResultEndEventOption {
+	return func(e *ToolResultEndEvent) {
+		e.Metadata = utils.CloneAnyMap(metadata)
+	}
 }
 
 func newEventBase(typ EventType) EventBase {
@@ -359,8 +369,20 @@ func NewToolResultDataDeltaEvent(replyID, toolCallID, blockID, mediaType, data, 
 	return &ToolResultDataDeltaEvent{ReplyEventBase: newReplyEventBase(ToolResultDataDeltaType, replyID), ToolCallID: toolCallID, BlockID: blockID, MediaType: mediaType, Data: data, URL: url}
 }
 
-func NewToolResultEndEvent(replyID, toolCallID string, state ToolResultState) *ToolResultEndEvent {
-	return &ToolResultEndEvent{ReplyEventBase: newReplyEventBase(ToolResultEndType, replyID), ToolCallID: toolCallID, State: state}
+func NewToolResultEndEvent(replyID, toolCallID string, state ToolResultState, opts ...ToolResultEndEventOption) *ToolResultEndEvent {
+	event := &ToolResultEndEvent{
+		ReplyEventBase: newReplyEventBase(ToolResultEndType, replyID),
+		ToolCallID:     toolCallID,
+		State:          state,
+		Metadata:       map[string]any{},
+	}
+	for _, opt := range opts {
+		opt(event)
+	}
+	if event.Metadata == nil {
+		event.Metadata = map[string]any{}
+	}
+	return event
 }
 
 func NewExceedMaxItersEvent(replyID, name string) *ExceedMaxItersEvent {

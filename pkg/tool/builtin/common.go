@@ -117,10 +117,15 @@ func (b baseTool) GenerateSuggestions(map[string]any) []permission.Rule {
 }
 
 func singleTextChunk(text string, state message.ToolResultState) <-chan astool.ToolChunk {
+	return singleTextChunkWithMetadata(text, state, nil)
+}
+
+func singleTextChunkWithMetadata(text string, state message.ToolResultState, metadata map[string]any) <-chan astool.ToolChunk {
 	chunks := make(chan astool.ToolChunk, 1)
 	chunks <- *astool.NewToolChunk(
 		message.ContentBlockList{message.NewTextBlock(text)},
 		astool.WithToolChunkState(state),
+		astool.WithToolChunkMetadata(metadata),
 	)
 	close(chunks)
 	return chunks

@@ -91,7 +91,7 @@ agent.WithContextConfig(agent.ContextConfig{
 	TriggerRatio:    0.8,
 	ReserveRatio:    0.1,
 	MaxTokens:       32000,
-	ToolResultLimit: 3000,
+	ToolResultLimit: 50000,
 })
 ```
 

@@ -20,6 +20,10 @@ func TestProfileIncludesRegisteredDefaultScenarios(t *testing.T) {
 		"permission-deny-tool-result",
 		"permission-updated-input",
 		"external-tool-resume",
+		"agent-tool-result-metadata",
+		"tool-response-data-chunk-contract",
+		"message-tool-result-contracts",
+		"provider-formatting-contracts",
 		"loop-automation-contracts",
 	} {
 		if !profileIncludesTestCase(cases, name) {

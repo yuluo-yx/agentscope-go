@@ -15,6 +15,7 @@
 package tool_test
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -69,6 +70,40 @@ func TestToolResponseAppendChunkMergesTextAndBase64Data(t *testing.T) {
 	}
 	if response.Metadata["a"] != 1 || response.Metadata["b"] != 2 {
 		t.Fatalf("metadata not merged: %#v", response.Metadata)
+	}
+}
+
+func TestToolResponseAppendChunkMergesBase64DataByDecodedBytes(t *testing.T) {
+	t.Parallel()
+
+	response := toolpkg.NewToolResponse(toolpkg.WithToolResponseID("tool-call-1"))
+	first := base64.StdEncoding.EncodeToString([]byte("hello"))
+	second := base64.StdEncoding.EncodeToString([]byte("world"))
+
+	if err := response.AppendChunk(toolpkg.NewToolChunk(
+		message.ContentBlockList{
+			message.NewDataBlock(message.NewBase64Source(first, "text/plain"), message.WithDataBlockID("data-1")),
+		},
+		toolpkg.WithToolChunkID("tool-call-1"),
+	)); err != nil {
+		t.Fatalf("AppendChunk first returned error: %v", err)
+	}
+	if err := response.AppendChunk(toolpkg.NewToolChunk(
+		message.ContentBlockList{
+			message.NewDataBlock(message.NewBase64Source(second, "text/plain"), message.WithDataBlockID("data-1")),
+		},
+		toolpkg.WithToolChunkID("tool-call-1"),
+	)); err != nil {
+		t.Fatalf("AppendChunk second returned error: %v", err)
+	}
+
+	data := response.Content[0].(*message.DataBlock)
+	decoded, err := base64.StdEncoding.DecodeString(data.Source.(*message.Base64Source).Data)
+	if err != nil {
+		t.Fatalf("merged base64 should stay decodable: %v", err)
+	}
+	if got := string(decoded); got != "helloworld" {
+		t.Fatalf("merged base64 decoded to %q, want %q", got, "helloworld")
 	}
 }
 

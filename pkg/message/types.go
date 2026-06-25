@@ -70,11 +70,12 @@ const (
 )
 
 type ToolResultBlock struct {
-	Type   string           `json:"type"`
-	ID     string           `json:"id"`
-	Name   string           `json:"name"`
-	Output ToolResultOutput `json:"output"`
-	State  ToolResultState  `json:"state"`
+	Type     string           `json:"type"`
+	ID       string           `json:"id"`
+	Name     string           `json:"name"`
+	Output   ToolResultOutput `json:"output"`
+	State    ToolResultState  `json:"state"`
+	Metadata map[string]any   `json:"metadata,omitempty"`
 }
 
 type ToolResultOutput struct {

@@ -20,6 +20,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/yuluo-yx/agentscope-go/pkg/message"
 	"github.com/yuluo-yx/agentscope-go/pkg/permission"
 	astate "github.com/yuluo-yx/agentscope-go/pkg/state"
 	astool "github.com/yuluo-yx/agentscope-go/pkg/tool"
@@ -114,5 +115,9 @@ func (e *Edit) Execute(_ context.Context, input map[string]any, state *astate.Ag
 		return errorText("Error writing file: " + err.Error()), nil
 	}
 	cacheFile(state, filePath, splitLinesPreserve(updated))
-	return successText(fmt.Sprintf("Successfully replaced %s in %s", replacementMsg, filePath)), nil
+	return singleTextChunkWithMetadata(
+		fmt.Sprintf("Successfully replaced %s in %s", replacementMsg, filePath),
+		message.ToolResultSuccess,
+		fileChangeMetadata(filePath, content, updated, map[string]any{"occurrences": occurrences}),
+	), nil
 }

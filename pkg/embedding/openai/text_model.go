@@ -56,6 +56,7 @@ type TextModel struct {
 	credential Credential
 	model      string
 	dimensions int
+	passDims   bool
 	cache      asembedding.EmbeddingCache
 	client     sdk.Client
 }
@@ -65,6 +66,7 @@ type TextModelOption func(*textModelOptions)
 
 type textModelOptions struct {
 	dimensions int
+	passDims   bool
 	cache      asembedding.EmbeddingCache
 	maxRetries int
 }
@@ -73,6 +75,13 @@ type textModelOptions struct {
 func WithDimensions(dimensions int) TextModelOption {
 	return func(options *textModelOptions) {
 		options.dimensions = dimensions
+	}
+}
+
+// WithPassDimensions controls whether requests include the dimensions parameter.
+func WithPassDimensions(pass bool) TextModelOption {
+	return func(options *textModelOptions) {
+		options.passDims = pass
 	}
 }
 
@@ -92,7 +101,7 @@ func WithMaxRetries(maxRetries int) TextModelOption {
 
 // NewTextModel creates an OpenAI text embedding provider.
 func NewTextModel(credential Credential, model string, opts ...TextModelOption) (*TextModel, error) {
-	options := textModelOptions{dimensions: 1024, maxRetries: 3}
+	options := textModelOptions{dimensions: 1024, passDims: true, maxRetries: 3}
 	for _, opt := range opts {
 		opt(&options)
 	}
@@ -122,6 +131,7 @@ func NewTextModel(credential Credential, model string, opts ...TextModelOption) 
 		credential: credential,
 		model:      model,
 		dimensions: options.dimensions,
+		passDims:   options.passDims,
 		cache:      options.cache,
 		client:     sdk.NewClient(clientOptions...),
 	}, nil
@@ -168,8 +178,10 @@ func (m *TextModel) Embed(ctx context.Context, request asembedding.EmbeddingRequ
 	params := sdk.EmbeddingNewParams{
 		Input:          sdk.EmbeddingNewParamsInputUnion{OfArrayOfStrings: texts},
 		Model:          m.model,
-		Dimensions:     sdk.Int(int64(m.dimensions)),
 		EncodingFormat: sdk.EmbeddingNewParamsEncodingFormatFloat,
+	}
+	if m.passDims {
+		params.Dimensions = sdk.Int(int64(m.dimensions))
 	}
 	start := time.Now()
 	resp, err := m.client.Embeddings.New(ctx, params)

@@ -25,6 +25,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/internal/jsonutil"
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
 	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	"github.com/yuluo-yx/agentscope-go/pkg/utils"
 )
 
 type toolExecutionPlan struct {
@@ -280,10 +281,12 @@ func (a *Agent) executeLocalTool(ctx context.Context, assistant *message.Message
 	}
 
 	finalState := message.ToolResultSuccess
+	metadata := map[string]any{}
 	for chunk := range chunks {
 		if chunk.State != "" {
 			finalState = chunk.State
 		}
+		metadata = mergeToolResultMetadata(metadata, chunk.Metadata)
 
 		// emit chunk to caller.
 		if err := a.emitToolChunk(assistant, toolCall, &chunk, emit); err != nil {
@@ -291,7 +294,12 @@ func (a *Agent) executeLocalTool(ctx context.Context, assistant *message.Message
 		}
 	}
 
-	return a.emitAndApply(assistant, message.NewToolResultEndEvent(a.state.ReplyID, toolCall.ID, finalState), emit)
+	return a.emitAndApply(assistant, message.NewToolResultEndEvent(
+		a.state.ReplyID,
+		toolCall.ID,
+		finalState,
+		message.WithToolResultEndMetadata(metadata),
+	), emit)
 }
 
 func (a *Agent) executeLocalToolBatch(ctx context.Context, assistant *message.Message, plans []*toolExecutionPlan, emit func(message.Event) error) error {
@@ -328,16 +336,23 @@ func (a *Agent) executeLocalToolBatch(ctx context.Context, assistant *message.Me
 		}
 
 		finalState := message.ToolResultSuccess
+		metadata := map[string]any{}
 		for _, chunk := range result.chunks {
 			if chunk.State != "" {
 				finalState = chunk.State
 			}
+			metadata = mergeToolResultMetadata(metadata, chunk.Metadata)
 			if err := a.emitToolChunk(assistant, plan.toolCall, &chunk, emit); err != nil {
 				return err
 			}
 		}
 
-		if err := a.emitAndApply(assistant, message.NewToolResultEndEvent(a.state.ReplyID, plan.toolCall.ID, finalState), emit); err != nil {
+		if err := a.emitAndApply(assistant, message.NewToolResultEndEvent(
+			a.state.ReplyID,
+			plan.toolCall.ID,
+			finalState,
+			message.WithToolResultEndMetadata(metadata),
+		), emit); err != nil {
 			return err
 		}
 	}
@@ -420,6 +435,19 @@ func (a *Agent) emitToolExecutionError(assistant *message.Message, toolCall *mes
 	}
 
 	return a.emitAndApply(assistant, message.NewToolResultEndEvent(a.state.ReplyID, toolCall.ID, state), emit)
+}
+
+func mergeToolResultMetadata(target map[string]any, metadata map[string]any) map[string]any {
+	if len(metadata) == 0 {
+		return target
+	}
+	if target == nil {
+		target = map[string]any{}
+	}
+	for key, value := range metadata {
+		target[key] = utils.CloneAny(value)
+	}
+	return target
 }
 
 // State management functions. Only tools in one of two states can enter Acting:

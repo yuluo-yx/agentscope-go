@@ -31,6 +31,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
 	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
 	"github.com/yuluo-yx/agentscope-go/pkg/types"
+	"github.com/yuluo-yx/agentscope-go/pkg/utils"
 )
 
 const providerName = "gemini"
@@ -423,7 +424,7 @@ func formatTools(tools []asmodel.ToolSchema, choice *types.ToolChoice) ([]*genai
 		declarations = append(declarations, &genai.FunctionDeclaration{
 			Name:                 tool.Function.Name,
 			Description:          tool.Function.Description,
-			ParametersJsonSchema: tool.Function.Parameters,
+			ParametersJsonSchema: sanitizeSchemaForGemini(tool.Function.Parameters),
 		})
 	}
 	formatted := []*genai.Tool{{FunctionDeclarations: declarations}}
@@ -449,6 +450,139 @@ func formatTools(tools []asmodel.ToolSchema, choice *types.ToolChoice) ([]*genai
 	return formatted, config, nil
 }
 
+func sanitizeSchemaForGemini(schema any) any {
+	switch typed := schema.(type) {
+	case nil:
+		return nil
+	case types.JSONSchema:
+		return sanitizeSchemaForGemini(map[string]any(typed))
+	case map[string]any:
+		if folded := foldNullableAnyOfForGemini(cloneSchemaMapForGemini(typed)); folded != nil {
+			return folded
+		}
+		return sanitizeSchemaMapForGemini(typed)
+	case []any:
+		return sanitizeSchemaListForGemini(typed)
+	default:
+		return utils.CloneAny(schema)
+	}
+}
+
+func cloneSchemaMapForGemini(schema map[string]any) map[string]any {
+	sanitized := make(map[string]any, len(schema))
+	for key, value := range schema {
+		if key == "additionalProperties" {
+			continue
+		}
+		sanitized[key] = utils.CloneAny(value)
+	}
+	return sanitized
+}
+
+func foldNullableAnyOfForGemini(schema map[string]any) map[string]any {
+	anyOf, ok := schema["anyOf"].([]any)
+	if !ok {
+		return nil
+	}
+	nonNull := nonNullAnyOfSchemasForGemini(anyOf)
+	if len(nonNull) == len(anyOf) {
+		return nil
+	}
+	switch len(nonNull) {
+	case 0:
+		delete(schema, "anyOf")
+		return sanitizeSchemaMapForGemini(schema)
+	case 1:
+		return mergeNullableAnyOfSchemaForGemini(schema, nonNull[0])
+	default:
+		schema["anyOf"] = sanitizeSchemaListForGemini(nonNull)
+		return sanitizeSchemaMapForGemini(schema)
+	}
+}
+
+func nonNullAnyOfSchemasForGemini(values []any) []any {
+	nonNull := make([]any, 0, len(values))
+	for _, value := range values {
+		if !isNullTypeSchema(value) {
+			nonNull = append(nonNull, value)
+		}
+	}
+	return nonNull
+}
+
+func mergeNullableAnyOfSchemaForGemini(schema map[string]any, value any) map[string]any {
+	merged := schemaMapForGemini(sanitizeSchemaForGemini(value))
+	for key, current := range schema {
+		if key == "anyOf" {
+			continue
+		}
+		if _, exists := merged[key]; !exists {
+			merged[key] = sanitizeSchemaForGemini(current)
+		}
+	}
+	return merged
+}
+
+func sanitizeSchemaMapForGemini(schema map[string]any) map[string]any {
+	sanitized := cloneSchemaMapForGemini(schema)
+	sanitizeNestedSchemaMapsForGemini(sanitized)
+	sanitizeSingleSchemaFieldsForGemini(sanitized)
+	sanitizeSchemaListsForGemini(sanitized)
+	return sanitized
+}
+
+func sanitizeNestedSchemaMapsForGemini(schema map[string]any) {
+	for _, key := range []string{"properties", "patternProperties", "$defs"} {
+		if nested, ok := schema[key].(map[string]any); ok {
+			out := make(map[string]any, len(nested))
+			for nestedKey, nestedValue := range nested {
+				out[nestedKey] = sanitizeSchemaForGemini(nestedValue)
+			}
+			schema[key] = out
+		}
+	}
+}
+
+func sanitizeSingleSchemaFieldsForGemini(schema map[string]any) {
+	for _, key := range []string{"items", "not", "if", "then", "else"} {
+		if value, ok := schema[key]; ok {
+			schema[key] = sanitizeSchemaForGemini(value)
+		}
+	}
+}
+
+func sanitizeSchemaListsForGemini(schema map[string]any) {
+	for _, key := range []string{"allOf", "oneOf", "anyOf"} {
+		if values, ok := schema[key].([]any); ok {
+			schema[key] = sanitizeSchemaListForGemini(values)
+		}
+	}
+}
+
+func sanitizeSchemaListForGemini(values []any) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, sanitizeSchemaForGemini(value))
+	}
+	return out
+}
+
+func schemaMapForGemini(value any) map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed
+	case types.JSONSchema:
+		return map[string]any(typed)
+	default:
+		return map[string]any{}
+	}
+}
+
+func isNullTypeSchema(value any) bool {
+	schema := schemaMapForGemini(value)
+	return len(schema) == 1 && schema["type"] == "null"
+}
+
 func parseGenerateContentResponse(resp *genai.GenerateContentResponse, isLast bool, elapsed time.Duration) *asmodel.ChatResponse {
 	if resp == nil {
 		return asmodel.NewChatResponse(nil, isLast)
@@ -470,7 +604,7 @@ func parseGenerateContentResponse(resp *genai.GenerateContentResponse, isLast bo
 				input, _ := json.Marshal(part.FunctionCall.Args)
 				id := part.FunctionCall.ID
 				if id == "" {
-					id = "gemini-call-" + part.FunctionCall.Name
+					id = utils.NewID()
 				}
 				content = append(content, message.NewToolCallBlock(id, part.FunctionCall.Name, string(input)))
 			case part.InlineData != nil && len(part.InlineData.Data) > 0:

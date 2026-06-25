@@ -71,6 +71,8 @@ E2E 使用独立 Go module 和统一 runner 组织，不把旧的单元测试、
 
 测试按 profile 划分运行环境。`local` profile 保持确定性，不依赖外部模型服务；`dashscope-live` profile 专门覆盖 DashScope 真实调用；`provider-smoke` profile 只在显式开启后调用第三方 provider；`docker` 和 `agent-sandbox` profile 负责需要真实基础设施的 workspace 场景。
 
+`local` profile 还包含偏合同校验的用例，覆盖工具结果 metadata、diff 透传、流式 data chunk 聚合、message event 应用，以及 provider 请求/响应格式化。这样可以在不依赖真实凭证的情况下，把近期跨包行为纳入默认 E2E。
+
 runner 负责 profile 注册、testcase 选择、超时控制、串行或并行执行，以及报告生成。profile 负责编排默认 testcase 顺序和环境准备；testcase 只关注业务链路本身，避免把环境判断、报告写入和执行策略散落在各个测试文件中。
 
 本地无 key 和真实服务两套验证需要分开运行。这样可以保证默认验证稳定可重复，同时让 live E2E 明确暴露外部服务、API key、网络和配额带来的不确定性。

@@ -101,6 +101,48 @@ func (nilResponseChatModel) CountTokens(modelpkg.CallRequest) (int, error) {
 	return 0, nil
 }
 
+type metadataTool struct{}
+
+func (metadataTool) Name() string { return "Meta" }
+
+func (metadataTool) Description() string { return "returns metadata" }
+
+func (metadataTool) InputSchema() map[string]any { return map[string]any{"type": "object"} }
+
+func (metadataTool) IsConcurrencySafe() bool { return true }
+
+func (metadataTool) IsReadOnly() bool { return true }
+
+func (metadataTool) IsExternalTool() bool { return false }
+
+func (metadataTool) IsStateInjected() bool { return false }
+
+func (metadataTool) IsMCP() bool { return false }
+
+func (metadataTool) MCPName() string { return "" }
+
+func (metadataTool) CheckPermissions(context.Context, map[string]any, *permission.Context) (*permission.Decision, error) {
+	return &permission.Decision{Behavior: permission.BehaviorAllow}, nil
+}
+
+func (metadataTool) MatchRule(string, map[string]any) bool { return false }
+
+func (metadataTool) GenerateSuggestions(map[string]any) []permission.Rule { return nil }
+
+func (metadataTool) Execute(context.Context, map[string]any, *statepkg.AgentState) (<-chan tool.ToolChunk, error) {
+	chunks := make(chan tool.ToolChunk, 1)
+	chunks <- *tool.NewToolChunk(
+		message.ContentBlockList{message.NewTextBlock("meta output")},
+		tool.WithToolChunkState(message.ToolResultSuccess),
+		tool.WithToolChunkMetadata(map[string]any{
+			"diff":      "--- old\n+++ new",
+			"file_path": "README.md",
+		}),
+	)
+	close(chunks)
+	return chunks, nil
+}
+
 func valueOrEmpty(value *string) string {
 	if value == nil {
 		return ""
@@ -448,6 +490,47 @@ func TestAgentExecutesToolCallsAndContinuesReasoning(t *testing.T) {
 	}
 	if got := result.Output.Blocks.GetTextContent(""); got == nil || *got != "echo:hi" {
 		t.Fatalf("tool output mismatch: %#v", got)
+	}
+}
+
+func TestAgentPreservesToolResultMetadata(t *testing.T) {
+	t.Parallel()
+
+	kit, err := tool.NewToolkit(metadataTool{})
+	if err != nil {
+		t.Fatalf("NewToolkit returned error: %v", err)
+	}
+	model := &scriptedChatModel{responses: []*modelpkg.ChatResponse{
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewToolCallBlock("call-1", "Meta", `{}`)},
+			true,
+		),
+		modelpkg.NewChatResponse(
+			message.ContentBlockList{message.NewTextBlock("done")},
+			true,
+		),
+	}}
+	agent, err := agentpkg.NewAgent("Friday", "Use tools when needed.", model, agentpkg.WithToolkit(kit))
+	if err != nil {
+		t.Fatalf("NewAgent returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "Run metadata tool")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+
+	if _, err := agent.Reply(context.Background(), userMsg); err != nil {
+		t.Fatalf("Reply returned error: %v", err)
+	}
+
+	last := model.requests[1].Messages[len(model.requests[1].Messages)-1]
+	results := last.GetContentBlocks("tool_result")
+	if len(results) != 1 {
+		t.Fatalf("second model call should include one tool result, got %#v", last.Content)
+	}
+	result := results[0].(*message.ToolResultBlock)
+	if result.Metadata["diff"] != "--- old\n+++ new" || result.Metadata["file_path"] != "README.md" {
+		t.Fatalf("tool result metadata not preserved: %#v", result.Metadata)
 	}
 }
 
