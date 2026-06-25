@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/yuluo-yx/agentscope-go/pkg/permission"
+	"github.com/yuluo-yx/agentscope-go/pkg/utils"
 )
 
 // ApplyEvent applies a streaming event to the message using Python-compatible accumulation semantics.
@@ -142,6 +143,14 @@ func (m *Message) applyToolResultEvent(event Event) bool {
 	case *ToolResultEndEvent:
 		if block, ok := m.FindBlock("tool_result", e.ToolCallID).(*ToolResultBlock); ok {
 			block.State = e.State
+			if len(e.Metadata) > 0 {
+				if block.Metadata == nil {
+					block.Metadata = map[string]any{}
+				}
+				for key, value := range e.Metadata {
+					block.Metadata[key] = utils.CloneAny(value)
+				}
+			}
 		}
 		if block, ok := m.FindBlock("tool_call", e.ToolCallID).(*ToolCallBlock); ok {
 			block.State = ToolCallFinished

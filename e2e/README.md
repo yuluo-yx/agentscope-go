@@ -71,6 +71,8 @@ E2E uses a standalone Go module and a unified runner. It does not copy old unit,
 
 Tests are grouped by profile. The `local` profile stays deterministic and does not depend on external model services. The `dashscope-live` profile covers real DashScope calls. The `provider-smoke` profile calls third-party providers only when explicitly enabled. The `docker` and `agent-sandbox` profiles cover workspace scenarios that require real infrastructure.
 
+The `local` profile also includes contract-oriented scenarios for tool result metadata, diff propagation, streamed data chunk aggregation, message event application, and provider request/response formatting. These cases keep recent cross-package behavior covered without requiring live credentials.
+
 The runner owns profile registration, testcase selection, timeout handling, serial or parallel execution, and report generation. Profiles own default testcase ordering and environment setup. Testcases focus on workflow behavior instead of scattering environment checks, reporting logic, and execution policy across individual files.
 
 Local no-key verification and live-service verification should be run separately. This keeps default validation stable and repeatable while making live E2E failures clearly attributable to external services, API keys, network conditions, or provider quotas.

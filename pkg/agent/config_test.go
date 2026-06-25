@@ -24,8 +24,14 @@ func TestConfigDefaultsAndValidation(t *testing.T) {
 	t.Parallel()
 
 	contextConfig := agentpkg.DefaultContextConfig()
-	if contextConfig.TriggerRatio != 0.8 || contextConfig.ReserveRatio != 0.1 || contextConfig.ToolResultLimit != 3000 {
+	if contextConfig.TriggerRatio != 0.8 || contextConfig.ReserveRatio != 0.1 || contextConfig.ToolResultLimit != 50000 {
 		t.Fatalf("unexpected context defaults: %#v", contextConfig)
+	}
+	for name, schema := range contextConfig.SummarySchema["properties"].(map[string]any) {
+		property := schema.(map[string]any)
+		if _, ok := property["maxLength"]; ok {
+			t.Fatalf("summary schema property %q should not use maxLength: %#v", name, property)
+		}
 	}
 	if err := contextConfig.Validate(); err != nil {
 		t.Fatalf("default context config should validate: %v", err)

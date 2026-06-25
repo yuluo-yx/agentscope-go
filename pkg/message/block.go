@@ -291,11 +291,12 @@ func NewToolResultBlock(id, name string, output ToolResultOutput, state ...ToolR
 		resultState = state[0]
 	}
 	return &ToolResultBlock{
-		Type:   "tool_result",
-		ID:     id,
-		Name:   name,
-		Output: output,
-		State:  resultState,
+		Type:     "tool_result",
+		ID:       id,
+		Name:     name,
+		Output:   output,
+		State:    resultState,
+		Metadata: map[string]any{},
 	}
 }
 
@@ -366,6 +367,7 @@ func (b *ToolCallBlock) Clone() ContentBlock {
 func (b *ToolResultBlock) Clone() ContentBlock {
 	cp := *b
 	cp.Output = b.Output.Clone()
+	cp.Metadata = utils.CloneAnyMap(b.Metadata)
 	return &cp
 }
 

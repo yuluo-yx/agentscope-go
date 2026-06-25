@@ -166,6 +166,52 @@ func TestApplyEventConvertsRawToolResultOutput(t *testing.T) {
 	}
 }
 
+func TestApplyEventPreservesToolResultEndMetadata(t *testing.T) {
+	t.Parallel()
+
+	msg, err := message.NewMessage("assistant", message.RoleAssistant, nil, message.WithMessageID("reply-1"))
+	if err != nil {
+		t.Fatalf("NewMessage returned error: %v", err)
+	}
+	if err := msg.ApplyEvent(message.NewToolResultStartEvent("reply-1", "call-1", "Write")); err != nil {
+		t.Fatalf("ApplyEvent start returned error: %v", err)
+	}
+	event := message.NewToolResultEndEvent(
+		"reply-1",
+		"call-1",
+		message.ToolResultSuccess,
+		message.WithToolResultEndMetadata(map[string]any{
+			"diff":      "--- old\n+++ new",
+			"file_path": "README.md",
+			"nested":    map[string]any{"count": 1},
+		}),
+	)
+
+	data, err := message.MarshalEvent(event)
+	if err != nil {
+		t.Fatalf("MarshalEvent returned error: %v", err)
+	}
+	decoded, err := message.UnmarshalEvent(data)
+	if err != nil {
+		t.Fatalf("UnmarshalEvent returned error: %v", err)
+	}
+	gotEvent, ok := decoded.(*message.ToolResultEndEvent)
+	if !ok {
+		t.Fatalf("unexpected event type: %T", decoded)
+	}
+	if gotEvent.Metadata["file_path"] != "README.md" {
+		t.Fatalf("metadata not preserved through JSON: %#v", gotEvent.Metadata)
+	}
+
+	if err := msg.ApplyEvent(gotEvent); err != nil {
+		t.Fatalf("ApplyEvent end returned error: %v", err)
+	}
+	result := msg.GetContentBlocks("tool_result")[0].(*message.ToolResultBlock)
+	if result.Metadata["diff"] != "--- old\n+++ new" || result.Metadata["file_path"] != "README.md" {
+		t.Fatalf("tool result metadata not applied: %#v", result.Metadata)
+	}
+}
+
 func TestHintBlockEventSupportsMultimodalHint(t *testing.T) {
 	t.Parallel()
 

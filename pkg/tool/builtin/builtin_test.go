@@ -75,6 +75,13 @@ func TestReadWriteEditUseAbsolutePathsAndReadCache(t *testing.T) {
 	if string(bytes) != "alpha\nbeta\n" {
 		t.Fatalf("Write did not update file: %q", string(bytes))
 	}
+	if writeResp.Metadata["file_path"] != filePath {
+		t.Fatalf("Write metadata should include file path, got %#v", writeResp.Metadata)
+	}
+	writeDiff, _ := writeResp.Metadata["diff"].(string)
+	if !strings.Contains(writeDiff, "-one") || !strings.Contains(writeDiff, "+alpha") {
+		t.Fatalf("Write metadata should include unified diff, got %q", writeDiff)
+	}
 
 	state = astate.NewAgentState()
 	_ = runTool(t, builtin.NewRead(), map[string]any{"file_path": filePath}, state)
@@ -92,6 +99,13 @@ func TestReadWriteEditUseAbsolutePathsAndReadCache(t *testing.T) {
 	}
 	if !strings.Contains(string(bytes), "gamma\nbeta") {
 		t.Fatalf("Edit did not replace content: %q", string(bytes))
+	}
+	if editResp.Metadata["file_path"] != filePath || editResp.Metadata["occurrences"] != 1 {
+		t.Fatalf("Edit metadata should include file path and occurrences, got %#v", editResp.Metadata)
+	}
+	editDiff, _ := editResp.Metadata["diff"].(string)
+	if !strings.Contains(editDiff, "-alpha") || !strings.Contains(editDiff, "+gamma") {
+		t.Fatalf("Edit metadata should include unified diff, got %q", editDiff)
 	}
 }
 

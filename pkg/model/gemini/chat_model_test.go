@@ -131,7 +131,9 @@ func TestChatModelStreamAccumulatesDeltas(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Marshal stream payload returned error: %v", err)
 			}
-			fmt.Fprintf(writer, "data: %s\n\n", data)
+			if _, err := fmt.Fprintf(writer, "data: %s\n\n", data); err != nil {
+				t.Fatalf("Fprintf stream payload returned error: %v", err)
+			}
 		}
 		if err := writer.Flush(); err != nil {
 			t.Fatalf("Flush returned error: %v", err)

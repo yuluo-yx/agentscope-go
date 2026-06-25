@@ -13,6 +13,7 @@ require (
 	github.com/moby/moby/client v0.5.0
 	github.com/ollama/ollama v0.30.10
 	github.com/openai/openai-go v1.12.0
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/superradcompany/microsandbox/sdk/go v0.5.9
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
