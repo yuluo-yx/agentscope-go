@@ -25,14 +25,16 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/tool/skill"
 )
 
-// Tool is the tool interface exposed by a workspace to an Agent.
-type Tool = tool.Tool
+type (
+	// Tool is the tool interface exposed by a workspace to an Agent.
+	Tool = tool.Tool
 
-// ToolSchema is the model-facing JSON Schema for one tool.
-type ToolSchema = model.ToolSchema
+	// ToolSchema is the model-facing JSON Schema for one tool.
+	ToolSchema = model.ToolSchema
 
-// Skill is one Agent skill loaded from a workspace.
-type Skill = skill.Skill
+	// Skill is one Agent skill loaded from a workspace.
+	Skill = skill.Skill
+)
 
 // MCPClient is the minimal contract a workspace needs to track MCP clients and expose MCP tools.
 type MCPClient interface {
