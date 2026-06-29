@@ -28,26 +28,37 @@ import (
 // AgentResources is the workspace materialized into resources an Agent can consume directly.
 type AgentResources struct {
 	SystemPrompt string
-	Toolkit      *tool.Toolkit
-	Tools        []Tool
-	MCPTools     []Tool
-	Skills       []skill.Skill
-	Offloader    Offloader
+
+	// Tools and MCPTools are subset mirrors of Toolkit.
+	// They are kept so that callers can distinguish
+	// "which tools come from the workspace and which come from MCP"
+	// without having to inspect the internals of Toolkit.
+	Toolkit  *tool.Toolkit
+	Tools    []Tool
+	MCPTools []Tool
+
+	Skills    []skill.Skill
+	Offloader Offloader
 }
 
 // BuildAgentResources initializes a workspace and converts it to Agent-consumable prompt, toolkit, and offloader resources.
 func BuildAgentResources(ctx context.Context, workspace Workspace) (*AgentResources, error) {
+
 	if workspace == nil {
 		return nil, fmt.Errorf("workspace: nil workspace")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
+	// If the workspace is not alive, initialize it.
+	// This ensures that the workspace is ready for use.
 	if !workspace.IsAlive() {
 		if err := workspace.Initialize(ctx); err != nil {
 			return nil, err
 		}
 	}
+
 	instructions, err := workspace.GetInstructions(ctx)
 	if err != nil {
 		return nil, err
@@ -84,6 +95,7 @@ func BuildAgentResources(ctx context.Context, workspace Workspace) (*AgentResour
 		}
 		systemPrompt += skillPrompt
 	}
+
 	return &AgentResources{
 		SystemPrompt: systemPrompt,
 		Toolkit:      kit,
@@ -95,7 +107,9 @@ func BuildAgentResources(ctx context.Context, workspace Workspace) (*AgentResour
 }
 
 func listMCPTools(ctx context.Context, mcps []MCPClient) ([]Tool, error) {
-	mcpTools := []Tool{}
+
+	var mcpTools []Tool
+
 	for _, client := range mcps {
 		if client == nil {
 			continue
@@ -112,19 +126,23 @@ func listMCPTools(ctx context.Context, mcps []MCPClient) ([]Tool, error) {
 		}
 		mcpTools = append(mcpTools, tools...)
 	}
+
 	return mcpTools, nil
 }
 
 // FormatSkillInstructions returns the skill prompt fragment aligned with the Python implementation.
 func FormatSkillInstructions(skills []skill.Skill) string {
+
 	if len(skills) == 0 {
 		return ""
 	}
+
 	var builder strings.Builder
 	builder.WriteString("<agent-skills>\n")
 	builder.WriteString("Skills are a collection of instructions, scripts, and resources to extend your capabilities.\n\n")
 	builder.WriteString("IMPORTANT: Skills are NOT tools, and you cannot call a skill directly. To use a skill, call the `Skill` tool to read the skill's full instructions, then follow those instructions.\n\n")
 	builder.WriteString("# Available Skills:")
+
 	for _, current := range skills {
 		builder.WriteString("\n<skill>\n")
 		builder.WriteString("<name>")
@@ -136,5 +154,6 @@ func FormatSkillInstructions(skills []skill.Skill) string {
 		builder.WriteString("</dir>\n</skill>")
 	}
 	builder.WriteString("\n</agent-skills>")
+
 	return builder.String()
 }

@@ -62,6 +62,7 @@ type Option func(*Client)
 
 // WithHTTPClient sets the HTTP client used for gateway requests.
 func WithHTTPClient(client *http.Client) Option {
+
 	return func(gateway *Client) {
 		if client != nil {
 			gateway.httpClient = client
@@ -71,6 +72,7 @@ func WithHTTPClient(client *http.Client) Option {
 
 // WithHeaders sets static headers sent to every gateway request.
 func WithHeaders(headers map[string]string) Option {
+
 	return func(gateway *Client) {
 		gateway.headers = cloneStringMap(headers)
 	}
@@ -78,6 +80,7 @@ func WithHeaders(headers map[string]string) Option {
 
 // WithBearerToken sends Authorization: Bearer on every gateway request.
 func WithBearerToken(token string) Option {
+
 	return func(gateway *Client) {
 		gateway.bearerToken = strings.TrimSpace(token)
 	}
@@ -85,14 +88,17 @@ func WithBearerToken(token string) Option {
 
 // NewHTTPClient creates a gateway client for a base URL.
 func NewHTTPClient(baseURL string, opts ...Option) (*Client, error) {
+
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		return nil, fmt.Errorf("workspace/gateway: base URL is empty")
 	}
+
 	parsed, err := url.ParseRequestURI(baseURL)
 	if err != nil {
 		return nil, err
 	}
+
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, fmt.Errorf("workspace/gateway: unsupported base URL scheme %q", parsed.Scheme)
 	}
@@ -102,6 +108,7 @@ func NewHTTPClient(baseURL string, opts ...Option) (*Client, error) {
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, fmt.Errorf("workspace/gateway: base URL must not include user info, query, or fragment")
 	}
+
 	client := &Client{
 		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
@@ -112,6 +119,7 @@ func NewHTTPClient(baseURL string, opts ...Option) (*Client, error) {
 			opt(client)
 		}
 	}
+
 	return client, nil
 }
 
@@ -122,67 +130,83 @@ func (c *Client) Bootstrap(ctx context.Context) error {
 
 // Health probes the gateway health endpoint.
 func (c *Client) Health(ctx context.Context) error {
+
 	return c.do(ctx, http.MethodGet, "/health", nil, nil, http.StatusOK, http.StatusNoContent)
 }
 
 // AddMCP registers one MCP server in the gateway.
 func (c *Client) AddMCP(ctx context.Context, config workspace.MCPClientConfig) error {
+
 	return c.do(ctx, http.MethodPost, "/mcps", config, nil, http.StatusOK, http.StatusCreated, http.StatusNoContent)
 }
 
 // RemoveMCP unregisters one MCP server from the gateway.
 func (c *Client) RemoveMCP(ctx context.Context, name string) error {
+
 	return c.do(ctx, http.MethodDelete, "/mcps/"+url.PathEscape(name), nil, nil, http.StatusOK, http.StatusNoContent, http.StatusNotFound)
 }
 
 // ListMCPs returns MCP configs currently registered in the gateway.
 func (c *Client) ListMCPs(ctx context.Context) ([]workspace.MCPClientConfig, error) {
+
 	var configs []workspace.MCPClientConfig
 	if err := c.do(ctx, http.MethodGet, "/mcps", nil, &configs, http.StatusOK); err != nil {
 		return nil, err
 	}
+
 	return configs, nil
 }
 
 // NewMCPClient creates a host-side proxy for one gateway-registered MCP.
 func (c *Client) NewMCPClient(config workspace.MCPClientConfig, connected bool) workspace.MCPClient {
+
 	return &MCPClient{client: c, config: cloneMCPClientConfig(config), connected: connected}
 }
 
 // ListMCPTools returns wrapped tools for one gateway-registered MCP.
 func (c *Client) ListMCPTools(ctx context.Context, name string) ([]workspace.Tool, error) {
+
 	client := &MCPClient{client: c, config: workspace.MCPClientConfig{Name: name}, connected: true}
+
 	return client.ListTools(ctx)
 }
 
 // ListTools returns MCP tools exposed by the gateway.
 func (c *Client) ListTools(ctx context.Context) ([]workspace.Tool, error) {
+
 	var descriptors []ToolDescriptor
 	if err := c.do(ctx, http.MethodGet, "/tools", nil, &descriptors, http.StatusOK); err != nil {
 		return nil, err
 	}
+
 	tools := make([]workspace.Tool, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		tools = append(tools, &gatewayTool{client: c, descriptor: descriptor})
 	}
+
 	return tools, nil
 }
 
 // Close asks the gateway to release registered MCP clients and runtime state.
 func (c *Client) Close(ctx context.Context) error {
+
 	return c.do(ctx, http.MethodPost, "/close", nil, nil, http.StatusOK, http.StatusNoContent, http.StatusNotFound)
 }
 
 func (c *Client) listMCPRawTools(ctx context.Context, name string) ([]gomcp.Tool, error) {
+
 	var tools []gomcp.Tool
 	path := "/mcps/" + url.PathEscape(name) + "/tools"
+
 	if err := c.do(ctx, http.MethodGet, path, nil, &tools, http.StatusOK); err != nil {
 		return nil, err
 	}
+
 	return tools, nil
 }
 
 func (c *Client) callMCPTool(ctx context.Context, mcpName, toolName string, input map[string]any) (*tool.ToolChunk, error) {
+
 	var response struct {
 		Chunk *tool.ToolChunk `json:"chunk"`
 	}
@@ -190,22 +214,27 @@ func (c *Client) callMCPTool(ctx context.Context, mcpName, toolName string, inpu
 	if err := c.do(ctx, http.MethodPost, path, map[string]any{"arguments": input}, &response, http.StatusOK); err != nil {
 		return nil, err
 	}
+
 	if response.Chunk == nil {
 		return nil, fmt.Errorf("workspace/gateway: gateway returned no chunk for MCP tool %q", toolName)
 	}
+
 	if response.Chunk.State == "" || response.Chunk.State == message.ToolResultRunning {
 		response.Chunk.State = message.ToolResultSuccess
 	}
+
 	return response.Chunk, nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any, okStatuses ...int) error {
+
 	if c == nil {
 		return fmt.Errorf("workspace/gateway: nil client")
 	}
 	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
 		return fmt.Errorf("workspace/gateway: invalid internal path %q", path)
 	}
+
 	var reader *bytes.Reader
 	if body == nil {
 		reader = bytes.NewReader(nil)
@@ -216,6 +245,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 		}
 		reader = bytes.NewReader(data)
 	}
+
 	// #nosec G704 -- baseURL is validated by NewHTTPClient and path is an internal route assembled by this package.
 	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
@@ -224,14 +254,17 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
+
 	for key, value := range c.headers {
 		if strings.TrimSpace(key) != "" {
 			request.Header.Set(key, value)
 		}
 	}
+
 	if c.bearerToken != "" {
 		request.Header.Set("Authorization", "Bearer "+c.bearerToken)
 	}
+
 	// #nosec G704 -- request was constructed from the validated gateway base URL and an internal route above.
 	response, err := c.httpClient.Do(request)
 	if err != nil {
@@ -241,18 +274,22 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 	if !statusAllowed(response.StatusCode, okStatuses) {
 		return fmt.Errorf("workspace/gateway: %s %s returned HTTP %d", method, path, response.StatusCode)
 	}
+
 	if out == nil || response.StatusCode == http.StatusNoContent {
 		return nil
 	}
+
 	return json.NewDecoder(response.Body).Decode(out)
 }
 
 func statusAllowed(status int, allowed []int) bool {
+
 	for _, current := range allowed {
 		if status == current {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -301,6 +338,7 @@ func (t *gatewayTool) MCPName() string {
 }
 
 func (t *gatewayTool) CheckPermissions(context.Context, map[string]any, *permission.Context) (*permission.Decision, error) {
+
 	if t.IsReadOnly() {
 		return &permission.Decision{
 			Behavior:       permission.BehaviorAllow,
@@ -308,6 +346,7 @@ func (t *gatewayTool) CheckPermissions(context.Context, map[string]any, *permiss
 			DecisionReason: "MCP readOnlyHint is true",
 		}, nil
 	}
+
 	return &permission.Decision{
 		Behavior:       permission.BehaviorAsk,
 		Message:        "Gateway MCP tools must be explicitly allowed.",
@@ -317,10 +356,12 @@ func (t *gatewayTool) CheckPermissions(context.Context, map[string]any, *permiss
 }
 
 func (t *gatewayTool) MatchRule(ruleContent string, _ map[string]any) bool {
+
 	return ruleContent == "" || ruleContent == t.MCPName()
 }
 
 func (t *gatewayTool) GenerateSuggestions(map[string]any) []permission.Rule {
+
 	return []permission.Rule{{
 		ToolName:    t.Name(),
 		RuleContent: t.MCPName(),
@@ -330,32 +371,40 @@ func (t *gatewayTool) GenerateSuggestions(map[string]any) []permission.Rule {
 }
 
 func (t *gatewayTool) Execute(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+
 	var response ToolCallResponse
 	path := "/tools/" + url.PathEscape(t.Name()) + "/call"
 	if err := t.client.do(ctx, http.MethodPost, path, input, &response, http.StatusOK); err != nil {
 		return singleChunk(tool.NewToolChunk(message.ContentBlockList{message.NewTextBlock(err.Error())}, tool.WithToolChunkState(message.ToolResultError))), nil
 	}
+
 	state := response.State
 	if state == "" {
 		state = message.ToolResultSuccess
 	}
+
 	return singleChunk(tool.NewToolChunk(response.Blocks, tool.WithToolChunkState(state))), nil
 }
 
 func singleChunk(chunk *tool.ToolChunk) <-chan tool.ToolChunk {
+
 	chunks := make(chan tool.ToolChunk, 1)
 	if chunk != nil {
 		chunks <- *chunk
 	}
+
 	close(chunks)
+
 	return chunks
 }
 
 func cloneAnyMap(in map[string]any) map[string]any {
+
 	out := make(map[string]any, len(in))
 	for key, value := range in {
 		out[key] = value
 	}
+
 	return out
 }
 
@@ -382,9 +431,11 @@ type MCPClient struct {
 
 // Name returns the registered MCP name.
 func (c *MCPClient) Name() string {
+
 	if c == nil {
 		return ""
 	}
+
 	return c.config.Name
 }
 
