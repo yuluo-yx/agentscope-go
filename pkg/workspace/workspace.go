@@ -37,10 +37,21 @@ type (
 )
 
 // MCPClient is the minimal contract a workspace needs to track MCP clients and expose MCP tools.
+//
+// Why not use mcp-go's client directly?
+// The first reason is that mcp-go's client is a struct type, which doesn't compose well when dealing with workspace abstractions.
+// The second reason is that mcp-go's client cannot satisfy a lifecycle consistent with the current agent. There aren't many methods or definitions
+// involved, so we extended MCPClient here. Only the implementation that truly needs it holds a reference to mcp-go's client to establish actual MCP connections.
+//
+// Impl:
+//
+//	pkg/tool/mcp/client.go:104
+//	pkg/workspace/gateway/gateway.go:376
 type MCPClient interface {
 	// Name returns the stable MCP name used for registration, removal, and diagnostics.
 	Name() string
 	// IsStateful reports whether this MCP requires a persistent connection.
+	// Stateful maintains the connection; stateless discards it after each use.
 	IsStateful() bool
 	// IsConnected reports whether a stateful MCP is currently connected.
 	IsConnected() bool

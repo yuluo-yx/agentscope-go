@@ -7,20 +7,15 @@ run:
 formatters:
   enable:
     - goimports
-    - gofumpt
+    # - gofumpt
 
   settings:
     goimports:
       local-prefixes:
         - github.com/yuluo-yx/agentscope-go
-    gofumpt:
-      extra-rules: true
-      module-path: github.com/yuluo-yx/agentscope-go
-
-  exclusions:
-    generated: lax
-    paths:
-      - '.*agent/.*\.go$'
+    # gofumpt:
+    #   extra-rules: true
+    #   module-path: github.com/yuluo-yx/agentscope-go
 
 linters:
   default: none
@@ -117,14 +112,6 @@ linters:
           - errcheck
           - gosec
           - revive
-      - path: 'internal/httprr/.*'
-        linters:
-          - goheader
-          - errcheck
-          - staticcheck
-      - path: '.*agent/.*\.go$'
-        linters:
-          - misspell
 
 issues:
   max-issues-per-linter: 0

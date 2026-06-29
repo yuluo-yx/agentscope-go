@@ -50,6 +50,7 @@ type Server struct {
 // NewServer creates a gateway HTTP handler. The handler is intentionally small
 // enough to be embedded in Docker, Agent Sandbox, or local test runtimes.
 func NewServer(opts ...ServerOption) *Server {
+
 	server := &Server{
 		tools:      map[string]workspace.Tool{},
 		mcps:       map[string]workspace.MCPClient{},
@@ -61,14 +62,17 @@ func NewServer(opts ...ServerOption) *Server {
 			opt(server)
 		}
 	}
+
 	if server.mcpFactory == nil {
 		server.mcpFactory = defaultServerMCPFactory
 	}
+
 	return server
 }
 
 // WithServerTools exposes non-MCP tools through /tools.
 func WithServerTools(tools ...workspace.Tool) ServerOption {
+
 	return func(server *Server) {
 		for _, current := range tools {
 			if current == nil || strings.TrimSpace(current.Name()) == "" {
@@ -81,6 +85,7 @@ func WithServerTools(tools ...workspace.Tool) ServerOption {
 
 // WithServerMCPs pre-registers MCP clients before the server starts.
 func WithServerMCPs(mcps ...workspace.MCPClient) ServerOption {
+
 	return func(server *Server) {
 		for _, current := range mcps {
 			if current == nil || strings.TrimSpace(current.Name()) == "" {
@@ -93,6 +98,7 @@ func WithServerMCPs(mcps ...workspace.MCPClient) ServerOption {
 
 // WithServerMCPClientFactory sets the factory used by POST /mcps.
 func WithServerMCPClientFactory(factory workspace.MCPClientFactory) ServerOption {
+
 	return func(server *Server) {
 		server.mcpFactory = factory
 	}
@@ -100,6 +106,7 @@ func WithServerMCPClientFactory(factory workspace.MCPClientFactory) ServerOption
 
 // WithServerBearerToken protects every endpoint except /health.
 func WithServerBearerToken(token string) ServerOption {
+
 	return func(server *Server) {
 		server.token = strings.TrimSpace(token)
 	}
@@ -116,10 +123,12 @@ func WithServerMaxRequestBytes(maxBytes int64) ServerOption {
 
 // ServeHTTP routes gateway HTTP requests.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 	if s == nil {
 		writeError(w, http.StatusInternalServerError, "workspace/gateway: nil server")
 		return
 	}
+
 	path := normalizedPath(r.URL.Path)
 	if r.Method == http.MethodGet && path == "/health" {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -129,18 +138,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+
 	s.route(w, r, path)
 }
 
 func normalizedPath(path string) string {
+
 	trimmed := strings.TrimRight(path, "/")
 	if trimmed == "" {
 		return "/"
 	}
+
 	return trimmed
 }
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request, path string) {
+
 	if s.routeExact(w, r, path) {
 		return
 	}
@@ -150,10 +163,12 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request, path string) {
 	if s.routeMCPByName(w, r, path) {
 		return
 	}
+
 	writeError(w, http.StatusNotFound, "not found")
 }
 
 func (s *Server) routeExact(w http.ResponseWriter, r *http.Request, path string) bool {
+
 	switch {
 	case r.Method == http.MethodGet && path == "/tools":
 		s.handleListTools(w, r)
@@ -166,18 +181,22 @@ func (s *Server) routeExact(w http.ResponseWriter, r *http.Request, path string)
 	default:
 		return false
 	}
+
 	return true
 }
 
 func (s *Server) routeToolCall(w http.ResponseWriter, r *http.Request, path string) bool {
+
 	if r.Method != http.MethodPost || !strings.HasPrefix(path, "/tools/") || !strings.HasSuffix(path, "/call") {
 		return false
 	}
 	s.handleToolCall(w, r, path)
+
 	return true
 }
 
 func (s *Server) routeMCPByName(w http.ResponseWriter, r *http.Request, path string) bool {
+
 	if !strings.HasPrefix(path, "/mcps/") {
 		return false
 	}
@@ -191,17 +210,21 @@ func (s *Server) routeMCPByName(w http.ResponseWriter, r *http.Request, path str
 	default:
 		return false
 	}
+
 	return true
 }
 
 func (s *Server) authorized(r *http.Request) bool {
+
 	if s.token == "" {
 		return false
 	}
+
 	return r.Header.Get("Authorization") == "Bearer "+s.token
 }
 
 func (s *Server) handleListTools(w http.ResponseWriter, r *http.Request) {
+
 	tools, err := s.allTools(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -214,10 +237,12 @@ func (s *Server) handleListTools(w http.ResponseWriter, r *http.Request) {
 		}
 		descriptors = append(descriptors, descriptorFromTool(current))
 	}
+
 	writeJSON(w, http.StatusOK, descriptors)
 }
 
 func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, path string) {
+
 	escaped := strings.TrimSuffix(strings.TrimPrefix(path, "/tools/"), "/call")
 	name, err := url.PathUnescape(escaped)
 	if err != nil {
@@ -240,10 +265,12 @@ func (s *Server) handleToolCall(w http.ResponseWriter, r *http.Request, path str
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleListMCPs(w http.ResponseWriter, _ *http.Request) {
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	configs := make([]workspace.MCPClientConfig, 0, len(s.mcps))
@@ -255,10 +282,12 @@ func (s *Server) handleListMCPs(w http.ResponseWriter, _ *http.Request) {
 		}
 		configs = append(configs, config)
 	}
+
 	writeJSON(w, http.StatusOK, configs)
 }
 
 func (s *Server) handleAddMCP(w http.ResponseWriter, r *http.Request) {
+
 	var config workspace.MCPClientConfig
 	if err := s.decodeJSON(w, r, &config); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -294,11 +323,13 @@ func (s *Server) handleAddMCP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, fmt.Sprintf("workspace/gateway: MCP %q already exists", client.Name()))
 		return
 	}
+
 	s.mcps[client.Name()] = client
 	writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleRemoveMCP(w http.ResponseWriter, r *http.Request, path string) {
+
 	name, err := url.PathUnescape(strings.TrimPrefix(path, "/mcps/"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -315,11 +346,13 @@ func (s *Server) handleRemoveMCP(w http.ResponseWriter, r *http.Request, path st
 			return
 		}
 	}
+
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	_ = r.Body.Close()
 }
 
 func (s *Server) handleListMCPTools(w http.ResponseWriter, r *http.Request, path string) {
+
 	name, err := mcpNameFromToolsPath(path)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -335,10 +368,12 @@ func (s *Server) handleListMCPTools(w http.ResponseWriter, r *http.Request, path
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	writeJSON(w, http.StatusOK, rawTools)
 }
 
 func (s *Server) handleMCPToolCall(w http.ResponseWriter, r *http.Request, path string) {
+
 	mcpName, rawToolName, err := mcpAndToolNameFromCallPath(path)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -362,10 +397,12 @@ func (s *Server) handleMCPToolCall(w http.ResponseWriter, r *http.Request, path 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]*astool.ToolChunk{"chunk": chunk})
 }
 
 func (s *Server) handleClose(w http.ResponseWriter, _ *http.Request) {
+
 	s.mu.Lock()
 	clients := make([]workspace.MCPClient, 0, len(s.mcps))
 	for _, client := range s.mcps {
@@ -381,10 +418,12 @@ func (s *Server) handleClose(w http.ResponseWriter, _ *http.Request) {
 			}
 		}
 	}
+
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) allTools(ctx context.Context) ([]workspace.Tool, error) {
+
 	s.mu.Lock()
 	localTools := make([]workspace.Tool, 0, len(s.tools))
 	for _, current := range s.tools {
@@ -408,10 +447,12 @@ func (s *Server) allTools(ctx context.Context) ([]workspace.Tool, error) {
 		}
 		localTools = append(localTools, tools...)
 	}
+
 	return localTools, nil
 }
 
 func (s *Server) findTool(ctx context.Context, name string) (workspace.Tool, error) {
+
 	tools, err := s.allTools(ctx)
 	if err != nil {
 		return nil, err
@@ -421,20 +462,25 @@ func (s *Server) findTool(ctx context.Context, name string) (workspace.Tool, err
 			return current, nil
 		}
 	}
+
 	return nil, fmt.Errorf("workspace/gateway: tool %q not found", name)
 }
 
 func (s *Server) getMCP(name string) workspace.MCPClient {
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.mcps[name]
 }
 
 func (s *Server) popMCP(name string) workspace.MCPClient {
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	client := s.mcps[name]
 	delete(s.mcps, name)
+
 	return client
 }
 
@@ -444,6 +490,7 @@ type rawMCPClient interface {
 }
 
 func listRawTools(ctx context.Context, client workspace.MCPClient) ([]gomcp.Tool, error) {
+
 	if err := ensureMCPConnected(ctx, client); err != nil {
 		return nil, err
 	}
@@ -460,10 +507,12 @@ func listRawTools(ctx context.Context, client workspace.MCPClient) ([]gomcp.Tool
 	for _, current := range tools {
 		rawTools = append(rawTools, rawToolFromWorkspaceTool(client.Name(), current))
 	}
+
 	return rawTools, nil
 }
 
 func callRawMCPTool(ctx context.Context, client workspace.MCPClient, rawName string, input map[string]any) (*astool.ToolChunk, error) {
+
 	if err := ensureMCPConnected(ctx, client); err != nil {
 		return nil, err
 	}
@@ -495,17 +544,21 @@ func callRawMCPTool(ctx context.Context, client workspace.MCPClient, rawName str
 		}
 		return astool.NewToolChunk(response.Blocks, astool.WithToolChunkState(response.State)), nil
 	}
+
 	return nil, fmt.Errorf("workspace/gateway: MCP tool %q not found", rawName)
 }
 
 func ensureMCPConnected(ctx context.Context, client workspace.MCPClient) error {
+
 	if client == nil || !client.IsStateful() || client.IsConnected() {
 		return nil
 	}
+
 	return client.Connect(ctx)
 }
 
 func runGatewayTool(ctx context.Context, current workspace.Tool, input map[string]any) (ToolCallResponse, error) {
+
 	chunks, err := current.Execute(ctx, input, asstate.NewAgentState())
 	if err != nil {
 		return ToolCallResponse{}, err
@@ -520,10 +573,12 @@ func runGatewayTool(ctx context.Context, current workspace.Tool, input map[strin
 	if state == "" {
 		state = message.ToolResultSuccess
 	}
+
 	return ToolCallResponse{State: state, Blocks: response.Content}, nil
 }
 
 func descriptorFromTool(current workspace.Tool) ToolDescriptor {
+
 	return ToolDescriptor{
 		Name:            current.Name(),
 		Description:     current.Description(),
@@ -535,6 +590,7 @@ func descriptorFromTool(current workspace.Tool) ToolDescriptor {
 }
 
 func rawToolFromWorkspaceTool(mcpName string, current workspace.Tool) gomcp.Tool {
+
 	name := rawToolName(mcpName, current.Name())
 	data, err := json.Marshal(current.InputSchema())
 	if err != nil {
@@ -549,26 +605,32 @@ func rawToolFromWorkspaceTool(mcpName string, current workspace.Tool) gomcp.Tool
 		readOnly := true
 		raw.Annotations.ReadOnlyHint = &readOnly
 	}
+
 	return raw
 }
 
 func rawToolName(mcpName, toolName string) string {
+
 	prefix := "mcp__" + mcpName + "__"
 	if strings.HasPrefix(toolName, prefix) {
 		return strings.TrimPrefix(toolName, prefix)
 	}
+
 	return toolName
 }
 
 func configFromMCP(client workspace.MCPClient) (workspace.MCPClientConfig, error) {
+
 	provider, ok := client.(workspace.MCPConfigProvider)
 	if !ok {
 		return workspace.MCPClientConfig{}, fmt.Errorf("workspace/gateway: MCP %q cannot be serialized", client.Name())
 	}
+
 	return provider.MCPClientConfig()
 }
 
 func mcpNameFromToolsPath(path string) (string, error) {
+
 	trimmed := strings.TrimPrefix(path, "/mcps/")
 	escaped := strings.TrimSuffix(trimmed, "/tools")
 	name, err := url.PathUnescape(escaped)
@@ -578,10 +640,12 @@ func mcpNameFromToolsPath(path string) (string, error) {
 	if strings.TrimSpace(name) == "" {
 		return "", fmt.Errorf("workspace/gateway: MCP name is empty")
 	}
+
 	return name, nil
 }
 
 func mcpAndToolNameFromCallPath(path string) (string, string, error) {
+
 	trimmed := strings.TrimPrefix(path, "/mcps/")
 	parts := strings.SplitN(trimmed, "/tools/", 2)
 	if len(parts) != 2 {
@@ -598,10 +662,12 @@ func mcpAndToolNameFromCallPath(path string) (string, string, error) {
 	if strings.TrimSpace(mcpName) == "" || strings.TrimSpace(toolName) == "" {
 		return "", "", fmt.Errorf("workspace/gateway: MCP name and tool name are required")
 	}
+
 	return mcpName, toolName, nil
 }
 
 func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, out any) error {
+
 	if out == nil {
 		return nil
 	}
@@ -609,12 +675,15 @@ func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, out any) err
 	if s != nil && s.maxBytes > 0 {
 		maxBytes = s.maxBytes
 	}
+
 	body := http.MaxBytesReader(w, r.Body, maxBytes)
 	defer body.Close()
+
 	return json.NewDecoder(body).Decode(out)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if payload != nil {
@@ -623,10 +692,12 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
+
 	writeJSON(w, status, map[string]string{"error": message})
 }
 
 func defaultServerMCPFactory(config workspace.MCPClientConfig) (workspace.MCPClient, error) {
+
 	opts := []toolmcp.ClientOption{toolmcp.WithStateful(config.Stateful)}
 	if len(config.EnabledTools) > 0 {
 		opts = append(opts, toolmcp.WithEnabledTools(config.EnabledTools...))

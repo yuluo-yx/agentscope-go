@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package gateway provides host-side clients and HTTP handlers for workspace
-// tool gateway integration.
+// Package gateway
+// MCP servers run inside the sandbox, while the Agent runs outside it.
+// The Gateway is responsible for communication between the two.
+// MCP must run inside the sandbox for security and network isolation reasons.
 package gateway
