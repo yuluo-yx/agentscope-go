@@ -16,6 +16,11 @@ package permission
 
 import "context"
 
+// Fail-safe mechanism: when the engine rejects three times consecutively
+// or twenty times within a single conversation turn, the classifier is
+// deemed unable to make a correct decision. The system automatically
+// falls back to interactive inquiry mode, allowing the user to participate
+// in the decision-making process and mitigating risks from misclassification.
 const (
 	// AutoMaxConsecutiveDenials is the number of consecutive classifier denials after which
 	// auto mode falls back to an interactive ask decision.
@@ -24,7 +29,21 @@ const (
 	AutoMaxTotalDenials = 20
 )
 
-// AutoPermissionClassifier classifies one otherwise-interactive tool permission request.
+// AutoPermissionClassifier is a user-defined classifier implementation for Auto mode,
+// injected into the permission engine by the caller.
+//
+// When a tool call requires interactive permission confirmation, the engine delegates
+// the decision to this classifier. An AI model determines whether to allow or deny
+// the request, eliminating the need for user interaction.
+//
+// This interface does not provide a default implementation.
+// Users are expected to supply their own implementation and inject it
+// when creating the permission engine:
+//
+//	engine := permission.NewEngine(ctx,
+//	    permission.WithAutoPermissionClassifier(myClassifier),
+//	    permission.WithAutoPermissionTranscript(sanitizedTranscript),
+//	)
 type AutoPermissionClassifier interface {
 	Classify(context.Context, ClassifierRequest) (*Decision, error)
 }
@@ -46,6 +65,10 @@ type ClassifierRequest struct {
 
 // AutoDenialState tracks classifier denials for safe fallback to interactive prompting.
 type AutoDenialState struct {
+	// ConsecutiveDenials tracks the number of consecutive classifier rejections.
+	// Resets to zero on each allow.
 	ConsecutiveDenials int `json:"consecutive_denials"`
-	TotalDenials       int `json:"total_denials"`
+	// TotalDenials tracks the cumulative rejection count over the entire context lifetime.
+	// Never resets.
+	TotalDenials int `json:"total_denials"`
 }

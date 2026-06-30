@@ -21,13 +21,20 @@ type AdditionalWorkingDirectory struct {
 }
 
 // Context stores permission mode, working directories, and rules by behavior.
+// Contains all context required for the permission engine to make a decision.
 type Context struct {
-	Mode               PermissionMode                        `json:"mode"`
+	// Mode is the current permission mode, determining the engine's default decision behavior.
+	Mode PermissionMode `json:"mode"`
+	// WorkingDirectories is a list of trusted working directories where operations are permitted.
 	WorkingDirectories map[string]AdditionalWorkingDirectory `json:"working_directories,omitempty"`
-	AllowRules         map[string][]Rule                     `json:"allow_rules,omitempty"`
-	DenyRules          map[string][]Rule                     `json:"deny_rules,omitempty"`
-	AskRules           map[string][]Rule                     `json:"ask_rules,omitempty"`
-	AutoDenialState    AutoDenialState                       `json:"auto_denial_state,omitempty"`
+	// AllowRules are permission rules grouped by tool name that grant access.
+	AllowRules map[string][]Rule `json:"allow_rules,omitempty"`
+	// DenyRules are permission rules grouped by tool name that block access.
+	DenyRules map[string][]Rule `json:"deny_rules,omitempty"`
+	// AskRules are permission rules grouped by tool name that prompt for confirmation.
+	AskRules map[string][]Rule `json:"ask_rules,omitempty"`
+	// AutoDenialState tracks denial counters in Auto mode.
+	AutoDenialState AutoDenialState `json:"auto_denial_state,omitempty"`
 }
 
 type PermissionContext = Context
@@ -49,13 +56,16 @@ func NewContext(mode PermissionMode) *Context {
 
 // Clone returns a deep copy of the permission context.
 func (c *Context) Clone() *Context {
+
 	if c == nil {
 		return nil
 	}
+
 	mode := c.Mode
 	if mode == "" {
 		mode = ModeDefault
 	}
+
 	cp := &Context{
 		Mode:               mode,
 		WorkingDirectories: make(map[string]AdditionalWorkingDirectory, len(c.WorkingDirectories)),
@@ -67,7 +77,9 @@ func (c *Context) Clone() *Context {
 	for key, value := range c.WorkingDirectories {
 		cp.WorkingDirectories[key] = value
 	}
+
 	cp.ensureMaps()
+
 	return cp
 }
 
@@ -87,9 +99,11 @@ func (c *Context) ensureMaps() {
 }
 
 func cloneRuleMap(in map[string][]Rule) map[string][]Rule {
+
 	out := make(map[string][]Rule, len(in))
 	for key, rules := range in {
 		out[key] = append([]Rule(nil), rules...)
 	}
+
 	return out
 }

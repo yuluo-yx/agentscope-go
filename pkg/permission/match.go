@@ -21,6 +21,7 @@ import (
 
 // MatchPattern implements Bash prefix, file glob, and plain substring matching.
 func MatchPattern(pattern, value string) bool {
+
 	if pattern == "" {
 		return true
 	}
@@ -33,14 +34,17 @@ func MatchPattern(pattern, value string) bool {
 	if ok, err := filepath.Match(pattern, value); err == nil && ok {
 		return true
 	}
+
 	if strings.Contains(pattern, "**") {
 		needle := strings.TrimSuffix(pattern, "**")
 		if strings.HasPrefix(value, needle) {
 			return true
 		}
 	}
+
 	if strings.ContainsAny(pattern, "*?[") {
 		return false
 	}
+
 	return strings.Contains(value, pattern)
 }

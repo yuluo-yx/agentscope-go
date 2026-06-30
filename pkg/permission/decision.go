@@ -16,11 +16,17 @@ package permission
 
 // Decision is the permission engine decision for one tool call.
 type Decision struct {
-	Behavior       Behavior       `json:"behavior"`
-	Message        string         `json:"message"`
-	DecisionReason string         `json:"decision_reason,omitempty"`
-	UpdatedInput   map[string]any `json:"updated_input,omitempty"`
-	SuggestedRules []Rule         `json:"suggested_rules,omitempty"`
+	// Behavior is the decision outcome.
+	Behavior Behavior `json:"behavior"`
+	// Message is a human-readable description of the decision, displayed to the user.
+	Message string `json:"message"`
+	// DecisionReason explains why the decision was made, e.g., the matched rule or mode: "Rule: git:*".
+	DecisionReason string `json:"decision_reason,omitempty"`
+	// UpdatedInput is the revised tool input after an allow decision.
+	UpdatedInput map[string]any `json:"updated_input,omitempty"`
+	// SuggestedRules are candidate rules presented to the user during a prompt.
+	// The user may select one to authorize, or deny the request entirely.
+	SuggestedRules []Rule `json:"suggested_rules,omitempty"`
 }
 
 type PermissionDecision = Decision
