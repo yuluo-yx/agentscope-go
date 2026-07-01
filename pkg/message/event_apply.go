@@ -99,7 +99,15 @@ func (m *Message) applyContentBlockEvent(event Event) bool {
 		}
 	case *ThinkingBlockEndEvent:
 	case *HintBlockEvent:
-		m.Content = append(m.Content, hintBlockFromEvent(e))
+		hint := hintBlockFromEvent(e)
+		for index, block := range m.Content {
+			if block == nil || block.BlockType() != hint.BlockType() || block.BlockID() != hint.BlockID() {
+				continue
+			}
+			m.Content[index] = hint
+			return true
+		}
+		m.Content = append(m.Content, hint)
 	default:
 		return false
 	}

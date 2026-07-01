@@ -256,6 +256,45 @@ func TestHintBlockEventSupportsMultimodalHint(t *testing.T) {
 	}
 }
 
+func TestHintBlockEventReplacesExistingHintBlock(t *testing.T) {
+	t.Parallel()
+
+	msg, err := message.NewMessage(
+		"assistant",
+		message.RoleAssistant,
+		[]message.ContentBlock{
+			message.NewHintBlock(
+				"old hint",
+				message.WithHintBlockID("hint-1"),
+				message.WithHintSource("old-source"),
+			),
+		},
+		message.WithMessageID("reply-1"),
+	)
+	if err != nil {
+		t.Fatalf("NewMessage returned error: %v", err)
+	}
+
+	event := message.NewHintBlockEvent(
+		"reply-1",
+		"hint-1",
+		"new hint",
+		message.WithHintBlockEventSource("rag"),
+	)
+	if err := msg.ApplyEvent(event); err != nil {
+		t.Fatalf("ApplyEvent returned error: %v", err)
+	}
+
+	hints := msg.GetContentBlocks("hint")
+	if len(hints) != 1 {
+		t.Fatalf("expected one replaced hint block, got %#v", hints)
+	}
+	hint := hints[0].(*message.HintBlock)
+	if hint.Hint != "new hint" || hint.Source == nil || *hint.Source != "rag" {
+		t.Fatalf("unexpected replaced hint block: %#v", hint)
+	}
+}
+
 func TestCustomEventJSONRoundTripDoesNotRequireReplyID(t *testing.T) {
 	t.Parallel()
 

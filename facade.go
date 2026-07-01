@@ -26,7 +26,9 @@ import (
 	automationtemplate "github.com/yuluo-yx/agentscope-go/pkg/loop/automation/template"
 	asloop "github.com/yuluo-yx/agentscope-go/pkg/loop/core"
 	loopruntime "github.com/yuluo-yx/agentscope-go/pkg/loop/runtime"
+	asmiddleware "github.com/yuluo-yx/agentscope-go/pkg/middleware"
 	asmodel "github.com/yuluo-yx/agentscope-go/pkg/model"
+	asrag "github.com/yuluo-yx/agentscope-go/pkg/rag"
 	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
 	astool "github.com/yuluo-yx/agentscope-go/pkg/tool"
 )
@@ -164,6 +166,28 @@ type (
 	ToolResponse    = astool.ToolResponse
 )
 
+type (
+	RAGSection             = asrag.Section
+	RAGChunk               = asrag.Chunk
+	RAGVectorRecord        = asrag.VectorRecord
+	RAGVectorSearchResult  = asrag.VectorSearchResult
+	RAGDocumentSummary     = asrag.DocumentSummary
+	RAGVectorStore         = asrag.VectorStore
+	RAGMemoryVectorStore   = asrag.MemoryVectorStore
+	RAGParser              = asrag.Parser
+	RAGTextParser          = asrag.TextParser
+	RAGChunker             = asrag.Chunker
+	RAGApproxTokenChunker  = asrag.ApproxTokenChunker
+	RAGChunkerOption       = asrag.ChunkerOption
+	RAGKnowledgeBase       = asrag.KnowledgeBase
+	RAGKnowledgeBaseOption = asrag.KnowledgeBaseOption
+	RAGInsertOption        = asrag.InsertOption
+	RAGSearchOption        = asrag.SearchOption
+	RAGMode                = asmiddleware.RAGMode
+	RAGOption              = asmiddleware.RAGOption
+	RAGMiddleware          = asmiddleware.RAGMiddleware
+)
+
 const (
 	TaskPending    = asstate.TaskPending
 	TaskInProgress = asstate.TaskInProgress
@@ -201,6 +225,8 @@ const (
 	ChatResponseType       = asmodel.ChatResponseType
 	StructuredResponseType = asmodel.StructuredResponseType
 	UsageTypeChat          = asmodel.UsageTypeChat
+	RAGModeAgentic         = asmiddleware.RAGModeAgentic
+	RAGModeStatic          = asmiddleware.RAGModeStatic
 )
 
 var (
@@ -250,4 +276,27 @@ var (
 	WithToolChunkIsLast   = astool.WithToolChunkIsLast
 	WithToolChunkMetadata = astool.WithToolChunkMetadata
 	NewToolResponse       = astool.NewToolResponse
+
+	NewRAGTextParser            = asrag.NewTextParser
+	NewRAGApproxTokenChunker    = asrag.NewApproxTokenChunker
+	NewRAGMemoryVectorStore     = asrag.NewMemoryVectorStore
+	WithRAGChunkSize            = asrag.WithChunkSize
+	WithRAGChunkOverlap         = asrag.WithChunkOverlap
+	NewRAGKnowledgeBase         = asrag.NewKnowledgeBase
+	WithRAGMetadataFilter       = asrag.WithMetadataFilter
+	WithRAGDocumentID           = asrag.WithDocumentID
+	WithRAGDocumentMetadata     = asrag.WithDocumentMetadata
+	WithRAGSearchTopK           = asrag.WithSearchTopK
+	WithRAGSearchScoreThreshold = asrag.WithScoreThreshold
+	NewRAGMiddleware            = asmiddleware.NewRAGMiddleware
+	WithRAGMode                 = asmiddleware.WithRAGMode
+	WithRAGTopK                 = asmiddleware.WithRAGTopK
+	WithRAGScoreThreshold       = asmiddleware.WithRAGScoreThreshold
+	WithRAGEmitHintEvent        = asmiddleware.WithRAGEmitHintEvent
+	WithRAGPersistHint          = asmiddleware.WithRAGPersistHint
+	WithRAGHintTemplate         = asmiddleware.WithRAGHintTemplate
+
+	ErrRAGInvalidInput       = asrag.ErrInvalidInput
+	ErrRAGUnsupportedContent = asrag.ErrUnsupportedContent
+	ErrRAGEmbeddingMismatch  = asrag.ErrEmbeddingMismatch
 )

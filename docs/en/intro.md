@@ -67,6 +67,7 @@ func main() {
 | `loop` | Loop Engineering goals, budgets, verification, state, and events |
 | `message` | Message and content block protocol |
 | `model` | Chat model contracts and provider packages |
+| `rag` | RAG sections, text parser, chunker, vector-store contract, in-memory vector store, and KnowledgeBase |
 | `tool` | Tool interfaces, Toolkit, function adapters, and tool groups |
 | `tool/builtin` | Bash, Edit, Glob, Grep, Read, Write, and ResetTools |
 | `tool/mcp` | MCP client integration and MCP tool adapters |
@@ -75,6 +76,7 @@ func main() {
 | `permission` | Permission modes, rules, decisions, and engine |
 | `state` | AgentState, ToolContext, and TaskContext |
 | `workspace` | Local workspace and offload helpers |
+| `extensions/` | Optional extension modules; vector database backends such as Qdrant and Milvus live here as separate Go modules depending on `pkg/rag` |
 
 ## Community
 
