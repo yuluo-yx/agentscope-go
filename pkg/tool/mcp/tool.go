@@ -128,6 +128,7 @@ func (t *Tool) MatchRule(ruleContent string, _ map[string]any) bool {
 		return true
 	}
 	return ruleContent == t.name ||
+		ruleContent == "mcp:"+t.client.Name() ||
 		ruleContent == t.raw.Name ||
 		ruleContent == t.client.Name()+"."+t.raw.Name ||
 		ruleContent == t.client.Name()+":"+t.raw.Name
@@ -135,12 +136,20 @@ func (t *Tool) MatchRule(ruleContent string, _ map[string]any) bool {
 
 // GenerateSuggestions returns a stable allow rule for this MCP tool.
 func (t *Tool) GenerateSuggestions(map[string]any) []permission.Rule {
-	return []permission.Rule{{
-		ToolName:    t.name,
-		RuleContent: t.client.Name() + "." + t.raw.Name,
-		Behavior:    permission.BehaviorAllow,
-		Source:      "suggested",
-	}}
+	return []permission.Rule{
+		{
+			ToolName:    t.name,
+			RuleContent: "mcp:" + t.client.Name(),
+			Behavior:    permission.BehaviorAllow,
+			Source:      "suggested",
+		},
+		{
+			ToolName:    t.name,
+			RuleContent: t.client.Name() + "." + t.raw.Name,
+			Behavior:    permission.BehaviorAllow,
+			Source:      "suggested",
+		},
+	}
 }
 
 // Execute invokes the raw MCP tool and converts its result to AgentScope blocks.

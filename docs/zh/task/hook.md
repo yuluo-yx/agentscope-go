@@ -54,9 +54,19 @@ agent.WithMiddlewares(PromptNote{})
 
 ## 执行顺序
 
-中间件按注册顺序执行。中间件可以调用下一个处理器，检查结果，替换结果，或返回错误。
+中间件先按优先级排序，再按依赖关系进入链路。中间件可以调用下一个处理器，检查结果，替换结果，或返回错误。
 
-注册顺序会影响结果。靠前的中间件先接收输入，也更早包装后续 handler。多个中间件都修改系统提示词时，应把通用约束放前面，把更具体的业务约束放后面。
+默认优先级是 `0`。实现 `MiddlewarePriority()` 后，数值越小越早包装并执行；未实现该接口的中间件保持默认优先级。实现 `MiddlewareDependsOn()` 后，可以声明当前中间件依赖哪些中间件名称：
+
+```go
+type PolicyPrompt struct{}
+
+func (PolicyPrompt) MiddlewareName() string { return "policy-prompt" }
+func (PolicyPrompt) MiddlewarePriority() int { return -10 }
+func (PolicyPrompt) MiddlewareDependsOn() []string { return []string{"base-prompt"} }
+```
+
+依赖关系优先于注册位置。依赖名称必须存在，循环依赖会让 `agent.NewAgent` 返回错误。多个中间件都修改系统提示词时，应让基础约束先进入链路，再追加更具体的业务约束。
 
 ## 可选 tracing
 

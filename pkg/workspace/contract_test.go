@@ -104,19 +104,44 @@ func TestBuildAgentResourcesCombinesWorkspaceResources(t *testing.T) {
 	}
 }
 
+func TestBuildAgentResourcesInitializesInactiveWorkspace(t *testing.T) {
+	t.Parallel()
+
+	ws := &contractWorkspace{alive: false}
+	if _, err := workspace.BuildAgentResources(context.Background(), ws); err != nil {
+		t.Fatalf("BuildAgentResources returned error: %v", err)
+	}
+	if !ws.initialized {
+		t.Fatal("BuildAgentResources should initialize inactive workspaces")
+	}
+	if !ws.closedChecked {
+		t.Fatal("BuildAgentResources should check workspace liveness before initialization")
+	}
+}
+
 type contractWorkspace struct {
 	instructions  string
 	tools         []workspace.Tool
 	mcps          []workspace.MCPClient
 	skills        []skill.Skill
 	offloadedData *message.DataBlock
+	alive         bool
+	initialized   bool
+	closedChecked bool
 }
 
-func (w *contractWorkspace) WorkspaceID() string              { return "contract-workspace" }
-func (w *contractWorkspace) IsAlive() bool                    { return true }
-func (w *contractWorkspace) Initialize(context.Context) error { return nil }
-func (w *contractWorkspace) Close(context.Context) error      { return nil }
-func (w *contractWorkspace) Reset(context.Context) error      { return nil }
+func (w *contractWorkspace) WorkspaceID() string { return "contract-workspace" }
+func (w *contractWorkspace) IsAlive() bool {
+	w.closedChecked = true
+	return w.alive
+}
+func (w *contractWorkspace) Initialize(context.Context) error {
+	w.initialized = true
+	w.alive = true
+	return nil
+}
+func (w *contractWorkspace) Close(context.Context) error { return nil }
+func (w *contractWorkspace) Reset(context.Context) error { return nil }
 func (w *contractWorkspace) GetInstructions(context.Context) (string, error) {
 	return w.instructions, nil
 }

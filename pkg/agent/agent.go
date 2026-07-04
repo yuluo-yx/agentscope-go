@@ -17,7 +17,9 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	agenterrors "github.com/yuluo-yx/agentscope-go/pkg/errors"
@@ -43,6 +45,12 @@ type ToolProvider interface {
 type AgentOption func(*Agent) error
 
 // Agent runs ReAct reasoning, permission checks, and tool calls.
+//
+// Concurrency contract: Reply, ReplyStream, and Observe serialize execution
+// through a mutex to protect internal Agent state consistency. Multiple
+// goroutines may call these methods concurrently, but the underlying execution
+// completes sequentially; high-concurrency sessions should use separate Agent
+// instances.
 type Agent struct {
 
 	// Agent name, agent ID.
@@ -57,6 +65,8 @@ type Agent struct {
 	middlewareTools   []Tool
 	middlewareToolkit ToolProvider
 
+	// mu serializes Reply, ReplyStream, and Observe to protect internal state writes.
+	mu    sync.Mutex
 	state *AgentState
 	// Workspace offloader, used to offload context to external storage and reload
 	// it on demand, in order to overcome context limits.
@@ -71,6 +81,8 @@ type Agent struct {
 	contextStrategies []ContextStrategy
 	// Auto permission classifier used when PermissionContext.Mode is permission.ModeAuto.
 	autoPermissionClassifier permission.AutoPermissionClassifier
+	// Security audit logger records permission and tool execution events without full inputs.
+	securityAuditLogger SecurityAuditLogger
 
 	// Agent Hooks config, allow change agent behavior without changing core logic.
 	replyHooks           []ReplyHook
@@ -196,6 +208,23 @@ func WithAgentState(state *AgentState) AgentOption {
 	}
 }
 
+// WithAgentConfig sets model, context, and ReAct configuration together.
+func WithAgentConfig(config AgentConfig) AgentOption {
+
+	return func(agent *Agent) error {
+		if err := config.Validate(); err != nil {
+			return agenterrors.NewDeveloperError("invalid agent config", agenterrors.WithErrorCause(err))
+		}
+
+		clone := config.Clone()
+		agent.modelConfig = clone.Model
+		agent.contextConfig = clone.Context
+		agent.reactConfig = clone.ReAct
+
+		return nil
+	}
+}
+
 // WithModelConfig sets model call configuration.
 func WithModelConfig(config ModelConfig) AgentOption {
 
@@ -218,7 +247,7 @@ func WithContextConfig(config ContextConfig) AgentOption {
 			return agenterrors.NewDeveloperError("invalid context config", agenterrors.WithErrorCause(err))
 		}
 
-		agent.contextConfig = config
+		agent.contextConfig = config.Clone()
 		return nil
 	}
 }
@@ -251,6 +280,19 @@ func WithAutoPermissionClassifier(classifier permission.AutoPermissionClassifier
 	}
 }
 
+// WithSecurityAuditLogger sets the logger used for security audit events.
+func WithSecurityAuditLogger(logger SecurityAuditLogger) AgentOption {
+
+	return func(agent *Agent) error {
+		if logger == nil {
+			return agenterrors.NewDeveloperError("agent security audit logger is nil")
+		}
+
+		agent.securityAuditLogger = logger
+		return nil
+	}
+}
+
 // WithReActConfig sets ReAct loop configuration.
 func WithReActConfig(config ReActConfig) AgentOption {
 
@@ -268,10 +310,11 @@ func WithReActConfig(config ReActConfig) AgentOption {
 func WithMiddlewares(middlewares ...Middleware) AgentOption {
 
 	return func(agent *Agent) error {
-		for _, middleware := range middlewares {
-			if middleware == nil {
-				return agenterrors.NewDeveloperError("agent middleware is nil")
-			}
+		ordered, err := orderMiddlewares(middlewares)
+		if err != nil {
+			return err
+		}
+		for _, middleware := range ordered {
 			if err := agent.registerMiddleware(context.Background(), middleware); err != nil {
 				return err
 			}
@@ -279,6 +322,98 @@ func WithMiddlewares(middlewares ...Middleware) AgentOption {
 
 		return nil
 	}
+}
+
+type middlewareOrderEntry struct {
+	middleware   Middleware
+	name         string
+	priority     int
+	dependencies []string
+}
+
+func orderMiddlewares(middlewares []Middleware) ([]Middleware, error) {
+	entries := make([]middlewareOrderEntry, 0, len(middlewares))
+	names := make(map[string]bool, len(middlewares))
+
+	for _, middleware := range middlewares {
+		if middleware == nil {
+			return nil, agenterrors.NewDeveloperError("agent middleware is nil")
+		}
+
+		name := strings.TrimSpace(middleware.MiddlewareName())
+		if name == "" {
+			return nil, agenterrors.NewDeveloperError("agent middleware name is empty")
+		}
+		names[name] = true
+
+		priority := 0
+		if typed, ok := middleware.(MiddlewarePrioritizer); ok {
+			priority = typed.MiddlewarePriority()
+		}
+
+		var dependencies []string
+		if typed, ok := middleware.(MiddlewareDependencyProvider); ok {
+			for _, dependency := range typed.MiddlewareDependsOn() {
+				dependency = strings.TrimSpace(dependency)
+				if dependency == "" {
+					continue
+				}
+				dependencies = append(dependencies, dependency)
+			}
+		}
+
+		entries = append(entries, middlewareOrderEntry{
+			middleware:   middleware,
+			name:         name,
+			priority:     priority,
+			dependencies: dependencies,
+		})
+	}
+
+	for _, entry := range entries {
+		for _, dependency := range entry.dependencies {
+			if !names[dependency] {
+				return nil, agenterrors.NewDeveloperError(
+					fmt.Sprintf("agent middleware %q depends on missing middleware %q", entry.name, dependency),
+				)
+			}
+		}
+	}
+
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].priority < entries[j].priority
+	})
+
+	ordered := make([]Middleware, 0, len(entries))
+	done := make(map[string]bool, len(entries))
+	for len(entries) > 0 {
+		selected := -1
+		for index, entry := range entries {
+			if middlewareDependenciesReady(entry.dependencies, done) {
+				selected = index
+				break
+			}
+		}
+		if selected == -1 {
+			return nil, agenterrors.NewDeveloperError("agent middleware dependencies cannot be ordered")
+		}
+
+		entry := entries[selected]
+		ordered = append(ordered, entry.middleware)
+		done[entry.name] = true
+		entries = append(entries[:selected], entries[selected+1:]...)
+	}
+
+	return ordered, nil
+}
+
+func middlewareDependenciesReady(dependencies []string, done map[string]bool) bool {
+	for _, dependency := range dependencies {
+		if !done[dependency] {
+			return false
+		}
+	}
+	return true
 }
 
 // NewAgent creates an Agent.
@@ -293,15 +428,16 @@ func NewAgent(name, systemPrompt string, model ChatModel, opts ...AgentOption) (
 	}
 
 	agent := &Agent{
-		name:              name,
-		systemPrompt:      systemPrompt,
-		model:             model,
-		toolkit:           emptyToolProvider{},
-		state:             NewAgentState(),
-		modelConfig:       DefaultModelConfig(),
-		contextConfig:     DefaultContextConfig(),
-		reactConfig:       DefaultReActConfig(),
-		contextStrategies: DefaultContextStrategies(),
+		name:                name,
+		systemPrompt:        systemPrompt,
+		model:               model,
+		toolkit:             emptyToolProvider{},
+		state:               NewAgentState(),
+		modelConfig:         DefaultAgentConfig().Model,
+		contextConfig:       DefaultAgentConfig().Context,
+		reactConfig:         DefaultAgentConfig().ReAct,
+		contextStrategies:   DefaultContextStrategies(),
+		securityAuditLogger: slogSecurityAuditLogger{},
 	}
 
 	for _, opt := range opts {
@@ -359,6 +495,10 @@ func (a *Agent) ReplyStream(ctx context.Context, input any, yield func(message.E
 		yield = func(message.Event) error { return nil }
 	}
 
+	// Serialize the reply flow to avoid concurrent Agent state mutation.
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	// If no any hooks, exec.
 	if len(a.replyHooks) == 0 {
 		return a.runReply(ctx, input, yield)
@@ -385,11 +525,39 @@ func (a *Agent) ReplyStream(ctx context.Context, input any, yield func(message.E
 // Reply runs one reply and returns the current assistant message.
 func (a *Agent) Reply(ctx context.Context, input any) (*message.Message, error) {
 
-	if err := a.ReplyStream(ctx, input, nil); err != nil {
-		return nil, err
+	if a == nil {
+		return nil, agenterrors.NewDeveloperError("agent is nil")
 	}
 
-	last := a.lastMessage()
+	// Use the same lock as ReplyStream to avoid re-entering the reply flow.
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Run the underlying flow directly to avoid calling ReplyStream and locking twice.
+	if len(a.replyHooks) == 0 {
+		if err := a.runReply(ctx, input, nil); err != nil {
+			return nil, err
+		}
+	} else {
+		streamCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		events, streamErr, err := a.replyEventStream(streamCtx, input)
+		if err != nil {
+			return nil, err
+		}
+		for range events {
+		}
+		if err := streamErr(); err != nil {
+			return nil, err
+		}
+	}
+
+	// The lock is already held, so the last message can be read directly.
+	if a.state == nil || len(a.state.Context) == 0 {
+		return nil, agenterrors.NewDeveloperError("agent did not produce a final assistant message")
+	}
+	last := a.state.Context[len(a.state.Context)-1]
 	if last == nil || last.Role != message.RoleAssistant || last.ID != a.state.ReplyID {
 		return nil, agenterrors.NewDeveloperError("agent did not produce a final assistant message")
 	}
@@ -411,6 +579,10 @@ func (a *Agent) Observe(ctx context.Context, input any) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
+	// Serialize the observe flow to avoid concurrent Agent state mutation.
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
 	switch value := input.(type) {
 	default:
@@ -678,7 +850,10 @@ func (a *Agent) emitAndApply(assistant *message.Message, event message.Event, em
 			return err
 		}
 	}
-	return emit(event)
+	if emit != nil {
+		return emit(event)
+	}
+	return nil
 }
 
 func (a *Agent) lastMessage() *message.Message {

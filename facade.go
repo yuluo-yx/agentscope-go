@@ -34,14 +34,19 @@ import (
 )
 
 type (
-	Agent                = asagent.Agent
-	AgentOption          = asagent.AgentOption
-	ContextConfig        = asagent.ContextConfig
-	ReActConfig          = asagent.ReActConfig
-	ModelConfig          = asagent.ModelConfig
-	ToolProvider         = asagent.ToolProvider
-	ContextStrategy      = asagent.ContextStrategy
-	ContextStrategyInput = asagent.ContextStrategyInput
+	Agent                  = asagent.Agent
+	AgentOption            = asagent.AgentOption
+	AgentConfig            = asagent.AgentConfig
+	SecurityAuditEvent     = asagent.SecurityAuditEvent
+	SecurityAuditEventType = asagent.SecurityAuditEventType
+	SecurityAuditLogger    = asagent.SecurityAuditLogger
+	SecurityAuditFunc      = asagent.SecurityAuditFunc
+	ContextConfig          = asagent.ContextConfig
+	ReActConfig            = asagent.ReActConfig
+	ModelConfig            = asagent.ModelConfig
+	ToolProvider           = asagent.ToolProvider
+	ContextStrategy        = asagent.ContextStrategy
+	ContextStrategyInput   = asagent.ContextStrategyInput
 )
 
 type (
@@ -65,6 +70,7 @@ type (
 
 type (
 	AgentState     = asstate.AgentState
+	SafeAgentState = asstate.SafeAgentState
 	SummaryContent = asstate.SummaryContent
 	ReadCacheEntry = asstate.ReadCacheEntry
 	ToolContext    = asstate.ToolContext
@@ -227,20 +233,27 @@ const (
 	UsageTypeChat          = asmodel.UsageTypeChat
 	RAGModeAgentic         = asmiddleware.RAGModeAgentic
 	RAGModeStatic          = asmiddleware.RAGModeStatic
+
+	SecurityAuditEventPermissionRequired = asagent.SecurityAuditEventPermissionRequired
+	SecurityAuditEventPermissionDenied   = asagent.SecurityAuditEventPermissionDenied
+	SecurityAuditEventToolExecutionError = asagent.SecurityAuditEventToolExecutionError
 )
 
 var (
-	NewAgent              = asagent.NewAgent
-	WithToolkit           = asagent.WithToolkit
-	WithAgentResources    = asagent.WithAgentResources
-	WithAgentState        = asagent.WithAgentState
-	WithModelConfig       = asagent.WithModelConfig
-	WithContextConfig     = asagent.WithContextConfig
-	WithContextStrategies = asagent.WithContextStrategies
-	WithReActConfig       = asagent.WithReActConfig
-	WithMiddlewares       = asagent.WithMiddlewares
-	WithLoopSpec          = loopruntime.WithSpec
+	NewAgent                = asagent.NewAgent
+	WithToolkit             = asagent.WithToolkit
+	WithAgentResources      = asagent.WithAgentResources
+	WithAgentState          = asagent.WithAgentState
+	WithAgentConfig         = asagent.WithAgentConfig
+	WithSecurityAuditLogger = asagent.WithSecurityAuditLogger
+	WithModelConfig         = asagent.WithModelConfig
+	WithContextConfig       = asagent.WithContextConfig
+	WithContextStrategies   = asagent.WithContextStrategies
+	WithReActConfig         = asagent.WithReActConfig
+	WithMiddlewares         = asagent.WithMiddlewares
+	WithLoopSpec            = loopruntime.WithSpec
 
+	DefaultAgentConfig                    = asagent.DefaultAgentConfig
 	DefaultContextConfig                  = asagent.DefaultContextConfig
 	DefaultContextStrategies              = asagent.DefaultContextStrategies
 	DefaultSummarySchema                  = asagent.DefaultSummarySchema
@@ -259,10 +272,12 @@ var (
 	NewAutomationTemplateNextActionMapper = automationgoal.NewTemplateNextActionMapper
 	NewAutomationFileRunStore             = automationstore.NewFileRunStore
 
-	NewAgentState  = asstate.NewAgentState
-	NewToolContext = asstate.NewToolContext
-	NewTask        = asstate.NewTask
-	NewTaskContext = asstate.NewTaskContext
+	NewAgentState     = asstate.NewAgentState
+	NewSafeAgentState = asstate.NewSafeAgentState
+	WrapAgentState    = asstate.WrapAgentState
+	NewToolContext    = asstate.NewToolContext
+	NewTask           = asstate.NewTask
+	NewTaskContext    = asstate.NewTaskContext
 
 	NewChatResponse           = asmodel.NewChatResponse
 	WithChatResponseID        = asmodel.WithChatResponseID

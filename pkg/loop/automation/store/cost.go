@@ -21,15 +21,15 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/loop/automation/event"
 )
 
-// CostEstimator 基于通用 RunRecord 估算一次 run 的成本。
+// CostEstimator estimates the cost of one run from a generic RunRecord.
 type CostEstimator interface {
 	EstimateRunCost(context.Context, RunRecord) (float64, error)
 }
 
-// CostEstimatorFunc 将函数适配为 CostEstimator。
+// CostEstimatorFunc adapts a function into a CostEstimator.
 type CostEstimatorFunc func(context.Context, RunRecord) (float64, error)
 
-// EstimateRunCost 调用底层函数估算成本。
+// EstimateRunCost calls the underlying function to estimate cost.
 func (f CostEstimatorFunc) EstimateRunCost(ctx context.Context, record RunRecord) (float64, error) {
 	if f == nil {
 		return 0, fmt.Errorf("automation: cost estimator func is nil")
@@ -37,13 +37,13 @@ func (f CostEstimatorFunc) EstimateRunCost(ctx context.Context, record RunRecord
 	return f(ctx, record)
 }
 
-// CostingRunStore 在写入 run 前补充通用成本估算。
+// CostingRunStore adds a generic cost estimate before writing a run.
 type CostingRunStore struct {
 	Store     RunStore
 	Estimator CostEstimator
 }
 
-// SeenEvent 委托给底层 RunStore。
+// SeenEvent delegates to the underlying RunStore.
 func (s *CostingRunStore) SeenEvent(ctx context.Context, key string) (bool, error) {
 	store, err := s.store()
 	if err != nil {
@@ -52,7 +52,7 @@ func (s *CostingRunStore) SeenEvent(ctx context.Context, key string) (bool, erro
 	return store.SeenEvent(ctx, key)
 }
 
-// RecordEvent 委托给底层 RunStore。
+// RecordEvent delegates to the underlying RunStore.
 func (s *CostingRunStore) RecordEvent(ctx context.Context, event event.Event) error {
 	store, err := s.store()
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *CostingRunStore) RecordEvent(ctx context.Context, event event.Event) er
 	return store.RecordEvent(ctx, event)
 }
 
-// RecordRun 估算成本后委托给底层 RunStore 记录 run。
+// RecordRun estimates cost and delegates run recording to the underlying RunStore.
 func (s *CostingRunStore) RecordRun(ctx context.Context, record RunRecord) error {
 	if err := checkStoreInput(ctx); err != nil {
 		return err

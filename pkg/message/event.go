@@ -264,7 +264,7 @@ func WithHintBlockEventSource(source string) HintBlockEventOption {
 	return func(e *HintBlockEvent) { e.Source = cloneString(source) }
 }
 
-// WithToolResultEndMetadata 设置工具结果结束事件携带的元数据。
+// WithToolResultEndMetadata sets metadata carried by a tool-result end event.
 func WithToolResultEndMetadata(metadata map[string]any) ToolResultEndEventOption {
 	return func(e *ToolResultEndEvent) {
 		e.Metadata = utils.CloneAnyMap(metadata)

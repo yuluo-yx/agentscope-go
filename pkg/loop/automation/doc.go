@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package automation 提供事件驱动的 Loop Engineering 外层编排能力。
+// Package automation provides event-driven outer orchestration for Loop Engineering.
 //
-// 本包位于 loop 包之上。loop 包控制一次 Agent run，本包负责决定哪个
-// 通用事件触发该 run、事件如何映射为 Agent 输入、并发、预算和估算成本如何受控、
-// 目标如何跨 run 续跑，以及 event、run、report 如何审计。LoopTemplate 用于描述
-// 可复用 loop 配置和项目知识引用，但不绑定具体插件格式。成本估算只通过通用
-// CostEstimator 接入，模型价格表和账单语义由应用侧 adapter 提供。
+// This package sits above package loop. Package loop controls one Agent run,
+// while this package decides which generic event triggers that run, how events
+// map to Agent input, how concurrency, budget, and estimated cost are controlled,
+// how goals continue across runs, and how events, runs, and reports are audited.
+// LoopTemplate describes reusable loop configuration and project knowledge
+// references without binding to a concrete plugin format. Cost estimates are
+// integrated only through the generic CostEstimator; model pricing tables and
+// billing semantics are provided by application adapters.
 package automation

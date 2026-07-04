@@ -68,6 +68,17 @@ type Middleware interface {
 	MiddlewareName() string
 }
 
+// MiddlewarePrioritizer is optionally implemented by middleware that needs a deterministic order.
+// Lower priority values wrap and run before higher values. Middleware without this interface uses priority 0.
+type MiddlewarePrioritizer interface {
+	MiddlewarePriority() int
+}
+
+// MiddlewareDependencyProvider is optionally implemented by middleware that must run after named dependencies.
+type MiddlewareDependencyProvider interface {
+	MiddlewareDependsOn() []string
+}
+
 // ReplyMiddleware is implemented by middleware that intercepts full replies.
 type ReplyMiddleware interface {
 	// OnReply wraps a full Agent reply, including input handling, reasoning, acting, and reply-end events.

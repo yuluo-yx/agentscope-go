@@ -52,6 +52,11 @@ test-unit: ## Run non-E2E Go tests with race detection
 	@$(LOG_TARGET)
 	$(GO) test $(UNIT_PACKAGES) -v -race
 
+.PHONY: test-race
+test-race: ## Run non-E2E Go tests with the race detector
+	@$(LOG_TARGET)
+	$(GO) test $(UNIT_PACKAGES) -race
+
 .PHONY: ci
 ci: ## Run CI-aligned checks for formatting, linting, spelling, security, and tests
 ci: ci-tools fmt-check lint-go codespell-check markdown-lint security-check test

@@ -25,7 +25,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/loop/automation/store"
 )
 
-// AutomationBudget 描述跨 run 的自动化预算上限。
+// AutomationBudget describes cross-run automation budget limits.
 type AutomationBudget struct {
 	MaxRunsPerDay   int
 	MaxTokensPerDay int
@@ -34,19 +34,19 @@ type AutomationBudget struct {
 	PerLoop         map[string]BudgetLimit
 }
 
-// BudgetLimit 描述一个预算作用域内的每日上限。
+// BudgetLimit describes the daily limits within one budget scope.
 type BudgetLimit struct {
 	MaxRunsPerDay   int
 	MaxTokensPerDay int
 	MaxCostPerDay   float64
 }
 
-// BudgetStore 提供指定时间窗口内的自动化用量。
+// BudgetStore provides automation usage within a specified time window.
 type BudgetStore interface {
 	BudgetUsage(context.Context, store.BudgetWindow) (store.BudgetUsage, error)
 }
 
-// BudgetGate 在启动 Agent 前检查长期预算。
+// BudgetGate checks long-term budget limits before starting an Agent.
 type BudgetGate struct {
 	Store      BudgetStore
 	Budget     AutomationBudget
@@ -54,7 +54,7 @@ type BudgetGate struct {
 	StopReason string
 }
 
-// Evaluate 根据当天历史用量判断本次 run 是否应该暂停。
+// Evaluate decides whether this run should pause based on today's historical usage.
 func (g BudgetGate) Evaluate(ctx context.Context, evt event.Event, decision event.RouteDecision) (GateDecision, error) {
 	if ctx == nil {
 		return GateDecision{}, fmt.Errorf("automation: context is nil")

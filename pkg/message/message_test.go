@@ -166,3 +166,21 @@ func TestMessageValidatesRoleContent(t *testing.T) {
 		t.Fatal("NewMessage should reject data blocks in system messages")
 	}
 }
+
+func BenchmarkMessageClone(b *testing.B) {
+	msg, err := message.NewAssistantMessage("assistant", []message.ContentBlock{
+		message.NewTextBlock("first"),
+		message.NewTextBlock("second"),
+		message.NewToolCallBlock("call-1", "Search", `{"query":"agentscope"}`),
+	}, message.WithMessageMetadata(map[string]any{
+		"trace": map[string]any{"id": "bench"},
+	}))
+	if err != nil {
+		b.Fatalf("NewAssistantMessage returned error: %v", err)
+	}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = msg.Clone()
+	}
+}

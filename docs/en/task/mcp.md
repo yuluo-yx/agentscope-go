@@ -49,3 +49,16 @@ kit, err := tool.NewToolkit(tools...)
 ## Permission Behavior
 
 If an MCP tool declares `readOnlyHint=true`, AgentScope Go allows it by default. Other MCP tools ask by default.
+
+MCP permission rules can match either the wrapped tool name or a server-level rule. Server-level rules use `mcp:<server>`, for example:
+
+```go
+engine.AddRule(permission.Rule{
+	ToolName:    "mcp__people__lookup_profile",
+	RuleContent: "mcp:people",
+	Behavior:    permission.BehaviorAllow,
+	Source:      "ops-policy",
+})
+```
+
+Confirmation suggestions also include `mcp:<server>` so callers can persist an “allow this MCP server” policy. In production, still prefer `WithEnabledTools` to shrink the exposed tool set before adding permission rules.

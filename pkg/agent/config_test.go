@@ -89,3 +89,38 @@ func TestConfigValidationFailureBranches(t *testing.T) {
 		t.Fatalf("default model config should validate: %v", err)
 	}
 }
+
+func TestAgentConfigDefaultsCloneValidationAndOption(t *testing.T) {
+	t.Parallel()
+
+	config := agentpkg.DefaultAgentConfig()
+	if err := config.Validate(); err != nil {
+		t.Fatalf("default agent config should validate: %v", err)
+	}
+	if config.Model.MaxRetries != agentpkg.DefaultModelConfig().MaxRetries ||
+		config.Context.ToolResultLimit != agentpkg.DefaultContextConfig().ToolResultLimit ||
+		config.ReAct.MaxIters != agentpkg.DefaultReActConfig().MaxIters {
+		t.Fatalf("agent config should compose existing defaults: %#v", config)
+	}
+
+	clone := config.Clone()
+	clone.Context.SummarySchema["properties"].(map[string]any)["task_overview"].(map[string]any)["type"] = "integer"
+	if config.Context.SummarySchema["properties"].(map[string]any)["task_overview"].(map[string]any)["type"] != "string" {
+		t.Fatalf("Clone should deep-copy nested context schema: %#v", config.Context.SummarySchema)
+	}
+
+	invalid := config
+	invalid.ReAct.MaxIters = 0
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("invalid nested ReAct config should return validation error")
+	}
+	if _, err := agentpkg.NewAgent("agent", "system", &scriptedChatModel{}, agentpkg.WithAgentConfig(invalid)); err == nil {
+		t.Fatal("WithAgentConfig should reject invalid nested config")
+	}
+
+	config.Model.MaxRetries = 1
+	config.ReAct.MaxIters = 1
+	if _, err := agentpkg.NewAgent("agent", "system", &scriptedChatModel{}, agentpkg.WithAgentConfig(config)); err != nil {
+		t.Fatalf("WithAgentConfig should apply valid aggregate config: %v", err)
+	}
+}

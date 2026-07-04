@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
@@ -30,6 +31,10 @@ const (
 	DefaultContextWarningThreshold  = 20000
 	DefaultContextCompactThreshold  = 13000
 	DefaultContextBlockingThreshold = 3000
+
+	defaultToolResultContextStrategyPriority = 10
+	defaultThresholdContextStrategyPriority  = 20
+	defaultSummaryContextStrategyPriority    = 30
 )
 
 // ContextStrategy applies one context compression or offload step.
@@ -38,6 +43,18 @@ type ContextStrategy interface {
 	ContextStrategyName() string
 	// ApplyContextStrategy mutates the provided Agent state when compression or offload is needed.
 	ApplyContextStrategy(context.Context, *ContextStrategyInput) error
+}
+
+// ContextStrategyPrioritizer is optionally implemented by strategies that need deterministic ordering.
+// Lower priority values run before higher values. Strategies without this interface use priority 0.
+type ContextStrategyPrioritizer interface {
+	ContextStrategyPriority() int
+}
+
+// ContextStrategyShortCircuiter is optionally implemented by strategies that can stop the strategy chain.
+// ShouldShortCircuit is evaluated only after ApplyContextStrategy returns nil.
+type ContextStrategyShortCircuiter interface {
+	ShouldShortCircuit(*ContextStrategyInput) bool
 }
 
 // ContextStrategyInput exposes the Agent state and helpers needed by context strategies.
@@ -97,7 +114,7 @@ func (i *ContextStrategyInput) CurrentModelRequest(ctx context.Context) (CallReq
 	}
 	for _, msg := range i.State.Context {
 		if msg != nil {
-			messages = append(messages, msg.Clone())
+			messages = append(messages, cloneMessageForModelInput(msg))
 		}
 	}
 	tools, err := i.ToolSchemas()
@@ -116,6 +133,26 @@ func DefaultContextStrategies() []ContextStrategy {
 	}
 }
 
+func orderContextStrategies(strategies []ContextStrategy) []ContextStrategy {
+	ordered := make([]ContextStrategy, 0, len(strategies))
+	for _, strategy := range strategies {
+		if strategy != nil {
+			ordered = append(ordered, strategy)
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return contextStrategyPriority(ordered[i]) < contextStrategyPriority(ordered[j])
+	})
+	return ordered
+}
+
+func contextStrategyPriority(strategy ContextStrategy) int {
+	if typed, ok := strategy.(ContextStrategyPrioritizer); ok {
+		return typed.ContextStrategyPriority()
+	}
+	return 0
+}
+
 // ToolResultContextStrategy offloads base64 data blocks and truncates or offloads oversized tool results.
 type ToolResultContextStrategy struct{}
 
@@ -127,6 +164,11 @@ func NewToolResultContextStrategy() ContextStrategy {
 // ContextStrategyName returns the strategy name.
 func (ToolResultContextStrategy) ContextStrategyName() string {
 	return "tool-result"
+}
+
+// ContextStrategyPriority returns the default order of the built-in tool-result strategy.
+func (ToolResultContextStrategy) ContextStrategyPriority() int {
+	return defaultToolResultContextStrategyPriority
 }
 
 // ApplyContextStrategy runs the legacy tool-result and data-block cleanup behavior.
@@ -152,6 +194,11 @@ func NewSummaryContextStrategy() ContextStrategy {
 // ContextStrategyName returns the strategy name.
 func (SummaryContextStrategy) ContextStrategyName() string {
 	return "summary"
+}
+
+// ContextStrategyPriority returns the default order of the built-in summary strategy.
+func (SummaryContextStrategy) ContextStrategyPriority() int {
+	return defaultSummaryContextStrategyPriority
 }
 
 // ApplyContextStrategy summarizes old messages when MaxTokens and TriggerRatio indicate pressure.
@@ -185,6 +232,11 @@ func NewThresholdContextStrategy() ContextStrategy {
 // ContextStrategyName returns the strategy name.
 func (ThresholdContextStrategy) ContextStrategyName() string {
 	return "threshold"
+}
+
+// ContextStrategyPriority returns the default order of the built-in threshold strategy.
+func (ThresholdContextStrategy) ContextStrategyPriority() int {
+	return defaultThresholdContextStrategyPriority
 }
 
 // ApplyContextStrategy applies warning, auto-compact, and blocking thresholds.
@@ -665,7 +717,7 @@ func cloneMessages(messages []*message.Message) []*message.Message {
 			out = append(out, nil)
 			continue
 		}
-		out = append(out, msg.Clone())
+		out = append(out, cloneMessageForModelInput(msg))
 	}
 	return out
 }

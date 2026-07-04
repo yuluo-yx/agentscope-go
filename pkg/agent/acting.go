@@ -156,11 +156,13 @@ func (a *Agent) prepareToolCall(ctx context.Context, assistant *message.Message,
 	default:
 		return nil, false, fmt.Errorf("agentscope: unsupported permission behavior %q", decision.Behavior)
 	case permission.BehaviorAsk, permission.BehaviorPassthrough:
+		a.auditToolSecurityEvent(ctx, SecurityAuditEventPermissionRequired, tool, toolCall, decision.Message)
 		toolCall.State = message.ToolCallAsking
 		toolCall.SuggestedRules = append([]permission.Rule(nil), decision.SuggestedRules...)
 
 		return nil, true, a.emitAndApply(assistant, message.NewRequireUserConfirmEvent(a.state.ReplyID, []*message.ToolCallBlock{toolCall.Clone().(*message.ToolCallBlock)}), emit)
 	case permission.BehaviorDeny:
+		a.auditToolSecurityEvent(ctx, SecurityAuditEventPermissionDenied, tool, toolCall, decision.Message)
 		toolCall.State = message.ToolCallFinished
 
 		return nil, false, a.emitToolError(assistant, toolCall, decision.Message, message.ToolResultDenied, emit)
@@ -271,12 +273,14 @@ func (a *Agent) executeLocalTool(ctx context.Context, assistant *message.Message
 		},
 	)
 	if err != nil {
+		a.auditToolSecurityEvent(ctx, SecurityAuditEventToolExecutionError, nil, toolCall, err.Error())
 		if emitErr := a.emitToolExecutionError(assistant, toolCall, err.Error(), message.ToolResultError, emit); emitErr != nil {
 			return emitErr
 		}
 		return nil
 	}
 	if chunks == nil {
+		a.auditToolSecurityEvent(ctx, SecurityAuditEventToolExecutionError, nil, toolCall, "tool returned nil chunk stream")
 		return a.emitToolExecutionError(assistant, toolCall, "tool returned nil chunk stream", message.ToolResultError, emit)
 	}
 
@@ -292,6 +296,10 @@ func (a *Agent) executeLocalTool(ctx context.Context, assistant *message.Message
 		if err := a.emitToolChunk(assistant, toolCall, &chunk, emit); err != nil {
 			return err
 		}
+	}
+
+	if finalState == message.ToolResultError {
+		a.auditToolSecurityEvent(ctx, SecurityAuditEventToolExecutionError, nil, toolCall, "tool returned error state")
 	}
 
 	return a.emitAndApply(assistant, message.NewToolResultEndEvent(
@@ -329,6 +337,7 @@ func (a *Agent) executeLocalToolBatch(ctx context.Context, assistant *message.Me
 	for index, plan := range plans {
 		result := results[index]
 		if result.err != nil {
+			a.auditToolSecurityEvent(ctx, SecurityAuditEventToolExecutionError, plan.tool, plan.toolCall, result.err.Error())
 			if err := a.emitToolExecutionError(assistant, plan.toolCall, result.err.Error(), message.ToolResultError, emit); err != nil {
 				return err
 			}
@@ -345,6 +354,10 @@ func (a *Agent) executeLocalToolBatch(ctx context.Context, assistant *message.Me
 			if err := a.emitToolChunk(assistant, plan.toolCall, &chunk, emit); err != nil {
 				return err
 			}
+		}
+
+		if finalState == message.ToolResultError {
+			a.auditToolSecurityEvent(ctx, SecurityAuditEventToolExecutionError, plan.tool, plan.toolCall, "tool returned error state")
 		}
 
 		if err := a.emitAndApply(assistant, message.NewToolResultEndEvent(

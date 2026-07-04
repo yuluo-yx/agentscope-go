@@ -17,6 +17,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -66,6 +67,9 @@ func TestAgentOptionsInputAndObservationBranches(t *testing.T) {
 	}
 
 	state := NewAgentState()
+	if NewSafeAgentState() == nil || WrapAgentState(state) == nil {
+		t.Fatalf("safe agent state aliases should be available")
+	}
 	agent, err := NewAgent(
 		"agent",
 		"base",
@@ -91,6 +95,9 @@ func TestAgentOptionsInputAndObservationBranches(t *testing.T) {
 	}
 	if err := nilAgent.ReplyStream(context.Background(), nil, nil); err == nil || !strings.Contains(err.Error(), "agent is nil") {
 		t.Fatalf("nil ReplyStream error = %v", err)
+	}
+	if _, err := nilAgent.Reply(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "agent is nil") {
+		t.Fatalf("nil Reply error = %v", err)
 	}
 	if err := nilAgent.Observe(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "agent is nil") {
 		t.Fatalf("nil Observe error = %v", err)
@@ -841,6 +848,35 @@ func TestReasoningHookAndStreamErrorBranches(t *testing.T) {
 	}
 }
 
+func TestModelStreamStatePoolResetsState(t *testing.T) {
+	t.Parallel()
+
+	state := acquireModelStreamState()
+	state.textID = "text"
+	state.thinkingID = "thinking"
+	state.toolActive["tool"] = true
+	state.toolOrder = append(state.toolOrder, "tool")
+	state.seenText = true
+	state.seenThinking = true
+	state.seenTools["tool"] = true
+	state.seenData["data"] = true
+	state.emitted = true
+	releaseModelStreamState(state)
+
+	next := acquireModelStreamState()
+	defer releaseModelStreamState(next)
+
+	if next.textID != "" || next.thinkingID != "" || next.seenText || next.seenThinking || next.emitted {
+		t.Fatalf("pooled model stream state should reset scalar fields: %#v", next)
+	}
+	if len(next.toolActive) != 0 || len(next.toolOrder) != 0 || len(next.seenTools) != 0 || len(next.seenData) != 0 {
+		t.Fatalf("pooled model stream state should reset collections: %#v", next)
+	}
+	if next.toolActive == nil || next.seenTools == nil || next.seenData == nil {
+		t.Fatalf("pooled model stream state maps should be ready for reuse: %#v", next)
+	}
+}
+
 func TestReasoningModelInputCallModelAndSummaryBranches(t *testing.T) {
 
 	t.Parallel()
@@ -879,7 +915,7 @@ func TestReasoningModelInputCallModelAndSummaryBranches(t *testing.T) {
 		t.Fatalf("summary text message mismatch: %#v", request.Messages[1])
 	}
 	user.Content = nil
-	if text := request.Messages[2].GetTextContent(""); text == nil || *text != "current task" {
+	if text := request.Messages[2].GetTextContent(""); text == nil || *text != wrapUntrustedUserText("user", "current task") {
 		t.Fatalf("context message should be cloned: %#v", request.Messages[2])
 	}
 	if summary := (&Agent{}).summaryMessage(); summary != nil {
@@ -1089,6 +1125,71 @@ func TestReplyLoopMiddlewareAndContextStrategyBranches(t *testing.T) {
 		systemPrompt: func(context.Context) (string, error) { return "", errors.New("prompt failed") },
 	}, []*message.Message{oldMsg}); err == nil || !strings.Contains(err.Error(), "prompt failed") {
 		t.Fatalf("buildSummaryRequest prompt error = %v", err)
+	}
+}
+
+func TestContextStrategyPriorityOrdersCompressContext(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	agent := &Agent{
+		state:         NewAgentState(),
+		model:         &coverageChatModel{name: "strategy-priority"},
+		contextConfig: DefaultContextConfig(),
+		contextStrategies: []ContextStrategy{
+			recordingPriorityContextStrategy{name: "later", priority: 10, calls: &calls},
+			recordingPlainContextStrategy{name: "stable-a", calls: &calls},
+			recordingPlainContextStrategy{name: "stable-b", calls: &calls},
+			recordingPriorityContextStrategy{name: "first", priority: -10, calls: &calls},
+		},
+	}
+
+	if err := agent.compressContext(context.Background()); err != nil {
+		t.Fatalf("compressContext returned error: %v", err)
+	}
+
+	want := []string{"first", "stable-a", "stable-b", "later"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("context strategy priority order mismatch:\nwant %#v\ngot  %#v", want, calls)
+	}
+}
+
+func TestContextStrategyShortCircuitSkipsLaterStrategies(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	agent := &Agent{
+		state:         NewAgentState(),
+		model:         &coverageChatModel{name: "strategy-short-circuit"},
+		contextConfig: DefaultContextConfig(),
+		contextStrategies: []ContextStrategy{
+			recordingPriorityContextStrategy{name: "first", priority: -10, calls: &calls, shortCircuit: true},
+			recordingPriorityContextStrategy{name: "later", priority: 10, calls: &calls},
+		},
+	}
+
+	if err := agent.compressContext(context.Background()); err != nil {
+		t.Fatalf("compressContext returned error: %v", err)
+	}
+
+	want := []string{"first"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("context strategy short circuit mismatch:\nwant %#v\ngot  %#v", want, calls)
+	}
+}
+
+func TestDefaultContextStrategiesKeepStablePriorityOrder(t *testing.T) {
+	t.Parallel()
+
+	strategies := orderContextStrategies(DefaultContextStrategies())
+	names := make([]string, 0, len(strategies))
+	for _, strategy := range strategies {
+		names = append(names, strategy.ContextStrategyName())
+	}
+
+	want := []string{"tool-result", "threshold", "summary"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("default context strategy order mismatch:\nwant %#v\ngot  %#v", want, names)
 	}
 }
 
@@ -1756,4 +1857,46 @@ func (errorContextStrategy) ContextStrategyName() string { return "error" }
 
 func (s errorContextStrategy) ApplyContextStrategy(context.Context, *ContextStrategyInput) error {
 	return s.err
+}
+
+type recordingPlainContextStrategy struct {
+	name  string
+	calls *[]string
+}
+
+func (s recordingPlainContextStrategy) ContextStrategyName() string {
+	return s.name
+}
+
+func (s recordingPlainContextStrategy) ApplyContextStrategy(context.Context, *ContextStrategyInput) error {
+	if s.calls != nil {
+		*s.calls = append(*s.calls, s.name)
+	}
+	return nil
+}
+
+type recordingPriorityContextStrategy struct {
+	name         string
+	priority     int
+	calls        *[]string
+	shortCircuit bool
+}
+
+func (s recordingPriorityContextStrategy) ContextStrategyName() string {
+	return s.name
+}
+
+func (s recordingPriorityContextStrategy) ContextStrategyPriority() int {
+	return s.priority
+}
+
+func (s recordingPriorityContextStrategy) ApplyContextStrategy(context.Context, *ContextStrategyInput) error {
+	if s.calls != nil {
+		*s.calls = append(*s.calls, s.name)
+	}
+	return nil
+}
+
+func (s recordingPriorityContextStrategy) ShouldShortCircuit(*ContextStrategyInput) bool {
+	return s.shortCircuit
 }

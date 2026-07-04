@@ -39,16 +39,17 @@ func (a *Agent) compressContext(ctx context.Context) error {
 	if strategies == nil {
 		strategies = DefaultContextStrategies()
 	}
+	strategies = orderContextStrategies(strategies)
 	input := a.newContextStrategyInput()
 	for _, strategy := range strategies {
-		if strategy == nil {
-			continue
-		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err := strategy.ApplyContextStrategy(ctx, input); err != nil {
 			return err
+		}
+		if typed, ok := strategy.(ContextStrategyShortCircuiter); ok && typed.ShouldShortCircuit(input) {
+			return nil
 		}
 	}
 	return nil

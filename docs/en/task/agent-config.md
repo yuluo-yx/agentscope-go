@@ -14,6 +14,27 @@ agent, err := agent.NewAgent(
 )
 ```
 
+## Unified Configuration
+
+When model retries, ReAct loop limits, and context settings should travel together, start from the defaults, change the fields directly, and pass the result with `agent.WithAgentConfig`:
+
+```go
+config := agent.DefaultAgentConfig()
+config.Model.MaxRetries = 3
+config.ReAct.MaxIters = 10
+config.Context.MaxTokens = 32000
+config.Context.ToolResultLimit = 50000
+
+runner, err := agent.NewAgent(
+	"Friday",
+	"You are concise and use tools when useful.",
+	chatModel,
+	agent.WithAgentConfig(config),
+)
+```
+
+`WithAgentConfig` sets `ModelConfig`, `ReActConfig`, and `ContextConfig` together. Use `WithModelConfig`, `WithReActConfig`, or `WithContextConfig` when only one section changes.
+
 ## Workspace Resources
 
 Use `agent.WithWorkspace(ctx, ws)` when an Agent should consume a workspace
@@ -107,9 +128,31 @@ agent.WithContextStrategies(customStrategy)
 
 Use `agent.DefaultContextConfig()` when you only need to override one field.
 
+Custom strategies can also implement `ContextStrategyPriority()`. Lower values run earlier; strategies that do not implement it use priority `0`. A strategy can implement `ShouldShortCircuit(input)` to stop the remaining strategy chain after it succeeds:
+
+```go
+type RecentOnlyStrategy struct{}
+
+func (RecentOnlyStrategy) ContextStrategyName() string { return "recent-only" }
+func (RecentOnlyStrategy) ContextStrategyPriority() int { return -10 }
+func (RecentOnlyStrategy) ApplyContextStrategy(ctx context.Context, input *agent.ContextStrategyInput) error {
+	return nil
+}
+func (RecentOnlyStrategy) ShouldShortCircuit(input *agent.ContextStrategyInput) bool {
+	return true
+}
+
+agent.WithContextStrategies(
+	RecentOnlyStrategy{},
+	agent.NewSummaryContextStrategy(),
+)
+```
+
 ## Middleware
 
 Register middleware with `agent.WithMiddlewares`. Middleware can intercept replies, reasoning, model calls, tool execution, and system-prompt construction.
+
+Middleware priority defaults to `0`. When a middleware implements `MiddlewarePriority()`, lower values wrap and run earlier. When it implements `MiddlewareDependsOn()`, the named dependencies must be ordered before it. Missing dependencies or cycles make `NewAgent` return a developer error.
 
 The optional `middleware` package provides tracing middleware without making tracing part of the core `agent` package:
 
@@ -118,3 +161,13 @@ agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
 ```
 
 Use `middleware/otel` only when OpenTelemetry integration is needed.
+
+## User Text Wrapping
+
+Agent state keeps the original `message.UserMessage`, but model requests wrap user text blocks as JSON:
+
+```json
+{"type":"untrusted_user_text","sender":"Ada","text":"original user text"}
+```
+
+Applications do not need to create this wrapper themselves. It lets the model distinguish developer/system instructions from untrusted user input and helps reduce prompt-injection confusion.

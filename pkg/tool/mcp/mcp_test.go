@@ -102,6 +102,42 @@ func TestMCPToolConvertsDataBlocksAndToolErrors(t *testing.T) {
 	}
 }
 
+func TestMCPToolMatchesServerScopedPermissionRules(t *testing.T) {
+	t.Parallel()
+
+	client := newConnectedTestClient(t)
+	tools, err := client.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+	badge := findTool(t, tools, "mcp__people__render_badge")
+	if !badge.MatchRule("mcp:people", map[string]any{"name": "Ada"}) {
+		t.Fatalf("server-scoped MCP rule should match tool from people server")
+	}
+	if badge.MatchRule("mcp:other", map[string]any{"name": "Ada"}) {
+		t.Fatalf("server-scoped MCP rule should not match another server")
+	}
+
+	suggestions := badge.GenerateSuggestions(map[string]any{"name": "Ada"})
+	if !hasRuleContent(suggestions, "mcp:people") {
+		t.Fatalf("MCP suggestions should include server-scoped rule: %#v", suggestions)
+	}
+
+	engine := permission.NewEngine(permission.NewContext(permission.ModeDefault))
+	engine.AddRule(permission.Rule{
+		ToolName:    badge.Name(),
+		RuleContent: "mcp:people",
+		Behavior:    permission.BehaviorDeny,
+	})
+	decision, err := engine.CheckPermission(context.Background(), badge, map[string]any{"name": "Ada"})
+	if err != nil {
+		t.Fatalf("CheckPermission returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorDeny {
+		t.Fatalf("server-scoped MCP deny rule should deny badge tool, got %#v", decision)
+	}
+}
+
 func TestStatelessInProcessClientUsesEphemeralConnections(t *testing.T) {
 	t.Parallel()
 
@@ -586,6 +622,15 @@ func containsString(value any, target string) bool {
 			if item == target {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func hasRuleContent(rules []permission.Rule, content string) bool {
+	for _, rule := range rules {
+		if rule.RuleContent == content {
+			return true
 		}
 	}
 	return false

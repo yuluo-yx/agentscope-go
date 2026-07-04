@@ -16,7 +16,9 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
@@ -144,7 +146,7 @@ func (a *Agent) prepareModelInput(ctx context.Context) (CallRequest, error) {
 
 	for _, msg := range a.state.Context {
 		if msg != nil {
-			messages = append(messages, msg.Clone())
+			messages = append(messages, cloneMessageForModelInput(msg))
 		}
 	}
 
@@ -158,6 +160,38 @@ func (a *Agent) prepareModelInput(ctx context.Context) (CallRequest, error) {
 		Tools:      tools,
 		ToolChoice: a.modelConfig.ToolChoice.Clone(),
 	}, nil
+}
+
+func cloneMessageForModelInput(msg *message.Message) *message.Message {
+	cloned := msg.Clone()
+	if cloned == nil || cloned.Role != message.RoleUser {
+		return cloned
+	}
+	for _, block := range cloned.Content {
+		textBlock, ok := block.(*message.TextBlock)
+		if !ok {
+			continue
+		}
+		textBlock.Text = wrapUntrustedUserText(cloned.Name, textBlock.Text)
+	}
+	return cloned
+}
+
+func wrapUntrustedUserText(sender, text string) string {
+	payload := struct {
+		Type   string `json:"type"`
+		Sender string `json:"sender,omitempty"`
+		Text   string `json:"text"`
+	}{
+		Type:   "untrusted_user_text",
+		Sender: sender,
+		Text:   text,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return text
+	}
+	return string(data)
 }
 
 func (a *Agent) buildSystemPrompt(ctx context.Context) (string, error) {
@@ -256,6 +290,12 @@ type modelStreamState struct {
 	emitted bool
 }
 
+var modelStreamStatePool = sync.Pool{
+	New: func() any {
+		return newModelStreamState()
+	},
+}
+
 type modelStreamChunkState struct {
 
 	//  Which tool call IDs have appeared.
@@ -275,8 +315,46 @@ func newModelStreamState() *modelStreamState {
 	}
 }
 
+func acquireModelStreamState() *modelStreamState {
+	state, ok := modelStreamStatePool.Get().(*modelStreamState)
+	if !ok || state == nil {
+		return newModelStreamState()
+	}
+	resetModelStreamState(state)
+	return state
+}
+
+func releaseModelStreamState(state *modelStreamState) {
+	if state == nil {
+		return
+	}
+	resetModelStreamState(state)
+	modelStreamStatePool.Put(state)
+}
+
+func resetModelStreamState(state *modelStreamState) {
+	state.textID = ""
+	state.thinkingID = ""
+	state.toolOrder = state.toolOrder[:0]
+	state.seenText = false
+	state.seenThinking = false
+	state.emitted = false
+	resetBoolMap(&state.toolActive)
+	resetBoolMap(&state.seenTools)
+	resetBoolMap(&state.seenData)
+}
+
+func resetBoolMap(values *map[string]bool) {
+	if *values == nil {
+		*values = map[string]bool{}
+		return
+	}
+	clear(*values)
+}
+
 func (a *Agent) emitChatResponseStream(responses <-chan ChatResponse, emit func(message.Event) error) (*ChatResponse, error) {
-	state := newModelStreamState()
+	state := acquireModelStreamState()
+	defer releaseModelStreamState(state)
 	var completed *ChatResponse
 	for response := range responses {
 		chunk := response.Clone()

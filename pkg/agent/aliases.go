@@ -24,6 +24,7 @@ import (
 
 type (
 	AgentState         = asstate.AgentState
+	SafeAgentState     = asstate.SafeAgentState
 	ContextStatus      = asstate.ContextStatus
 	ContextStatusLevel = asstate.ContextStatusLevel
 	ChatModel          = asmodel.ChatModel
@@ -35,7 +36,11 @@ type (
 	ToolChunk          = astool.ToolChunk
 )
 
-var NewAgentState = asstate.NewAgentState
+var (
+	NewAgentState     = asstate.NewAgentState
+	NewSafeAgentState = asstate.NewSafeAgentState
+	WrapAgentState    = asstate.WrapAgentState
+)
 
 const (
 	ContextStatusNormal   = asstate.ContextStatusNormal

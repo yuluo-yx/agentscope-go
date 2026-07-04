@@ -26,7 +26,7 @@ var (
 	idFactory   = defaultIDFactory
 )
 
-// SetIDFactory 设置 NewID 使用的全局 ID 工厂；传入 nil 会恢复默认 UUID hex 生成器。
+// SetIDFactory sets the global ID factory used by NewID; passing nil restores the default UUID hex generator.
 func SetIDFactory(factory func() string) {
 	idFactoryMu.Lock()
 	defer idFactoryMu.Unlock()
@@ -38,7 +38,7 @@ func SetIDFactory(factory func() string) {
 	idFactory = factory
 }
 
-// ResetIDFactory 恢复默认的 Python 兼容 UUID hex 生成器。
+// ResetIDFactory restores the default Python-compatible UUID hex generator.
 func ResetIDFactory() {
 	SetIDFactory(nil)
 }

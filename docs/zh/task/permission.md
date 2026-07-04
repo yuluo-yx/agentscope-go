@@ -164,6 +164,25 @@ tool.WithFunctionReadOnly(true)
 
 如果函数工具需要更细粒度权限，可以传入 `tool.WithFunctionPermissionFunc`。
 
+## 安全审计
+
+Agent 会在工具需要确认、权限拒绝和工具执行异常时发出安全审计事件。默认实现写入 `slog` debug 日志；应用可以通过 `agent.WithSecurityAuditLogger` 接入自己的日志、审计或告警系统：
+
+```go
+runner, err := agent.NewAgent(
+	"runner",
+	"Run the requested task.",
+	chatModel,
+	agent.WithSecurityAuditLogger(agent.SecurityAuditFunc(func(ctx context.Context, event agent.SecurityAuditEvent) {
+		slog.InfoContext(ctx, "agent security audit", "type", event.Type, "tool", event.ToolName)
+	})),
+)
+```
+
+`SecurityAuditEvent` 只包含事件类型、工具名、MCP 服务名、reply/session 标识和错误摘要，不包含完整工具输入。自定义审计实现也应保持这个约束，避免把用户内容、密钥或大块工具参数写入日志。
+
+模型请求前，Agent 会把用户文本包装成 `{"type":"untrusted_user_text","sender":"...","text":"..."}`。这不改变权限判断中的原始用户消息，只用于让模型识别“不可信用户输入”，降低 Prompt Injection 文本伪装成系统指令的风险。
+
 ## 取舍建议
 
 - 默认交互式应用：使用 `ModeDefault`。

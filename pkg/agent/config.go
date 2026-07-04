@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/yuluo-yx/agentscope-go/pkg/types"
+	"github.com/yuluo-yx/agentscope-go/pkg/utils"
 )
 
 const (
@@ -38,7 +39,6 @@ type ContextConfig struct {
 
 // DefaultContextConfig returns context defaults aligned with the Python version.
 func DefaultContextConfig() ContextConfig {
-
 	return ContextConfig{
 		TriggerRatio:      0.8,
 		ReserveRatio:      0.1,
@@ -48,6 +48,13 @@ func DefaultContextConfig() ContextConfig {
 		SummarySchema:     DefaultSummarySchema(),
 		ToolResultLimit:   50000,
 	}
+}
+
+// Clone returns a deep copy of context configuration.
+func (c ContextConfig) Clone() ContextConfig {
+	cp := c
+	cp.SummarySchema = utils.CloneAnyMap(c.SummarySchema)
+	return cp
 }
 
 // Validate validates context configuration.
@@ -132,6 +139,45 @@ func (c ModelConfig) Validate() error {
 	}
 	if err := c.ToolChoice.Validate(nil); err != nil {
 		return fmt.Errorf("agentscope: invalid tool choice: %w", err)
+	}
+	return nil
+}
+
+// AgentConfig groups all Agent runtime configuration knobs.
+type AgentConfig struct {
+	Model   ModelConfig   `json:"model"`
+	Context ContextConfig `json:"context"`
+	ReAct   ReActConfig   `json:"react"`
+}
+
+// DefaultAgentConfig returns the complete default Agent configuration.
+func DefaultAgentConfig() AgentConfig {
+	return AgentConfig{
+		Model:   DefaultModelConfig(),
+		Context: DefaultContextConfig(),
+		ReAct:   DefaultReActConfig(),
+	}
+}
+
+// Clone returns a deep copy of the complete Agent configuration.
+func (c AgentConfig) Clone() AgentConfig {
+	return AgentConfig{
+		Model:   c.Model.Clone(),
+		Context: c.Context.Clone(),
+		ReAct:   c.ReAct,
+	}
+}
+
+// Validate validates every Agent configuration section.
+func (c AgentConfig) Validate() error {
+	if err := c.Model.Validate(); err != nil {
+		return fmt.Errorf("agentscope: invalid model config: %w", err)
+	}
+	if err := c.Context.Validate(); err != nil {
+		return fmt.Errorf("agentscope: invalid context config: %w", err)
+	}
+	if err := c.ReAct.Validate(); err != nil {
+		return fmt.Errorf("agentscope: invalid ReAct config: %w", err)
 	}
 	return nil
 }

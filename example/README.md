@@ -36,6 +36,7 @@ These model examples make real provider requests by default. Set the matching pr
 | `model/xai/chat` | xAI ChatModel multimodal message, token estimation, non-streaming call, streaming call, and tool loop |
 | `model/zhipu/chat` | Zhipu AI ChatModel non-streaming call, streaming call, token estimation, and tool loop |
 | `agent/basic` | Agent + DashScope ChatModel + task tool end-to-end ReAct flow |
+| `agent/advanced_controls` | Local demo for AgentConfig, middleware ordering, context strategy short-circuiting, prompt protection, and security audit logging |
 | `agent/team` | Process-local leader/worker Agent team tools and inbox delivery |
 | `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
 | `agent/context_strategy` | Summary compression, workspace offload, and custom context strategies |

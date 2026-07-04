@@ -222,7 +222,7 @@ func TestToolMetadataRulesErrorsAndContentConversion(t *testing.T) {
 		t.Fatal("unrelated MCP rule should not match")
 	}
 	suggestions := wrapped.GenerateSuggestions(nil)
-	if len(suggestions) != 1 || suggestions[0].RuleContent != "people.raw_tool" {
+	if !hasRuleContent(suggestions, "mcp:people") || !hasRuleContent(suggestions, "people.raw_tool") {
 		t.Fatalf("suggestions mismatch: %#v", suggestions)
 	}
 

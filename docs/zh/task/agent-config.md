@@ -35,6 +35,27 @@ agent, err := agent.NewAgent(
 
 `agent.NewAgent` 会校验名称和模型。名称用于事件、日志和消息发送者标识，建议使用稳定、简短的业务名称。
 
+## 统一配置
+
+需要同时设置模型重试、ReAct 循环和上下文管理时，可以先取默认值，再直接改字段并传给 `agent.WithAgentConfig`：
+
+```go
+config := agent.DefaultAgentConfig()
+config.Model.MaxRetries = 3
+config.ReAct.MaxIters = 10
+config.Context.MaxTokens = 32000
+config.Context.ToolResultLimit = 50000
+
+runner, err := agent.NewAgent(
+	"Friday",
+	"You are concise and use tools when useful.",
+	chatModel,
+	agent.WithAgentConfig(config),
+)
+```
+
+`WithAgentConfig` 会一次性设置 `ModelConfig`、`ReActConfig` 和 `ContextConfig`，适合把 Agent 运行参数作为一个整体传递。只调整单个部分时，继续使用 `WithModelConfig`、`WithReActConfig` 或 `WithContextConfig` 即可。
+
 ## Sandbox 沙箱资源
 
 当智能体需要直接使用 Sandbox 沙箱时，使用 `agent.WithWorkspace(ctx, ws)`。
@@ -150,6 +171,28 @@ agent.WithContextStrategies(customStrategy)
 
 `WithContextStrategies` 是替换而不是追加。传入自定义策略后，默认的工具结果清理、阈值控制和摘要压缩不会自动保留；需要哪些内置行为，就显式传入哪些策略。只需要覆盖少量字段时，可以先使用 `agent.DefaultContextConfig()` 获取默认值。
 
+自定义策略可以额外实现 `ContextStrategyPriority()`。数值越小，策略越早执行；未实现时优先级为 `0`。策略还可以实现 `ShouldShortCircuit(input)`，在当前策略成功执行后停止后续策略链：
+
+```go
+type RecentOnlyStrategy struct{}
+
+func (RecentOnlyStrategy) ContextStrategyName() string { return "recent-only" }
+func (RecentOnlyStrategy) ContextStrategyPriority() int { return -10 }
+func (RecentOnlyStrategy) ApplyContextStrategy(ctx context.Context, input *agent.ContextStrategyInput) error {
+	return nil
+}
+func (RecentOnlyStrategy) ShouldShortCircuit(input *agent.ContextStrategyInput) bool {
+	return true
+}
+
+agent.WithContextStrategies(
+	RecentOnlyStrategy{},
+	agent.NewSummaryContextStrategy(),
+)
+```
+
+上面的策略会先于默认优先级策略执行，并在执行成功后阻止 `NewSummaryContextStrategy` 继续运行。短路适合“当前请求已经由业务策略完成裁剪，不希望再触发摘要”的场景。
+
 配置建议：
 
 - 短对话或固定小任务：保留默认 `MaxTokens=0`。
@@ -161,6 +204,8 @@ agent.WithContextStrategies(customStrategy)
 
 使用 `agent.WithMiddlewares` 注册中间件。中间件可以拦截回复、推理、模型调用、工具执行和系统提示词构造。
 
+中间件默认优先级为 `0`。实现 `MiddlewarePriority()` 后，数值越小越早包装并执行；实现 `MiddlewareDependsOn()` 后，当前中间件会等待指定名称的中间件先进入链路。依赖不存在或形成环时，`NewAgent` 会返回开发期错误。
+
 可选 `middleware` 包提供 tracing middleware，不让 tracing 进入核心 `agent` 包路径：
 
 ```go
@@ -170,3 +215,13 @@ agent.WithMiddlewares(middleware.NewTracingMiddleware(tracer))
 需要接入 OpenTelemetry 时，再显式使用 `middleware/otel` 子包。
 
 中间件适合横切能力，例如 tracing、TTS、长期记忆和回复预算控制。业务工具仍应放在 `Toolkit` 中，不建议把业务动作藏在中间件里执行。
+
+## 用户文本包装
+
+Agent 在保存上下文时保留原始 `message.UserMessage`，但在发送给模型前会把用户文本块包装成 JSON：
+
+```json
+{"type":"untrusted_user_text","sender":"Ada","text":"用户原文"}
+```
+
+这让模型能够明确区分“开发者系统指令”和“不可信用户输入”，降低用户文本伪装成系统指令或工具指令的风险。业务侧不需要手动处理该包装；需要排查模型请求时，可以在 `ModelCallMiddleware` 中查看发送给模型的消息。

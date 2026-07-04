@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
@@ -132,6 +133,98 @@ func TestCompressContextHooksWrapStrategiesInOrder(t *testing.T) {
 	want := []string{"before:first", "before:second", "strategy", "after:second", "after:first"}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("hook order mismatch:\nwant %#v\ngot  %#v", want, calls)
+	}
+}
+
+func TestMiddlewarePriorityOrdersCompressHooks(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	agent, err := agentpkg.NewAgent(
+		"Friday",
+		"compress context",
+		&scriptedChatModel{},
+		agentpkg.WithContextStrategies(recordingContextStrategy{calls: &calls}),
+		agentpkg.WithMiddlewares(
+			priorityCompressMiddleware{compressHookMiddleware: compressHookMiddleware{name: "later", calls: &calls}, priority: 10},
+			compressHookMiddleware{name: "stable-a", calls: &calls},
+			compressHookMiddleware{name: "stable-b", calls: &calls},
+			priorityCompressMiddleware{compressHookMiddleware: compressHookMiddleware{name: "first", calls: &calls}, priority: -10},
+		),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent returned error: %v", err)
+	}
+
+	if err := agent.CompressContext(context.Background()); err != nil {
+		t.Fatalf("CompressContext returned error: %v", err)
+	}
+
+	want := []string{
+		"before:first",
+		"before:stable-a",
+		"before:stable-b",
+		"before:later",
+		"strategy",
+		"after:later",
+		"after:stable-b",
+		"after:stable-a",
+		"after:first",
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("middleware priority order mismatch:\nwant %#v\ngot  %#v", want, calls)
+	}
+}
+
+func TestMiddlewareDependencyOrdersAfterRequiredNames(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	agent, err := agentpkg.NewAgent(
+		"Friday",
+		"compress context",
+		&scriptedChatModel{},
+		agentpkg.WithContextStrategies(recordingContextStrategy{calls: &calls}),
+		agentpkg.WithMiddlewares(
+			priorityCompressMiddleware{
+				compressHookMiddleware: compressHookMiddleware{name: "dependent", calls: &calls},
+				priority:               -10,
+				dependencies:           []string{"compress-base"},
+			},
+			priorityCompressMiddleware{
+				compressHookMiddleware: compressHookMiddleware{name: "base", calls: &calls},
+				priority:               10,
+			},
+		),
+	)
+	if err != nil {
+		t.Fatalf("NewAgent returned error: %v", err)
+	}
+
+	if err := agent.CompressContext(context.Background()); err != nil {
+		t.Fatalf("CompressContext returned error: %v", err)
+	}
+
+	want := []string{"before:base", "before:dependent", "strategy", "after:dependent", "after:base"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("middleware dependency order mismatch:\nwant %#v\ngot  %#v", want, calls)
+	}
+}
+
+func TestMiddlewareDependencyMissingFails(t *testing.T) {
+	t.Parallel()
+
+	_, err := agentpkg.NewAgent(
+		"Friday",
+		"compress context",
+		&scriptedChatModel{},
+		agentpkg.WithMiddlewares(priorityCompressMiddleware{
+			compressHookMiddleware: compressHookMiddleware{name: "dependent"},
+			dependencies:           []string{"compress-base"},
+		}),
+	)
+	if err == nil || !strings.Contains(err.Error(), "depends on missing middleware") {
+		t.Fatalf("expected missing dependency error, got %v", err)
 	}
 }
 
@@ -287,6 +380,20 @@ func (m compressHookMiddleware) OnCompressContext(
 		*m.calls = append(*m.calls, "after:"+m.name)
 	}
 	return err
+}
+
+type priorityCompressMiddleware struct {
+	compressHookMiddleware
+	priority     int
+	dependencies []string
+}
+
+func (m priorityCompressMiddleware) MiddlewarePriority() int {
+	return m.priority
+}
+
+func (m priorityCompressMiddleware) MiddlewareDependsOn() []string {
+	return append([]string(nil), m.dependencies...)
 }
 
 type recordingContextStrategy struct {

@@ -17,6 +17,7 @@ go run .
 | `model/*/chat` | Provider construction, token estimation, streaming, and tool-call loops |
 | `model/dashscope/chat` | DashScope chat, tool schemas, data-block input, and live call |
 | `agent/basic` | Agent with DashScope ChatModel and task tool |
+| `agent/advanced_controls` | Local demo for AgentConfig, middleware ordering, context strategy short-circuiting, prompt protection, and security audit logging |
 | `agent/configuration` | Agent model fallback, ReAct config, and local context cleanup |
 | `agent/context_strategy` | Summary compression, workspace offload, and custom context strategies |
 | `agent/external` | Agent pause/resume flow for external tool execution |

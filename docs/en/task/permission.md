@@ -77,3 +77,22 @@ engine.AddRule(permission.Rule{
 ```
 
 Tools decide how to match `RuleContent`. Built-in file tools use path-oriented rules. Function tools match empty rules by default unless configured otherwise.
+
+## Security Audit
+
+Agent emits security audit events when a tool requires confirmation, permission is denied, or tool execution fails. The default logger writes debug-level `slog` records. Applications can provide their own logger with `agent.WithSecurityAuditLogger`:
+
+```go
+runner, err := agent.NewAgent(
+	"runner",
+	"Run the requested task.",
+	chatModel,
+	agent.WithSecurityAuditLogger(agent.SecurityAuditFunc(func(ctx context.Context, event agent.SecurityAuditEvent) {
+		slog.InfoContext(ctx, "agent security audit", "type", event.Type, "tool", event.ToolName)
+	})),
+)
+```
+
+`SecurityAuditEvent` carries metadata only: event type, tool name, MCP server name, reply/session identifiers, and an error summary. Custom loggers should not log full tool inputs.
+
+Before model calls, Agent wraps user text as `{"type":"untrusted_user_text","sender":"...","text":"..."}`. This does not change the original message used by permission checks; it helps the model distinguish untrusted user input from system or developer instructions.

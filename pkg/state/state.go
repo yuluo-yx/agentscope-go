@@ -198,6 +198,9 @@ func (c *ToolContext) Clone() *ToolContext {
 }
 
 // AgentState is the Agent runtime state that can be persisted and restored.
+//
+// Note: AgentState is not concurrency-safe by default. Use the SafeAgentState
+// wrapper for concurrent access, or provide external synchronization in the caller.
 type AgentState struct {
 	SessionID string `json:"session_id"`
 	// Compressed summary of conversation messages.

@@ -32,7 +32,19 @@ agent.WithMiddlewares(PromptNote{})
 
 ## Ordering
 
-Middleware runs in registration order. A middleware can call the next handler, inspect the result, replace it, or return an error.
+Middleware is ordered by priority and dependencies before it enters the hook chain. A middleware can call the next handler, inspect the result, replace it, or return an error.
+
+The default priority is `0`. When a middleware implements `MiddlewarePriority()`, lower values wrap and run earlier. When it implements `MiddlewareDependsOn()`, the current middleware waits for the named dependencies:
+
+```go
+type PolicyPrompt struct{}
+
+func (PolicyPrompt) MiddlewareName() string { return "policy-prompt" }
+func (PolicyPrompt) MiddlewarePriority() int { return -10 }
+func (PolicyPrompt) MiddlewareDependsOn() []string { return []string{"base-prompt"} }
+```
+
+Dependency names must exist. Cycles make `agent.NewAgent` return an error.
 
 ## Optional Tracing
 

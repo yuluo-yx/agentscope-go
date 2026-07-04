@@ -172,6 +172,19 @@ client, err := mcp.NewHTTPClient(
 
 生产环境不应只依赖 MCP 服务端的说明文字判断风险。建议同时使用工具过滤和权限规则：只暴露当前 Agent 需要的工具，再对写入类工具设置明确的确认或允许范围。
 
+MCP 工具的规则既可以匹配包装后的工具名，也可以匹配服务级规则。服务级规则格式为 `mcp:<server>`，例如允许 `people` 服务下的全部 MCP 工具：
+
+```go
+engine.AddRule(permission.Rule{
+	ToolName:    "mcp__people__lookup_profile",
+	RuleContent: "mcp:people",
+	Behavior:    permission.BehaviorAllow,
+	Source:      "ops-policy",
+})
+```
+
+用户确认事件给出的建议规则也会包含 `mcp:<server>`，方便调用方保存“允许当前 MCP 服务”的策略。生产环境仍建议优先使用 `WithEnabledTools` 缩小暴露面，再按工具或服务设置权限。
+
 ## 与 Sandbox 沙箱集成
 
 Sandbox 沙箱可以保存 MCP 配置，并在构建 Agent 资源时把 MCP 工具合并到同一个 `Toolkit`：

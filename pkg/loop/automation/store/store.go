@@ -57,7 +57,7 @@ type RunRecord struct {
 	Error             string
 }
 
-// BudgetWindow 描述自动化预算统计的时间窗口。
+// BudgetWindow describes the time window used for automation budget aggregation.
 type BudgetWindow struct {
 	Start     time.Time
 	End       time.Time
@@ -65,7 +65,7 @@ type BudgetWindow struct {
 	LoopName  string
 }
 
-// BudgetUsage 汇总一个预算窗口内的 run 用量。
+// BudgetUsage summarizes run usage within a budget window.
 type BudgetUsage struct {
 	Runs          int
 	ModelCalls    int
@@ -212,7 +212,7 @@ func (s *MemoryRunStore) Reports() []LoopReport {
 	return append([]LoopReport(nil), s.reports...)
 }
 
-// BudgetUsage 返回指定窗口内的聚合 run 用量。
+// BudgetUsage returns aggregated run usage within the specified window.
 func (s *MemoryRunStore) BudgetUsage(ctx context.Context, window BudgetWindow) (BudgetUsage, error) {
 	if err := checkStoreInput(ctx); err != nil {
 		return BudgetUsage{}, err

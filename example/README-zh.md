@@ -36,6 +36,7 @@ go run .
 | `model/xai/chat` | xAI ChatModel 多模态消息、token 估算、非流式、流式和工具调用闭环 |
 | `model/zhipu/chat` | 智谱 AI ChatModel 非流式、流式、token 估算和工具调用闭环 |
 | `agent/basic` | Agent + DashScope ChatModel + task tool 的端到端 ReAct 流程 |
+| `agent/advanced_controls` | 本地演示 AgentConfig、中间件排序、上下文策略短路、Prompt 防护和安全审计 |
 | `agent/team` | 进程内 leader/worker Agent team tools 与 inbox 投递 |
 | `agent/configuration` | Agent model fallback、ReAct 配置和本地上下文清理 |
 | `agent/context_strategy` | 摘要压缩、workspace offload 和自定义上下文策略 |

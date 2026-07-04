@@ -16,7 +16,7 @@ go run .
 不想配置在线模型时，可以先运行不发起在线模型请求的本地示例：
 
 ```bash
-cd example/workspace/local
+cd example/agent/advanced_controls
 go run .
 ```
 
@@ -29,7 +29,7 @@ flowchart TD
     HasKey -- 是 --> Goal{"目标能力"}
     Goal -- 模型供应商 --> Model["model/*/chat<br/>embedding / tts / stt"]
     Goal -- 工具开发 --> Tools["tool/function<br/>tool/builtin<br/>tool/mcp<br/>tool/task<br/>tool/skill"]
-    Goal -- Agent 流程 --> Agent["agent/basic<br/>agent/configuration<br/>agent/context_strategy<br/>agent/permission"]
+    Goal -- Agent 流程 --> Agent["agent/basic<br/>agent/advanced_controls<br/>agent/configuration<br/>agent/context_strategy<br/>agent/permission"]
     Goal -- 服务集成 --> Integration["integration/gin<br/>integration/kratos"]
     Goal -- 隔离执行 --> Sandbox["workspace/local<br/>workspace/docker<br/>workspace/microsandbox<br/>workspace/agentsandbox"]
     Goal -- 观测和 Hook --> Hooks["agent/hooks<br/>agent/middleware_tracing<br/>o11y"]
@@ -39,6 +39,7 @@ flowchart TD
 | --- | --- |
 | 了解消息结构 | `example/message` |
 | 了解 Agent ReAct 循环 | `example/agent/basic` |
+| 理解 Agent 高级控制 | `example/agent/advanced_controls` |
 | 写自定义工具 | `example/tool/function` |
 | 接 MCP 工具 | `example/tool/mcp` |
 | 接文件和 Shell 工具 | `example/workspace/local`、`example/tool/builtin` |
@@ -68,6 +69,7 @@ flowchart TD
 | `model/xai/chat` | xAI ChatModel 多模态消息、token 估算、非流式、流式和工具调用闭环 |
 | `model/zhipu/chat` | 智谱 AI ChatModel 非流式、流式、token 估算和工具调用闭环 |
 | `agent/basic` | 使用 DashScope ChatModel 和任务工具的智能体示例 |
+| `agent/advanced_controls` | 本地演示 AgentConfig、中间件排序、上下文策略短路、Prompt 防护和安全审计 |
 | `agent/team` | 进程内 leader/worker Agent team tools 与 inbox 投递 |
 | `agent/configuration` | Agent model fallback、ReAct 配置和本地上下文清理 |
 | `agent/context_strategy` | 摘要压缩、沙箱 offload 和自定义上下文策略 |

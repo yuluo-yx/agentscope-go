@@ -130,7 +130,7 @@ func (s *FileRunStore) RecordReport(ctx context.Context, report LoopReport) erro
 	return os.WriteFile(path, []byte(renderReport(report)), 0o600)
 }
 
-// BudgetUsage 返回指定窗口内的聚合 run 用量。
+// BudgetUsage returns aggregated run usage within the specified window.
 func (s *FileRunStore) BudgetUsage(ctx context.Context, window BudgetWindow) (usage BudgetUsage, err error) {
 	if err := checkStoreInput(ctx); err != nil {
 		return BudgetUsage{}, err

@@ -22,15 +22,15 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/loop/automation/event"
 )
 
-// Gate 在 Agent 执行前评估一次通用事件和路由决策是否需要暂停。
+// Gate evaluates whether a generic event and routing decision should pause before Agent execution.
 type Gate interface {
 	Evaluate(context.Context, event.Event, event.RouteDecision) (GateDecision, error)
 }
 
-// GateFunc 将函数适配成 Gate。
+// GateFunc adapts a function into Gate.
 type GateFunc func(context.Context, event.Event, event.RouteDecision) (GateDecision, error)
 
-// Evaluate 调用 f(ctx, event, decision)。
+// Evaluate calls f(ctx, event, decision).
 func (f GateFunc) Evaluate(ctx context.Context, evt event.Event, decision event.RouteDecision) (GateDecision, error) {
 	if f == nil {
 		return GateDecision{}, fmt.Errorf("automation: gate is nil")
@@ -38,24 +38,24 @@ func (f GateFunc) Evaluate(ctx context.Context, evt event.Event, decision event.
 	return f(ctx, evt, decision)
 }
 
-// GateDecision 是门禁评估结果。StopReason 为空表示允许继续执行。
+// GateDecision is the gate evaluation result. An empty StopReason allows execution to continue.
 type GateDecision struct {
 	StopReason string
 	Reason     string
 	Metadata   map[string]string
 }
 
-// RequiresStop 判断当前门禁结果是否应在 Agent 执行前停止本次 run。
+// RequiresStop reports whether the current gate result should stop this run before Agent execution.
 func (d GateDecision) RequiresStop() bool {
 	return strings.TrimSpace(d.StopReason) != ""
 }
 
-// GatePolicy 用一组通用字段匹配规则实现 Gate。
+// GatePolicy implements Gate with rules matched against generic fields.
 type GatePolicy struct {
 	Rules []GateRule
 }
 
-// GateRule 是一条不绑定具体平台的门禁规则。
+// GateRule is a gate rule that is not tied to a specific platform.
 type GateRule struct {
 	Name            string
 	StopReason      string
@@ -72,7 +72,7 @@ type GateRule struct {
 	Metadata        map[string]string
 }
 
-// Evaluate 返回第一条匹配规则的门禁结果；没有匹配时允许继续执行。
+// Evaluate returns the gate result for the first matching rule; without a match, execution continues.
 func (p GatePolicy) Evaluate(ctx context.Context, evt event.Event, decision event.RouteDecision) (GateDecision, error) {
 	if ctx == nil {
 		return GateDecision{}, fmt.Errorf("automation: context is nil")

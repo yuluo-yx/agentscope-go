@@ -23,10 +23,10 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/loop/automation/event"
 )
 
-// ErrSchedulerQueueFull 表示 Scheduler 没有可用排队容量。
+// ErrSchedulerQueueFull indicates that Scheduler has no queue capacity available.
 var ErrSchedulerQueueFull = errors.New("automation: scheduler queue full")
 
-// SchedulerPolicy 描述通用事件处理的并发和背压策略。
+// SchedulerPolicy describes concurrency and backpressure policy for generic event handling.
 type SchedulerPolicy struct {
 	MaxConcurrent  int
 	MaxQueueSize   int
@@ -34,7 +34,7 @@ type SchedulerPolicy struct {
 	PerTypeLimit   map[string]int
 }
 
-// Scheduler 在调用下游 EventHandler 前执行通用并发控制和背压。
+// Scheduler applies generic concurrency control and backpressure before calling the downstream EventHandler.
 type Scheduler struct {
 	handler event.EventHandler
 
@@ -44,7 +44,7 @@ type Scheduler struct {
 	typeLimit   map[string]chan struct{}
 }
 
-// NewScheduler 创建一个受 SchedulerPolicy 约束的 EventHandler。
+// NewScheduler creates an EventHandler constrained by SchedulerPolicy.
 func NewScheduler(policy SchedulerPolicy, handler event.EventHandler) (*Scheduler, error) {
 	if handler == nil {
 		return nil, fmt.Errorf("automation: event handler is nil")
@@ -62,7 +62,7 @@ func NewScheduler(policy SchedulerPolicy, handler event.EventHandler) (*Schedule
 	}, nil
 }
 
-// HandleEvent 在策略允许后调用下游 handler。
+// HandleEvent calls the downstream handler after policy permits execution.
 func (s *Scheduler) HandleEvent(ctx context.Context, evt event.Event) error {
 	if s == nil {
 		return fmt.Errorf("automation: scheduler is nil")
