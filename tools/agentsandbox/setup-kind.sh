@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${AGENT_SANDBOX_VERSION:-v0.4.6}"
+VERSION="${AGENT_SANDBOX_VERSION:-v0.5.0}"
 CLUSTER="${AGENT_SANDBOX_KIND_CLUSTER:-agentscope-agent-sandbox}"
 NAMESPACE="${AGENTSCOPE_AGENT_SANDBOX_NAMESPACE:-default}"
 TEMPLATE="${AGENTSCOPE_AGENT_SANDBOX_TEMPLATE:-python-sandbox-template}"
@@ -154,6 +154,18 @@ if bool_enabled "${cluster_exists}"; then
 	kubectl -n agent-sandbox-system delete pods -l app=agent-sandbox-controller --ignore-not-found --wait=false
 fi
 
+log "waiting for Agent Sandbox CRDs"
+kubectl wait --for=condition=Established \
+	crd/sandboxes.agents.x-k8s.io \
+	crd/sandboxclaims.extensions.agents.x-k8s.io \
+	crd/sandboxtemplates.extensions.agents.x-k8s.io \
+	crd/sandboxwarmpools.extensions.agents.x-k8s.io \
+	--timeout=180s
+kubectl get sandboxes.agents.x-k8s.io -A >/dev/null
+kubectl get sandboxclaims.extensions.agents.x-k8s.io -A >/dev/null
+kubectl get sandboxtemplates.extensions.agents.x-k8s.io -A >/dev/null
+kubectl get sandboxwarmpools.extensions.agents.x-k8s.io -A >/dev/null
+
 log "waiting for Agent Sandbox controller deployments"
 kubectl -n agent-sandbox-system wait --for=condition=Available deploy --all --timeout=180s
 kubectl -n agent-sandbox-system get deploy,pods -o wide
@@ -193,5 +205,13 @@ sed \
 	-e "s|\${RUNTIME_IMAGE}|${RUNTIME_IMAGE}|g" \
 	"${SCRIPT_DIR}/python-sandbox-template.yml" | kubectl apply -f -
 
-log "sandbox template status"
+log "installing sandbox warm pool ${TEMPLATE}"
+sed \
+	-e "s|\${SANDBOX_WARMPOOL_NAME}|${TEMPLATE}|g" \
+	-e "s|\${SANDBOX_TEMPLATE_NAME}|${TEMPLATE}|g" \
+	-e "s|\${SANDBOX_NAMESPACE}|${NAMESPACE}|g" \
+	"${SCRIPT_DIR}/python-sandbox-warmpool.yml" | kubectl apply -f -
+
+log "sandbox template and warm pool status"
 kubectl get sandboxtemplate -n "${NAMESPACE}" "${TEMPLATE}"
+kubectl get sandboxwarmpool -n "${NAMESPACE}" "${TEMPLATE}"

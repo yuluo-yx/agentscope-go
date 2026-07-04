@@ -5,7 +5,7 @@ GO_BUILD_FLAGS := -trimpath -buildvcs=false
 LDFLAGS := -s -w
 UNIT_PACKAGES := $(shell $(GO) list ./... 2>/dev/null | grep -v '/benchmarks$$')
 DOCKER_TEST_IMAGE ?= ubuntu:latest
-AGENT_SANDBOX_VERSION ?= v0.4.6
+AGENT_SANDBOX_VERSION ?= v0.5.0
 AGENT_SANDBOX_KIND_CLUSTER ?= agentscope-agent-sandbox
 AGENT_SANDBOX_RUNTIME_IMAGE ?= agentscope-agent-sandbox-runtime:$(AGENT_SANDBOX_VERSION)
 AGENTSCOPE_AGENT_SANDBOX_TEMPLATE ?= python-sandbox-template
