@@ -16,7 +16,10 @@ package rag_test
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -84,6 +87,84 @@ func TestTextParserSupportedTypesAndExtensions(t *testing.T) {
 		".xml",
 		".yaml",
 		".yml",
+	}) {
+		t.Fatalf("supported extensions mismatch: %#v", parser.SupportedExtensions())
+	}
+}
+
+func TestParseFileReadsLocalFileWithBaseNameSource(t *testing.T) {
+	parser := rag.NewTextParser()
+	path := filepath.Join(t.TempDir(), "guide.md")
+	if err := os.WriteFile(path, []byte("hello from disk"), 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	sections, err := rag.ParseFile(context.Background(), parser, path)
+	if err != nil {
+		t.Fatalf("ParseFile returned error: %v", err)
+	}
+
+	if len(sections) != 1 || sections[0].Source != "guide.md" {
+		t.Fatalf("sections mismatch: %#v", sections)
+	}
+	if got := sections[0].Content.(*message.TextBlock).Text; got != "hello from disk" {
+		t.Fatalf("section text = %q", got)
+	}
+}
+
+func TestImageParserWrapsImageBytesAsDataBlock(t *testing.T) {
+	parser := rag.NewImageParser()
+	data := []byte("\x89PNG\r\n\x1a\npng-data")
+
+	sections, err := parser.Parse(context.Background(), data, "diagram.png")
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	if len(sections) != 1 {
+		t.Fatalf("expected one section, got %#v", sections)
+	}
+	block, ok := sections[0].Content.(*message.DataBlock)
+	if !ok {
+		t.Fatalf("section content should be DataBlock, got %T", sections[0].Content)
+	}
+	source, ok := block.Source.(*message.Base64Source)
+	if !ok {
+		t.Fatalf("data source should be Base64Source, got %T", block.Source)
+	}
+	if source.MediaType != "image/png" {
+		t.Fatalf("media type = %q, want image/png", source.MediaType)
+	}
+	if source.Data != base64.StdEncoding.EncodeToString(data) {
+		t.Fatalf("base64 data mismatch: %q", source.Data)
+	}
+	if block.Name == nil || *block.Name != "diagram.png" {
+		t.Fatalf("data block name mismatch: %#v", block.Name)
+	}
+	if sections[0].Source != "diagram.png" || sections[0].Metadata["media_type"] != "image/png" {
+		t.Fatalf("section metadata mismatch: %#v", sections[0])
+	}
+}
+
+func TestImageParserSupportedTypesAndExtensions(t *testing.T) {
+	parser := rag.NewImageParser()
+
+	if !reflect.DeepEqual(parser.SupportedMediaTypes(), []string{
+		"image/png",
+		"image/jpeg",
+		"image/gif",
+		"image/bmp",
+		"image/webp",
+	}) {
+		t.Fatalf("supported media types mismatch: %#v", parser.SupportedMediaTypes())
+	}
+	if !reflect.DeepEqual(parser.SupportedExtensions(), []string{
+		".bmp",
+		".gif",
+		".jpeg",
+		".jpg",
+		".png",
+		".webp",
 	}) {
 		t.Fatalf("supported extensions mismatch: %#v", parser.SupportedExtensions())
 	}

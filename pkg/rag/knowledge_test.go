@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/yuluo-yx/agentscope-go/pkg/embedding"
@@ -122,6 +123,34 @@ func TestKnowledgeBaseInsertDocumentRejectsEmbeddingCountMismatch(t *testing.T) 
 	}
 }
 
+func TestKnowledgeBaseInsertDocumentEmptyChunksReturnsDocumentIDWithoutStoreCalls(t *testing.T) {
+	model := &recordingEmbeddingModel{dimensions: 3}
+	store := &recordingVectorStore{}
+	kb, err := rag.NewKnowledgeBase("kb", "desc", model, store, "collection")
+	if err != nil {
+		t.Fatalf("NewKnowledgeBase returned error: %v", err)
+	}
+
+	documentID, err := kb.InsertDocument(
+		context.Background(),
+		nil,
+		rag.WithDocumentID("doc-empty"),
+	)
+	if err != nil {
+		t.Fatalf("InsertDocument returned error: %v", err)
+	}
+
+	if documentID != "doc-empty" {
+		t.Fatalf("document id = %q, want doc-empty", documentID)
+	}
+	if len(model.requests) != 0 {
+		t.Fatalf("empty document should not call embedding model: %#v", model.requests)
+	}
+	if len(store.createCalls) != 0 || len(store.inserted) != 0 {
+		t.Fatalf("empty document should not touch vector store: creates=%#v inserts=%#v", store.createCalls, store.inserted)
+	}
+}
+
 func TestKnowledgeBaseSearchDeduplicatesScoresAndAppliesThreshold(t *testing.T) {
 	model := &recordingEmbeddingModel{
 		dimensions: 3,
@@ -210,6 +239,9 @@ func TestKnowledgeBaseDeleteAndListForwardToVectorStore(t *testing.T) {
 	if !reflect.DeepEqual(store.deleted, []string{"doc-1"}) {
 		t.Fatalf("deleted documents mismatch: %#v", store.deleted)
 	}
+	if len(store.createCalls) != 1 || store.createCalls[0].name != "collection" || store.createCalls[0].dimensions != 3 {
+		t.Fatalf("delete/list should ensure collection once, got %#v", store.createCalls)
+	}
 	if !reflect.DeepEqual(docs, store.documents) {
 		t.Fatalf("documents mismatch: %#v", docs)
 	}
@@ -275,6 +307,7 @@ func (m *recordingEmbeddingModel) inputTexts() []string {
 }
 
 type recordingVectorStore struct {
+	mu            sync.Mutex
 	hasCollection bool
 	createCalls   []createCollectionCall
 	inserted      []rag.VectorRecord
@@ -327,6 +360,9 @@ func (s *recordingVectorStore) Search(
 	topK int,
 	metadataFilter map[string]any,
 ) ([]rag.VectorSearchResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.searchCalls = append(s.searchCalls, searchCall{
 		collection:     collection,
 		topK:           topK,

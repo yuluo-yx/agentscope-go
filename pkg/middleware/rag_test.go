@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
 	"github.com/yuluo-yx/agentscope-go/pkg/embedding"
@@ -79,6 +80,77 @@ func TestRAGMiddlewareExposesAgenticSearchTool(t *testing.T) {
 	}
 	if len(store.searchCalls) != 1 {
 		t.Fatalf("unknown subset should not search the vector store: %#v", store.searchCalls)
+	}
+}
+
+func TestRAGMiddlewareSearchesKnowledgeBasesConcurrently(t *testing.T) {
+	t.Parallel()
+
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	kbA := newBlockingRAGTestKnowledgeBase(
+		t,
+		"benefits",
+		started,
+		release,
+		[]rag.VectorSearchResult{
+			ragSearchResult("doc-benefits", 0, 0.93, "Benefits handbook result.", "benefits.md"),
+		},
+	)
+	kbB := newBlockingRAGTestKnowledgeBase(
+		t,
+		"payroll",
+		started,
+		release,
+		[]rag.VectorSearchResult{
+			ragSearchResult("doc-payroll", 0, 0.91, "Payroll handbook result.", "payroll.md"),
+		},
+	)
+	mw := middleware.NewRAGMiddleware(
+		[]*rag.KnowledgeBase{kbA, kbB},
+		middleware.WithRAGMode(middleware.RAGModeAgentic),
+		middleware.WithRAGTopK(2),
+	)
+	agent := fakeAgent{name: "Friday", state: statepkg.NewAgentState()}
+	tools, err := mw.ListTools(context.Background(), agent)
+	if err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	done := make(chan struct {
+		response *tool.ToolResponse
+		err      error
+	}, 1)
+	go func() {
+		response, err := executeRAGTool(ctx, tools[0], map[string]any{"query": "handbook"}, agent.AgentState())
+		done <- struct {
+			response *tool.ToolResponse
+			err      error
+		}{response: response, err: err}
+	}()
+
+	first := waitRAGSearchStart(t, started)
+	second := waitRAGSearchStart(t, started)
+	if first == second {
+		t.Fatalf("expected different knowledge bases to start, got %q twice", first)
+	}
+	close(release)
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("search_knowledge returned error: %v", result.err)
+		}
+		text := result.response.GetTextContent("")
+		if text == nil ||
+			!strings.Contains(*text, "Benefits handbook result.") ||
+			!strings.Contains(*text, "Payroll handbook result.") {
+			t.Fatalf("search_knowledge response mismatch: %#v", result.response)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for concurrent RAG search to finish")
 	}
 }
 
@@ -263,17 +335,41 @@ func TestRAGMiddlewareStaticModeSkipsAfterFirstIteration(t *testing.T) {
 
 func runRAGTool(t *testing.T, current agentpkg.Tool, input map[string]any, state *statepkg.AgentState) *tool.ToolResponse {
 	t.Helper()
-	chunks, err := current.Execute(context.Background(), input, state)
+	response, err := executeRAGTool(context.Background(), current, input, state)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
+	}
+	return response
+}
+
+func executeRAGTool(
+	ctx context.Context,
+	current agentpkg.Tool,
+	input map[string]any,
+	state *statepkg.AgentState,
+) (*tool.ToolResponse, error) {
+	chunks, err := current.Execute(ctx, input, state)
+	if err != nil {
+		return nil, err
 	}
 	response := tool.NewToolResponse()
 	for chunk := range chunks {
 		if err := response.AppendChunk(&chunk); err != nil {
-			t.Fatalf("AppendChunk returned error: %v", err)
+			return nil, err
 		}
 	}
-	return response
+	return response, nil
+}
+
+func waitRAGSearchStart(t *testing.T, started <-chan string) string {
+	t.Helper()
+	select {
+	case name := <-started:
+		return name
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for RAG knowledge base search to start")
+		return ""
+	}
 }
 
 func collectRAGEvents(events <-chan message.Event) []message.Event {
@@ -326,6 +422,33 @@ func newRAGTestKnowledgeBase(t *testing.T, results []rag.VectorSearchResult) (
 		t.Fatalf("NewKnowledgeBase returned error: %v", err)
 	}
 	return kb, store, model
+}
+
+func newBlockingRAGTestKnowledgeBase(
+	t *testing.T,
+	name string,
+	started chan<- string,
+	release <-chan struct{},
+	results []rag.VectorSearchResult,
+) *rag.KnowledgeBase {
+	t.Helper()
+	model := &recordingRAGEmbeddingModel{
+		dimensions: 2,
+		embeddings: []types.Embedding{
+			{1, 0},
+		},
+	}
+	store := &blockingRAGVectorStore{
+		name:    name,
+		started: started,
+		release: release,
+		results: results,
+	}
+	kb, err := rag.NewKnowledgeBase(name, name+" knowledge base.", model, store, name)
+	if err != nil {
+		t.Fatalf("NewKnowledgeBase returned error: %v", err)
+	}
+	return kb
 }
 
 type recordingRAGEmbeddingModel struct {
@@ -411,5 +534,56 @@ func (s *recordingRAGVectorStore) Search(
 }
 
 func (s *recordingRAGVectorStore) ListDocuments(context.Context, string, map[string]any) ([]rag.DocumentSummary, error) {
+	return nil, nil
+}
+
+type blockingRAGVectorStore struct {
+	name    string
+	started chan<- string
+	release <-chan struct{}
+	results []rag.VectorSearchResult
+}
+
+func (s *blockingRAGVectorStore) CreateCollection(context.Context, string, int) error {
+	return nil
+}
+
+func (s *blockingRAGVectorStore) DeleteCollection(context.Context, string) error {
+	return nil
+}
+
+func (s *blockingRAGVectorStore) HasCollection(context.Context, string) (bool, error) {
+	return true, nil
+}
+
+func (s *blockingRAGVectorStore) Insert(context.Context, string, []rag.VectorRecord) error {
+	return nil
+}
+
+func (s *blockingRAGVectorStore) Delete(context.Context, string, string) error {
+	return nil
+}
+
+func (s *blockingRAGVectorStore) Search(
+	ctx context.Context,
+	_ string,
+	_ types.Embedding,
+	_ int,
+	_ map[string]any,
+) ([]rag.VectorSearchResult, error) {
+	select {
+	case s.started <- s.name:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	select {
+	case <-s.release:
+		return append([]rag.VectorSearchResult(nil), s.results...), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *blockingRAGVectorStore) ListDocuments(context.Context, string, map[string]any) ([]rag.DocumentSummary, error) {
 	return nil, nil
 }

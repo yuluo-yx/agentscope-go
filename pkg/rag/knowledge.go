@@ -173,13 +173,6 @@ func (kb *KnowledgeBase) InsertDocument(ctx context.Context, chunks []Chunk, opt
 	if kb == nil {
 		return "", fmt.Errorf("%w: knowledge base is nil", ErrInvalidInput)
 	}
-	if len(chunks) == 0 {
-		return "", fmt.Errorf("%w: at least one chunk is required", ErrInvalidInput)
-	}
-	if err := kb.ensureCollection(ctx); err != nil {
-		return "", err
-	}
-
 	cfg := insertOptions{documentID: utils.NewID()}
 	for _, opt := range opts {
 		if opt != nil {
@@ -188,6 +181,12 @@ func (kb *KnowledgeBase) InsertDocument(ctx context.Context, chunks []Chunk, opt
 	}
 	if cfg.documentID == "" {
 		cfg.documentID = utils.NewID()
+	}
+	if len(chunks) == 0 {
+		return cfg.documentID, nil
+	}
+	if err := kb.ensureCollection(ctx); err != nil {
+		return "", err
 	}
 
 	inputs := make([]embedding.EmbeddingInput, 0, len(chunks))
@@ -270,13 +269,31 @@ func (kb *KnowledgeBase) searchEmbeddings(
 	embeddings []types.Embedding,
 	cfg searchOptions,
 ) ([]VectorSearchResult, error) {
-	merged := map[string]VectorSearchResult{}
+	type searchResponse struct {
+		results []VectorSearchResult
+		err     error
+	}
+
+	responses := make(chan searchResponse, len(embeddings))
 	for _, vector := range embeddings {
-		results, err := kb.store.Search(ctx, kb.collection, cloneEmbedding(vector), cfg.topK, kb.metadataScope())
-		if err != nil {
-			return nil, err
+		vector := cloneEmbedding(vector)
+		go func() {
+			results, err := kb.store.Search(ctx, kb.collection, vector, cfg.topK, kb.metadataScope())
+			responses <- searchResponse{results: results, err: err}
+		}()
+	}
+
+	merged := map[string]VectorSearchResult{}
+	for range embeddings {
+		select {
+		case response := <-responses:
+			if response.err != nil {
+				return nil, response.err
+			}
+			mergeSearchResults(merged, response.results, cfg)
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
-		mergeSearchResults(merged, results, cfg)
 	}
 
 	return sortedSearchResults(merged, cfg.topK), nil
@@ -322,6 +339,9 @@ func (kb *KnowledgeBase) DeleteDocument(ctx context.Context, documentID string) 
 	if documentID == "" {
 		return fmt.Errorf("%w: document id is required", ErrInvalidInput)
 	}
+	if err := kb.ensureCollection(ctx); err != nil {
+		return err
+	}
 	return kb.store.Delete(ctx, kb.collection, documentID)
 }
 
@@ -329,6 +349,9 @@ func (kb *KnowledgeBase) DeleteDocument(ctx context.Context, documentID string) 
 func (kb *KnowledgeBase) ListDocuments(ctx context.Context) ([]DocumentSummary, error) {
 	if kb == nil {
 		return nil, fmt.Errorf("%w: knowledge base is nil", ErrInvalidInput)
+	}
+	if err := kb.ensureCollection(ctx); err != nil {
+		return nil, err
 	}
 	documents, err := kb.store.ListDocuments(ctx, kb.collection, kb.metadataScope())
 	if err != nil {

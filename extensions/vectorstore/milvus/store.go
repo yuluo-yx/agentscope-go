@@ -71,10 +71,70 @@ type Config struct {
 
 // Store implements rag.VectorStore on top of Milvus.
 type Store struct {
-	client *milvusclient.Client
+	client milvusAPI
 }
 
 var _ rag.VectorStore = (*Store)(nil)
+
+type milvusAPI interface {
+	Close(context.Context) error
+	HasCollection(context.Context, milvusclient.HasCollectionOption) (bool, error)
+	CreateCollection(context.Context, milvusclient.CreateCollectionOption) error
+	DropCollection(context.Context, milvusclient.DropCollectionOption) error
+	Insert(context.Context, milvusclient.InsertOption) (milvusclient.InsertResult, error)
+	Delete(context.Context, milvusclient.DeleteOption) (milvusclient.DeleteResult, error)
+	Search(context.Context, milvusclient.SearchOption) ([]milvusclient.ResultSet, error)
+	Query(context.Context, milvusclient.QueryOption) (milvusclient.ResultSet, error)
+	LoadCollection(context.Context, milvusclient.LoadCollectionOption) (milvusLoadTask, error)
+}
+
+type milvusLoadTask interface {
+	Await(context.Context) error
+}
+
+type sdkMilvusClient struct {
+	client *milvusclient.Client
+}
+
+func (c sdkMilvusClient) Close(ctx context.Context) error {
+	return c.client.Close(ctx)
+}
+
+func (c sdkMilvusClient) HasCollection(ctx context.Context, option milvusclient.HasCollectionOption) (bool, error) {
+	return c.client.HasCollection(ctx, option)
+}
+
+func (c sdkMilvusClient) CreateCollection(ctx context.Context, option milvusclient.CreateCollectionOption) error {
+	return c.client.CreateCollection(ctx, option)
+}
+
+func (c sdkMilvusClient) DropCollection(ctx context.Context, option milvusclient.DropCollectionOption) error {
+	return c.client.DropCollection(ctx, option)
+}
+
+func (c sdkMilvusClient) Insert(ctx context.Context, option milvusclient.InsertOption) (milvusclient.InsertResult, error) {
+	return c.client.Insert(ctx, option)
+}
+
+func (c sdkMilvusClient) Delete(ctx context.Context, option milvusclient.DeleteOption) (milvusclient.DeleteResult, error) {
+	return c.client.Delete(ctx, option)
+}
+
+func (c sdkMilvusClient) Search(ctx context.Context, option milvusclient.SearchOption) ([]milvusclient.ResultSet, error) {
+	return c.client.Search(ctx, option)
+}
+
+func (c sdkMilvusClient) Query(ctx context.Context, option milvusclient.QueryOption) (milvusclient.ResultSet, error) {
+	return c.client.Query(ctx, option)
+}
+
+func (c sdkMilvusClient) LoadCollection(ctx context.Context, option milvusclient.LoadCollectionOption) (milvusLoadTask, error) {
+	task, err := c.client.LoadCollection(ctx, option)
+	if err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
 
 // Connect creates a Milvus client and wraps it as a vector store.
 func Connect(ctx context.Context, config Config) (*Store, error) {
@@ -96,7 +156,7 @@ func NewStore(client *milvusclient.Client) (*Store, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%w: milvus client is nil", rag.ErrInvalidInput)
 	}
-	return &Store{client: client}, nil
+	return &Store{client: sdkMilvusClient{client: client}}, nil
 }
 
 // Close closes the underlying Milvus client.

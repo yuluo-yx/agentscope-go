@@ -325,16 +325,36 @@ func (m *RAGMiddleware) search(
 		opts = append(opts, rag.WithScoreThreshold(m.scoreThreshold))
 	}
 
+	targets := compactKnowledgeBases(knowledgeBases)
+	if len(targets) == 0 {
+		return nil, nil
+	}
+
+	type searchResponse struct {
+		results []rag.VectorSearchResult
+		err     error
+	}
+
+	responses := make(chan searchResponse, len(targets))
+	for _, kb := range targets {
+		kb := kb
+		go func() {
+			results, err := kb.Search(ctx, queries, opts...)
+			responses <- searchResponse{results: results, err: err}
+		}()
+	}
+
 	merged := []rag.VectorSearchResult{}
-	for _, kb := range knowledgeBases {
-		if kb == nil {
-			continue
+	for range targets {
+		select {
+		case response := <-responses:
+			if response.err != nil {
+				return nil, response.err
+			}
+			merged = append(merged, response.results...)
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
-		results, err := kb.Search(ctx, queries, opts...)
-		if err != nil {
-			return nil, err
-		}
-		merged = append(merged, results...)
 	}
 	sort.SliceStable(merged, func(i, j int) bool {
 		return merged[i].Score > merged[j].Score

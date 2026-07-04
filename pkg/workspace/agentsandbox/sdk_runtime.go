@@ -140,7 +140,7 @@ func (c *sdkClientAdapter) CreateSandbox(ctx context.Context, template, namespac
 
 func sandboxOptionsFromSpec(spec sandboxSpec) agentsandboxsdk.Options {
 	opts := agentsandboxsdk.Options{
-		TemplateName:        spec.TemplateName,
+		WarmPoolName:        spec.TemplateName,
 		Namespace:           spec.Namespace,
 		APIURL:              spec.APIURL,
 		GatewayName:         spec.GatewayName,

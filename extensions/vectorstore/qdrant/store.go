@@ -44,6 +44,16 @@ const (
 	defaultScrollLimit = 256
 )
 
+// Distance is the similarity metric used when creating Qdrant collections.
+type Distance string
+
+const (
+	DistanceCosine    Distance = "Cosine"
+	DistanceDot       Distance = "Dot"
+	DistanceEuclid    Distance = "Euclid"
+	DistanceManhattan Distance = "Manhattan"
+)
+
 // Config configures a Qdrant client created by Connect.
 type Config struct {
 	Host                   string
@@ -51,11 +61,16 @@ type Config struct {
 	APIKey                 string
 	UseTLS                 bool
 	SkipCompatibilityCheck bool
+	Distance               Distance
 }
+
+// StoreOption configures Store.
+type StoreOption func(*Store) error
 
 // Store implements rag.VectorStore on top of Qdrant.
 type Store struct {
-	client *qdrantapi.Client
+	client   *qdrantapi.Client
+	distance qdrantapi.Distance
 }
 
 var _ rag.VectorStore = (*Store)(nil)
@@ -80,15 +95,44 @@ func Connect(config Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewStore(client)
+	store, err := NewStore(client, WithDistance(config.Distance))
+	if err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	return store, nil
 }
 
 // NewStore wraps an existing Qdrant client.
-func NewStore(client *qdrantapi.Client) (*Store, error) {
+func NewStore(client *qdrantapi.Client, opts ...StoreOption) (*Store, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%w: qdrant client is nil", rag.ErrInvalidInput)
 	}
-	return &Store{client: client}, nil
+	store := &Store{
+		client:   client,
+		distance: qdrantapi.Distance_Cosine,
+	}
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(store); err != nil {
+			return nil, err
+		}
+	}
+	return store, nil
+}
+
+// WithDistance sets the metric used when creating new collections.
+func WithDistance(distance Distance) StoreOption {
+	return func(store *Store) error {
+		parsed, err := parseDistance(distance)
+		if err != nil {
+			return err
+		}
+		store.distance = parsed
+		return nil
+	}
 }
 
 // Close closes the underlying Qdrant client.
@@ -123,7 +167,7 @@ func (s *Store) CreateCollection(ctx context.Context, name string, dimensions in
 		CollectionName: name,
 		VectorsConfig: qdrantapi.NewVectorsConfig(&qdrantapi.VectorParams{
 			Size:     uint64(dimensions),
-			Distance: qdrantapi.Distance_Cosine,
+			Distance: s.distance,
 		}),
 	})
 }
@@ -458,6 +502,22 @@ func qdrantFilterScalar(value any) (any, bool) {
 		return typed, true
 	default:
 		return nil, false
+	}
+}
+
+func parseDistance(distance Distance) (qdrantapi.Distance, error) {
+	switch strings.ToLower(strings.TrimSpace(string(distance))) {
+	case "", "cosine":
+		return qdrantapi.Distance_Cosine, nil
+	case "dot":
+		return qdrantapi.Distance_Dot, nil
+	case "euclid":
+		return qdrantapi.Distance_Euclid, nil
+	case "manhattan":
+		return qdrantapi.Distance_Manhattan, nil
+	default:
+		return qdrantapi.Distance_UnknownDistance,
+			fmt.Errorf("%w: unsupported qdrant distance %q", rag.ErrInvalidInput, distance)
 	}
 }
 

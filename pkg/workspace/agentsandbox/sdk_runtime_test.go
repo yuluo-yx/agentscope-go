@@ -59,7 +59,7 @@ func TestSDKRuntimeBuildsOptionsAndCreatesSandbox(t *testing.T) {
 	if client.template != "python-sandbox-template" || client.namespace != "agents" {
 		t.Fatalf("CreateSandbox arguments mismatch: template=%q namespace=%q", client.template, client.namespace)
 	}
-	if gotOptions.TemplateName != "python-sandbox-template" ||
+	if gotOptions.WarmPoolName != "python-sandbox-template" ||
 		gotOptions.Namespace != "agents" ||
 		gotOptions.APIURL != "http://sandbox-router.default.svc:8080" ||
 		gotOptions.ServerPort != 9999 ||
