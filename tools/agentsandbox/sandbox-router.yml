@@ -40,6 +40,8 @@ spec:
         env:
         - name: PROXY_TIMEOUT_SECONDS
           value: "180"
+        - name: ALLOW_UNAUTHENTICATED_ROUTER
+          value: "true"
         ports:
         - containerPort: 8080
         readinessProbe:
