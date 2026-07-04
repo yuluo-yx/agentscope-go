@@ -3,7 +3,7 @@ module github.com/yuluo-yx/agentscope-go/e2e
 go 1.26.4
 
 require (
-	github.com/mark3labs/mcp-go v0.55.0
+	github.com/mark3labs/mcp-go v0.55.1
 	github.com/yuluo-yx/agentscope-go v0.0.0
 )
 
@@ -104,7 +104,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4 // indirect
 	mvdan.cc/sh/v3 v3.13.1 // indirect
-	sigs.k8s.io/agent-sandbox v0.4.6 // indirect
+	sigs.k8s.io/agent-sandbox v0.5.0 // indirect
 	sigs.k8s.io/controller-runtime v0.23.3 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
