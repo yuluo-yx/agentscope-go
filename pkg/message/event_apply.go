@@ -72,47 +72,78 @@ func (m *Message) applyLifecycleEvent(event Event) bool {
 func (m *Message) applyContentBlockEvent(event Event) bool {
 	switch e := event.(type) {
 	case *TextBlockStartEvent:
-		m.Content = append(m.Content, &TextBlock{Type: "text", ID: e.BlockID, Text: ""})
+		m.applyTextBlockStart(e)
 	case *TextBlockDeltaEvent:
-		if block, ok := m.FindBlock("text", e.BlockID).(*TextBlock); ok {
-			block.Text += e.Delta
-		}
+		m.applyTextBlockDelta(e)
 	case *TextBlockEndEvent:
 	case *DataBlockStartEvent:
-		m.Content = append(m.Content, &DataBlock{
-			Type:   "data",
-			ID:     e.BlockID,
-			Source: NewBase64Source("", e.MediaType),
-		})
+		m.applyDataBlockStart(e)
 	case *DataBlockDeltaEvent:
-		if block, ok := m.FindBlock("data", e.BlockID).(*DataBlock); ok {
-			if source, ok := block.Source.(*Base64Source); ok {
-				source.Data += e.Data
-			}
-		}
+		m.applyDataBlockDelta(e)
 	case *DataBlockEndEvent:
 	case *ThinkingBlockStartEvent:
-		m.Content = append(m.Content, &ThinkingBlock{Type: "thinking", ID: e.BlockID, Thinking: ""})
+		m.applyThinkingBlockStart(e)
 	case *ThinkingBlockDeltaEvent:
-		if block, ok := m.FindBlock("thinking", e.BlockID).(*ThinkingBlock); ok {
-			block.Thinking += e.Delta
-		}
+		m.applyThinkingBlockDelta(e)
 	case *ThinkingBlockEndEvent:
 	case *HintBlockEvent:
-		hint := hintBlockFromEvent(e)
-		for index, block := range m.Content {
-			if block == nil || block.BlockType() != hint.BlockType() || block.BlockID() != hint.BlockID() {
-				continue
-			}
-			m.Content[index] = hint
-			return true
-		}
-		m.Content = append(m.Content, hint)
+		m.applyHintBlock(e)
 	default:
 		return false
 	}
 
 	return true
+}
+
+func (m *Message) applyTextBlockStart(event *TextBlockStartEvent) {
+	m.Content = append(m.Content, &TextBlock{Type: "text", ID: event.BlockID, Text: ""})
+}
+
+func (m *Message) applyTextBlockDelta(event *TextBlockDeltaEvent) {
+	if block, ok := m.FindBlock("text", event.BlockID).(*TextBlock); ok {
+		block.Text += event.Delta
+	}
+}
+
+func (m *Message) applyDataBlockStart(event *DataBlockStartEvent) {
+	m.Content = append(m.Content, &DataBlock{
+		Type:   "data",
+		ID:     event.BlockID,
+		Source: NewBase64Source("", event.MediaType),
+	})
+}
+
+func (m *Message) applyDataBlockDelta(event *DataBlockDeltaEvent) {
+	block, ok := m.FindBlock("data", event.BlockID).(*DataBlock)
+	if !ok {
+		return
+	}
+	source, ok := block.Source.(*Base64Source)
+	if ok {
+		source.Data += event.Data
+	}
+}
+
+func (m *Message) applyThinkingBlockStart(event *ThinkingBlockStartEvent) {
+	m.Content = append(m.Content, &ThinkingBlock{Type: "thinking", ID: event.BlockID, Thinking: ""})
+}
+
+func (m *Message) applyThinkingBlockDelta(event *ThinkingBlockDeltaEvent) {
+	if block, ok := m.FindBlock("thinking", event.BlockID).(*ThinkingBlock); ok {
+		block.Thinking += event.Delta
+	}
+}
+
+func (m *Message) applyHintBlock(event *HintBlockEvent) {
+	hint := hintBlockFromEvent(event)
+	for index, block := range m.Content {
+		if block == nil || block.BlockType() != hint.BlockType() || block.BlockID() != hint.BlockID() {
+			continue
+		}
+		m.Content[index] = hint
+		return
+	}
+	m.Content = append(m.Content, hint)
 }
 
 func (m *Message) applyToolCallEvent(event Event) bool {

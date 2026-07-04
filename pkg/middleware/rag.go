@@ -337,7 +337,6 @@ func (m *RAGMiddleware) search(
 
 	responses := make(chan searchResponse, len(targets))
 	for _, kb := range targets {
-		kb := kb
 		go func() {
 			results, err := kb.Search(ctx, queries, opts...)
 			responses <- searchResponse{results: results, err: err}
