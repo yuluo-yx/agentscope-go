@@ -51,3 +51,6 @@ tools/node/node_modules/
 /.playwright-mcp/
 
 /example/model/dashscope/tts/output.wav
+
+# example build artifacts
+/example/rag/agent-with-rag/agent-with-rag
