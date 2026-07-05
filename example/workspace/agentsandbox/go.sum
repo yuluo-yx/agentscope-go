@@ -136,6 +136,7 @@ github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0
 github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc=
 github.com/mark3labs/mcp-go v0.55.0 h1:lJfz2aoctiwK+sI991+uIYwmKNIBciI+O7zsyDsa4U8=
 github.com/mark3labs/mcp-go v0.55.0/go.mod h1:+8WclSK1ZUweCP3hvktSji8n8ABG/95QaEkeVE/Uwas=
+github.com/mark3labs/mcp-go v0.55.1/go.mod h1:+8WclSK1ZUweCP3hvktSji8n8ABG/95QaEkeVE/Uwas=
 github.com/moby/spdystream v0.5.1 h1:9sNYeYZUcci9R6/w7KDaFWEWeV4LStVG78Mpyq/Zm/Y=
 github.com/moby/spdystream v0.5.1/go.mod h1:xBAYlnt/ay+11ShkdFKNAG7LsyK/tmNBVvVOwrfMgdI=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
@@ -151,6 +152,7 @@ github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f/go.mod h1:ZdcZmHo+
 github.com/ollama/ollama v0.30.9 h1:3CjisK33lJnQMd0gMH9qzbI44PBJIVNZ6LD2A0cDaMg=
 github.com/ollama/ollama v0.30.9/go.mod h1:TjwyryJftKpcf7ByoIuZWso/Wx2Jr2AcGubxadv13dY=
 github.com/ollama/ollama v0.30.10/go.mod h1:TjwyryJftKpcf7ByoIuZWso/Wx2Jr2AcGubxadv13dY=
+github.com/ollama/ollama v0.31.1/go.mod h1:TjwyryJftKpcf7ByoIuZWso/Wx2Jr2AcGubxadv13dY=
 github.com/onsi/ginkgo/v2 v2.27.2 h1:LzwLj0b89qtIy6SSASkzlNvX6WktqurSHwkk2ipF/Ns=
 github.com/onsi/ginkgo/v2 v2.27.2/go.mod h1:ArE1D/XhNXBXCBkKOLkbsb2c81dQHCRcF5zwn/ykDRo=
 github.com/onsi/gomega v1.38.2 h1:eZCjf2xjZAqe+LeWvKb5weQ+NcPwX84kqJ0cZNxok2A=
@@ -337,6 +339,7 @@ mvdan.cc/sh/v3 v3.13.1 h1:DP3TfgZhDkT7lerUdnp6PTGKyxxzz6T+cOlY/xEvfWk=
 mvdan.cc/sh/v3 v3.13.1/go.mod h1:lXJ8SexMvEVcHCoDvAGLZgFJ9Wsm2sulmoNEXGhYZD0=
 sigs.k8s.io/agent-sandbox v0.4.6 h1:dUUvQ+rlv4kT3CB9p2MgnPcNSMAQg6eTBrWyCiYgxYs=
 sigs.k8s.io/agent-sandbox v0.4.6/go.mod h1:rrBXoA+nKZO2MIs3pTG+qOuKadX5gzMvO/nrlwC9W1w=
+sigs.k8s.io/agent-sandbox v0.5.0/go.mod h1:++skTINslx4yHlnoqWoijeZuzhh0DobbtjPanh/JgRI=
 sigs.k8s.io/controller-runtime v0.23.3 h1:VjB/vhoPoA9l1kEKZHBMnQF33tdCLQKJtydy4iqwZ80=
 sigs.k8s.io/controller-runtime v0.23.3/go.mod h1:B6COOxKptp+YaUT5q4l6LqUJTRpizbgf9KSRNdQGns0=
 sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 h1:IpInykpT6ceI+QxKBbEflcR5EXP7sU1kvOlxwZh5txg=

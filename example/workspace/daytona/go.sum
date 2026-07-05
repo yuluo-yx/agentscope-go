@@ -42,10 +42,13 @@ github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/daytonaio/daytona/libs/api-client-go v0.189.0 h1:zxc9d40jrR9bgXzwbhLmgFY/9vQgzNWuGV+XDnPGPOY=
 github.com/daytonaio/daytona/libs/api-client-go v0.189.0/go.mod h1:FzTxtFuR9utJw43WBUVdX9AF4rALJlSKvx4bddZthxs=
+github.com/daytonaio/daytona/libs/api-client-go v0.190.0/go.mod h1:FzTxtFuR9utJw43WBUVdX9AF4rALJlSKvx4bddZthxs=
 github.com/daytonaio/daytona/libs/sdk-go v0.189.0 h1:8pQmXULCux0pU9po0snxhyv4+gslCXRRn2cXuxtzJwo=
 github.com/daytonaio/daytona/libs/sdk-go v0.189.0/go.mod h1:9XZbnOajFNNxxgyRbBM1aSwy3rjhRWnkErbh8UkE70M=
+github.com/daytonaio/daytona/libs/sdk-go v0.190.0/go.mod h1:oFJlubQzX4I2sBnSLdWkJmO9JTJ8c7OX3DAKxbxbxsQ=
 github.com/daytonaio/daytona/libs/toolbox-api-client-go v0.189.0 h1:tIyqpA3u6tb2BR2osfyJqX+F366MwZrWRkDF/CQKISo=
 github.com/daytonaio/daytona/libs/toolbox-api-client-go v0.189.0/go.mod h1:Y/IJdiDMtmm3Nz6NBiTRJ3uEiRUqNAvEZPNNCFdgkzo=
+github.com/daytonaio/daytona/libs/toolbox-api-client-go v0.190.0/go.mod h1:Y/IJdiDMtmm3Nz6NBiTRJ3uEiRUqNAvEZPNNCFdgkzo=
 github.com/dlclark/regexp2 v1.11.0 h1:G/nrcoOa7ZXlpoa/91N3X7mM3r8eIlMBBJZvsz/mxKI=
 github.com/dlclark/regexp2 v1.11.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=
@@ -85,6 +88,7 @@ github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0
 github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc=
 github.com/mark3labs/mcp-go v0.55.0 h1:lJfz2aoctiwK+sI991+uIYwmKNIBciI+O7zsyDsa4U8=
 github.com/mark3labs/mcp-go v0.55.0/go.mod h1:+8WclSK1ZUweCP3hvktSji8n8ABG/95QaEkeVE/Uwas=
+github.com/mark3labs/mcp-go v0.55.1/go.mod h1:+8WclSK1ZUweCP3hvktSji8n8ABG/95QaEkeVE/Uwas=
 github.com/ollama/ollama v0.30.9 h1:3CjisK33lJnQMd0gMH9qzbI44PBJIVNZ6LD2A0cDaMg=
 github.com/ollama/ollama v0.30.9/go.mod h1:TjwyryJftKpcf7ByoIuZWso/Wx2Jr2AcGubxadv13dY=
 github.com/openai/openai-go v1.12.0 h1:NBQCnXzqOTv5wsgNC36PrFEiskGfO5wccfCWDo9S1U0=

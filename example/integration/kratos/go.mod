@@ -35,7 +35,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/ollama/ollama v0.30.10 // indirect
+	github.com/ollama/ollama v0.31.1 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect

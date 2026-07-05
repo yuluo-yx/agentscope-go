@@ -20,14 +20,14 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mark3labs/mcp-go v0.55.0 // indirect
-	github.com/ollama/ollama v0.30.10 // indirect
+	github.com/mark3labs/mcp-go v0.55.1 // indirect
+	github.com/ollama/ollama v0.31.1 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
-	github.com/superradcompany/microsandbox/sdk/go v0.5.9 // indirect
+	github.com/superradcompany/microsandbox/sdk/go v0.6.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
