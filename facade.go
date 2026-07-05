@@ -310,6 +310,7 @@ var (
 	WithRAGEmitHintEvent        = asmiddleware.WithRAGEmitHintEvent
 	WithRAGPersistHint          = asmiddleware.WithRAGPersistHint
 	WithRAGHintTemplate         = asmiddleware.WithRAGHintTemplate
+	WithRAGRequireConfirm       = asmiddleware.WithRAGRequireConfirm
 
 	ErrRAGInvalidInput       = asrag.ErrInvalidInput
 	ErrRAGUnsupportedContent = asrag.ErrUnsupportedContent

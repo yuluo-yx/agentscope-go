@@ -23,6 +23,7 @@ import (
 
 	agentpkg "github.com/yuluo-yx/agentscope-go/pkg/agent"
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
 	"github.com/yuluo-yx/agentscope-go/pkg/rag"
 	statepkg "github.com/yuluo-yx/agentscope-go/pkg/state"
 	astool "github.com/yuluo-yx/agentscope-go/pkg/tool"
@@ -50,20 +51,43 @@ type RAGOption func(*RAGMiddleware)
 
 // RAGMiddleware integrates one or more knowledge bases into the Agent loop.
 type RAGMiddleware struct {
+	// knowledgeBases is the equipped knowledge bases. All searches fan out
+	// across them concurrently and merge by score. Nil entries are skipped.
 	knowledgeBases []*rag.KnowledgeBase
-	mode           RAGMode
-	topK           int
+	// mode controls retrieval timing: agentic exposes a search_knowledge tool
+	// and lets the model decide; static retrieves automatically before the
+	// first reasoning step of each reply.
+	mode RAGMode
+	// topK caps the merged results returned to the model after per-KB retrieval.
+	topK int
 
+	// scoreThreshold drops any result whose similarity score is below it.
+	// hasScoreThreshold distinguishes "unset" from the legitimate value 0,
+	// so callers can opt in explicitly without disabling the filter by accident.
 	scoreThreshold    float64
 	hasScoreThreshold bool
 
+	// static-mode knobs (no effect in agentic mode):
+	// emit a HintBlockEvent so callers can observe the injected context
 	emitHintEvent bool
-	persistHint   bool
-	hintTemplate  string
-	hintSource    string
+	// keep the hint block in context after reasoning instead of removing it
+	persistHint bool
+	// wrapper around retrieved content; must contain exactly one {context} placeholder
+	hintTemplate string
+	// source label stamped on the injected HintBlock
+	hintSource string
 
+	// cacheMu guards cachedInputs. In static mode OnReply caches the user's
+	// input blocks (keyed by session ID) so OnReasoning can run retrieval on
+	// that input before the first model call. The cache is cleared per reply.
 	cacheMu      sync.Mutex
 	cachedInputs map[string]message.ContentBlockList
+
+	// requireConfirm gates the search_knowledge tool's permission decision.
+	// false (default): retrieval is read-only and auto-allowed without prompting.
+	// true: each call asks the user to confirm before execution. Explicit
+	// permission rules on the Agent (deny/ask) always take precedence.
+	requireConfirm bool
 }
 
 // NewRAGMiddleware creates RAG middleware over the provided knowledge bases.
@@ -119,6 +143,17 @@ func WithRAGScoreThreshold(score float64) RAGOption {
 	return func(m *RAGMiddleware) {
 		m.scoreThreshold = score
 		m.hasScoreThreshold = true
+	}
+}
+
+// WithRAGRequireConfirm controls whether the search_knowledge tool prompts for
+// user confirmation before executing. Defaults to false: retrieval is
+// read-only and runs without prompting. Set true to require confirmation per
+// call. Explicit permission rules on the Agent (deny/ask) always take
+// precedence over this setting.
+func WithRAGRequireConfirm(require bool) RAGOption {
+	return func(m *RAGMiddleware) {
+		m.requireConfirm = require
 	}
 }
 
@@ -308,11 +343,33 @@ func (m *RAGMiddleware) ListTools(ctx context.Context, agent agentpkg.AgentAcces
 			return blocks, nil
 		},
 		astool.WithFunctionReadOnly(true),
+		astool.WithFunctionPermissionFunc(m.decidePermission),
 	)
 	if err != nil {
 		return nil, err
 	}
 	return []agentpkg.Tool{searchTool}, nil
+}
+
+// decidePermission is the search_knowledge tool's permission hook. Retrieval is
+// read-only, so it auto-allows by default; callers can opt back into the
+// confirm prompt via WithRAGRequireConfirm(true). Explicit deny/ask rules on
+// the Agent are evaluated earlier in the permission engine and override this.
+func (m *RAGMiddleware) decidePermission(
+	_ context.Context,
+	_ map[string]any,
+	_ *permission.Context,
+) (*permission.Decision, error) {
+	if m != nil && m.requireConfirm {
+		return &permission.Decision{
+			Behavior: permission.BehaviorAsk,
+			Message:  "RAG retrieval requires user confirmation",
+		}, nil
+	}
+	return &permission.Decision{
+		Behavior: permission.BehaviorAllow,
+		Message:  "RAG retrieval auto-allowed (read-only)",
+	}, nil
 }
 
 func (m *RAGMiddleware) search(

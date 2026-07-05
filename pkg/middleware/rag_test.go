@@ -25,6 +25,7 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/embedding"
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
 	"github.com/yuluo-yx/agentscope-go/pkg/middleware"
+	"github.com/yuluo-yx/agentscope-go/pkg/permission"
 	"github.com/yuluo-yx/agentscope-go/pkg/rag"
 	statepkg "github.com/yuluo-yx/agentscope-go/pkg/state"
 	"github.com/yuluo-yx/agentscope-go/pkg/tool"
@@ -80,6 +81,50 @@ func TestRAGMiddlewareExposesAgenticSearchTool(t *testing.T) {
 	}
 	if len(store.searchCalls) != 1 {
 		t.Fatalf("unknown subset should not search the vector store: %#v", store.searchCalls)
+	}
+}
+
+func TestRAGMiddlewareSearchToolPermissionDefaultsToAllow(t *testing.T) {
+	t.Parallel()
+
+	kb, _, _ := newRAGTestKnowledgeBase(t, nil)
+	agent := fakeAgent{name: "Friday", state: statepkg.NewAgentState()}
+	permCtx := permission.NewContext(permission.ModeDefault)
+	ctx := context.Background()
+	input := map[string]any{"query": "pto policy"}
+
+	// Default: retrieval is read-only and auto-allowed without prompting.
+	defaultMW := middleware.NewRAGMiddleware([]*rag.KnowledgeBase{kb})
+	defaultTools, err := defaultMW.ListTools(ctx, agent)
+	if err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+	if len(defaultTools) != 1 {
+		t.Fatalf("expected one tool, got %d", len(defaultTools))
+	}
+	decision, err := defaultTools[0].CheckPermissions(ctx, input, permCtx)
+	if err != nil {
+		t.Fatalf("CheckPermissions returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorAllow {
+		t.Fatalf("default search_knowledge should auto-allow, got %q", decision.Behavior)
+	}
+
+	// Opt-in: WithRAGRequireConfirm(true) flips the decision to ask.
+	confirmMW := middleware.NewRAGMiddleware(
+		[]*rag.KnowledgeBase{kb},
+		middleware.WithRAGRequireConfirm(true),
+	)
+	confirmTools, err := confirmMW.ListTools(ctx, agent)
+	if err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+	decision, err = confirmTools[0].CheckPermissions(ctx, input, permCtx)
+	if err != nil {
+		t.Fatalf("CheckPermissions returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorAsk {
+		t.Fatalf("WithRAGRequireConfirm(true) should ask, got %q", decision.Behavior)
 	}
 }
 
