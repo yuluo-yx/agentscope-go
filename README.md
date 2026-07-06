@@ -35,7 +35,7 @@ existing Go services.
 
 ## Quick Start
 
-Install the module in your Go project:
+Install the Agentscope Go in your Go project:
 
 ```bash
 go get github.com/yuluo-yx/agentscope-go@latest
@@ -133,12 +133,6 @@ Each example is an independent Go module with its own `go.mod`, English
 Start with the examples if you want the quickest path to a working agent.
 
 Tip: If you encounter dependency issues, please run `go mod tidy` before `go run .`.
-
-## Documentation
-
-- English docs: [`docs/en/intro.md`](docs/en/intro.md)
-- Chinese docs: [`docs/zh/intro.md`](docs/zh/intro.md)
-- Example index: [`example/README.md`](example/README.md)
 
 ## Development
 

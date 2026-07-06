@@ -33,7 +33,7 @@ AgentScope Go 覆盖智能体、消息、模型适配、工具、状态、工作
 
 ## 快速开始
 
-在 Go 项目中安装模块：
+在 Go 项目中安装 Agentscope Go：
 
 ```bash
 go get github.com/yuluo-yx/agentscope-go@latest
@@ -101,7 +101,7 @@ func main() {
 
 ## 示例
 
-每个示例都是独立 Go module，包含自己的 `go.mod`、英文 `README.md` 和中文 `README-zh.md`。
+每个示例都是独立 Go module，包含 `go.mod`、英文 `README.md` 和中文 `README-zh.md`。
 
 | 示例 | 说明 |
 | --- | --- |
@@ -130,12 +130,6 @@ func main() {
 想快速理解框架用法时，建议先从这些示例开始。
 
 > Tips: 如果出现依赖问题，请先 `go mod tidy` 下再 `go run .`。
-
-## 文档
-
-- 英文文档：[`docs/en/intro.md`](docs/en/intro.md)
-- 中文文档：[`docs/zh/intro.md`](docs/zh/intro.md)
-- 示例索引：[`example/README.md`](example/README.md)
 
 ## 本地开发
 
