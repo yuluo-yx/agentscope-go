@@ -14,7 +14,7 @@ require (
 	github.com/ollama/ollama v0.31.1
 	github.com/openai/openai-go v1.12.0
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/superradcompany/microsandbox/sdk/go v0.6.1
+	github.com/superradcompany/microsandbox/sdk/go v0.6.6
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
