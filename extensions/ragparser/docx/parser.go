@@ -20,14 +20,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/yuluo-yx/agentscope-go/pkg/message"
 	"github.com/yuluo-yx/agentscope-go/pkg/rag"
+)
+
+const (
+	maxArchiveEntries          = 10_000
+	maxArchiveUncompressedSize = 512 << 20
+	maxPartSize                = 64 << 20
+	maxTableColumns            = 16_384
 )
 
 var (
@@ -37,10 +46,22 @@ var (
 	supportedExtensions = []string{".docx"}
 )
 
-// Parser parses DOCX files into paragraph, table, and image sections.
+// TableFormat controls how DOCX tables are rendered as text.
+type TableFormat string
+
+const (
+	// TableFormatMarkdown renders tables as Markdown pipe tables.
+	TableFormatMarkdown TableFormat = "markdown"
+	// TableFormatJSON renders tables as JSON arrays with a system-info prefix.
+	TableFormatJSON TableFormat = "json"
+)
+
+// Parser parses DOCX files into merged text and image sections.
 type Parser struct {
-	includeImages bool
-	includeTables bool
+	includeImages  bool
+	includeTables  bool
+	separateTables bool
+	tableFormat    TableFormat
 }
 
 // Option configures Parser.
@@ -53,6 +74,7 @@ func NewParser(opts ...Option) *Parser {
 	parser := &Parser{
 		includeImages: true,
 		includeTables: true,
+		tableFormat:   TableFormatMarkdown,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -76,6 +98,20 @@ func WithTables(enabled bool) Option {
 	}
 }
 
+// WithSeparateTables controls whether each Word table becomes a standalone text section.
+func WithSeparateTables(enabled bool) Option {
+	return func(parser *Parser) {
+		parser.separateTables = enabled
+	}
+}
+
+// WithTableFormat sets the format used when rendering Word tables.
+func WithTableFormat(format TableFormat) Option {
+	return func(parser *Parser) {
+		parser.tableFormat = format
+	}
+}
+
 // Parse extracts document body text, tables, and embedded images from a DOCX file.
 func (p *Parser) Parse(ctx context.Context, data []byte, filename string) ([]rag.Section, error) {
 	if err := ctx.Err(); err != nil {
@@ -91,23 +127,32 @@ func (p *Parser) Parse(ctx context.Context, data []byte, filename string) ([]rag
 	if p == nil {
 		p = NewParser()
 	}
+	if !validTableFormat(p.tableFormat) {
+		return nil, fmt.Errorf("%w: unsupported docx table format %q", rag.ErrInvalidInput, p.tableFormat)
+	}
 
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
+		return nil, fmt.Errorf("open docx archive: %w", err)
+	}
+	files, err := indexZipFiles(reader.File)
+	if err != nil {
 		return nil, err
 	}
-	files := indexZipFiles(reader.File)
 	document := files["word/document.xml"]
 	if document == nil {
 		return nil, fmt.Errorf("%w: %q does not contain word/document.xml", rag.ErrInvalidInput, filename)
 	}
 	documentData, err := readZipFile(document)
 	if err != nil {
+		return nil, fmt.Errorf("read word/document.xml: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	relationships, err := parseRelationships(files["word/_rels/document.xml.rels"], "word")
+	relationships, err := parseRelationships(ctx, files["word/_rels/document.xml.rels"], "word")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse document relationships: %w", err)
 	}
 	return p.parseDocument(ctx, files, relationships, documentData, filename)
 }
@@ -130,6 +175,7 @@ func (p *Parser) parseDocument(
 	filename string,
 ) ([]rag.Section, error) {
 	state := &documentParseState{
+		ctx:           ctx,
 		parser:        p,
 		files:         files,
 		relationships: relationships,
@@ -137,6 +183,7 @@ func (p *Parser) parseDocument(
 	}
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	inBody := false
+	sawBody := false
 	bodyDepth := 0
 	for {
 		if err := ctx.Err(); err != nil {
@@ -154,6 +201,7 @@ func (p *Parser) parseDocument(
 			if !inBody {
 				if typed.Name.Local == "body" {
 					inBody = true
+					sawBody = true
 					bodyDepth = 1
 				}
 				continue
@@ -164,17 +212,17 @@ func (p *Parser) parseDocument(
 			}
 			switch typed.Name.Local {
 			case "p":
-				content, err := collectParagraph(decoder, typed)
+				content, err := collectParagraph(ctx, decoder, typed)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("parse docx paragraph: %w", err)
 				}
 				if err := state.appendParagraph(content); err != nil {
 					return nil, err
 				}
 			case "tbl":
-				content, err := collectTable(decoder, typed)
+				content, err := collectTable(ctx, decoder, typed)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("parse docx table: %w", err)
 				}
 				if err := state.appendTable(content); err != nil {
 					return nil, err
@@ -193,52 +241,69 @@ func (p *Parser) parseDocument(
 			}
 		}
 	}
+	if !sawBody {
+		return nil, fmt.Errorf("%w: docx document body is missing", rag.ErrInvalidInput)
+	}
+	state.flushText()
 	return state.sections, nil
 }
 
 type documentParseState struct {
+	ctx           context.Context
 	parser        *Parser
 	files         map[string]*zip.File
 	relationships map[string]string
 	filename      string
-	paragraphNo   int
-	tableNo       int
-	imageNo       int
+	textParts     []string
 	sections      []rag.Section
 }
 
 func (s *documentParseState) appendParagraph(content blockContent) error {
 	text := strings.TrimSpace(content.text)
 	if text != "" {
-		s.paragraphNo++
-		s.sections = append(s.sections, rag.Section{
-			Content: message.NewTextBlock(text),
-			Source:  s.filename,
-			Metadata: map[string]any{
-				"type":  "paragraph",
-				"index": s.paragraphNo,
-			},
-		})
+		s.textParts = append(s.textParts, text)
 	}
+	if !s.parser.includeImages || len(content.imageIDs) == 0 {
+		return nil
+	}
+	s.flushText()
 	return s.appendImages(content.imageIDs)
 }
 
 func (s *documentParseState) appendTable(content tableContent) error {
-	if s.parser.includeTables {
-		text := formatTable(content.rows)
-		if text != "" {
-			s.tableNo++
-			s.sections = append(s.sections, rag.Section{
-				Content: message.NewTextBlock(text),
-				Source:  s.filename,
-				Metadata: map[string]any{
-					"type":  "table",
-					"index": s.tableNo,
-				},
-			})
-		}
+	if !s.parser.includeTables {
+		return nil
 	}
-	return s.appendImages(content.imageIDs)
+	text, err := formatTable(content.rows, s.parser.tableFormat)
+	if err != nil {
+		return err
+	}
+	if text == "" {
+		return nil
+	}
+	if !s.parser.separateTables {
+		s.textParts = append(s.textParts, text)
+		return nil
+	}
+	s.flushText()
+	s.sections = append(s.sections, rag.Section{
+		Content:  message.NewTextBlock(text),
+		Source:   s.filename,
+		Metadata: map[string]any{},
+	})
+	return nil
+}
+
+func (s *documentParseState) flushText() {
+	if len(s.textParts) == 0 {
+		return
+	}
+	s.sections = append(s.sections, rag.Section{
+		Content:  message.NewTextBlock(strings.Join(s.textParts, "\n")),
+		Source:   s.filename,
+		Metadata: map[string]any{},
+	})
+	s.textParts = nil
 }
 
 func (s *documentParseState) appendImages(imageIDs []string) error {
@@ -246,6 +311,9 @@ func (s *documentParseState) appendImages(imageIDs []string) error {
 		return nil
 	}
 	for _, id := range imageIDs {
+		if err := s.ctx.Err(); err != nil {
+			return err
+		}
 		target := s.relationships[id]
 		if target == "" {
 			continue
@@ -259,16 +327,13 @@ func (s *documentParseState) appendImages(imageIDs []string) error {
 			return err
 		}
 		mediaType := guessImageMediaType(data)
-		s.imageNo++
 		s.sections = append(s.sections, rag.Section{
 			Content: message.NewDataBlock(
 				message.NewBase64Source(base64.StdEncoding.EncodeToString(data), mediaType),
-				message.WithDataBlockName(path.Base(target)),
+				message.WithDataBlockName(s.filename),
 			),
 			Source: s.filename,
 			Metadata: map[string]any{
-				"type":       "image",
-				"index":      s.imageNo,
 				"media_type": mediaType,
 			},
 		})
@@ -282,15 +347,17 @@ type blockContent struct {
 }
 
 type tableContent struct {
-	rows     [][]string
-	imageIDs []string
+	rows [][]string
 }
 
-func collectParagraph(decoder *xml.Decoder, start xml.StartElement) (blockContent, error) {
+func collectParagraph(ctx context.Context, decoder *xml.Decoder, start xml.StartElement) (blockContent, error) {
 	var builder strings.Builder
 	content := blockContent{}
 	depth := 1
 	for depth > 0 {
+		if err := ctx.Err(); err != nil {
+			return content, err
+		}
 		token, err := decoder.Token()
 		if err != nil {
 			return content, err
@@ -298,22 +365,12 @@ func collectParagraph(decoder *xml.Decoder, start xml.StartElement) (blockConten
 		switch typed := token.(type) {
 		case xml.StartElement:
 			switch typed.Name.Local {
-			case "t", "delText":
+			case "t":
 				text, err := decodeText(decoder, typed)
 				if err != nil {
 					return content, err
 				}
 				builder.WriteString(text)
-			case "tab":
-				builder.WriteByte('\t')
-				if err := decoder.Skip(); err != nil {
-					return content, err
-				}
-			case "br", "cr":
-				builder.WriteByte('\n')
-				if err := decoder.Skip(); err != nil {
-					return content, err
-				}
 			case "blip", "imagedata":
 				if id := relationshipID(typed.Attr); id != "" {
 					content.imageIDs = append(content.imageIDs, id)
@@ -332,90 +389,148 @@ func collectParagraph(decoder *xml.Decoder, start xml.StartElement) (blockConten
 	return content, nil
 }
 
-func collectTable(decoder *xml.Decoder, start xml.StartElement) (tableContent, error) {
+func collectTable(ctx context.Context, decoder *xml.Decoder, start xml.StartElement) (tableContent, error) {
 	content := tableContent{}
-	var cell strings.Builder
-	var row []string
-	inRow := false
-	inCell := false
-	depth := 1
-	for depth > 0 {
+	for {
+		if err := ctx.Err(); err != nil {
+			return content, err
+		}
 		token, err := decoder.Token()
 		if err != nil {
 			return content, err
 		}
 		switch typed := token.(type) {
 		case xml.StartElement:
+			if typed.Name.Local != "tr" {
+				if err := decoder.Skip(); err != nil {
+					return content, err
+				}
+				continue
+			}
+			row, err := collectTableRow(ctx, decoder, typed)
+			if err != nil {
+				return content, err
+			}
+			content.rows = append(content.rows, row)
+		case xml.EndElement:
+			if typed.Name == start.Name {
+				return content, nil
+			}
+		}
+	}
+}
+
+func collectTableRow(ctx context.Context, decoder *xml.Decoder, start xml.StartElement) ([]string, error) {
+	var row []string
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+		switch typed := token.(type) {
+		case xml.StartElement:
+			if typed.Name.Local != "tc" {
+				if err := decoder.Skip(); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			cell, span, err := collectTableCell(ctx, decoder, typed)
+			if err != nil {
+				return nil, err
+			}
+			if len(row)+span > maxTableColumns {
+				return nil, fmt.Errorf("%w: docx table exceeds %d columns", rag.ErrInvalidInput, maxTableColumns)
+			}
+			row = append(row, cell)
+			row = append(row, make([]string, span-1)...)
+		case xml.EndElement:
+			if typed.Name == start.Name {
+				return row, nil
+			}
+		}
+	}
+}
+
+func collectTableCell(ctx context.Context, decoder *xml.Decoder, start xml.StartElement) (string, int, error) {
+	paragraphs := make([]string, 0, 1)
+	span := 1
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", 0, err
+		}
+		token, err := decoder.Token()
+		if err != nil {
+			return "", 0, err
+		}
+		switch typed := token.(type) {
+		case xml.StartElement:
 			switch typed.Name.Local {
-			case "tr":
-				if !inRow {
-					inRow = true
-					row = nil
-				}
-				depth++
-			case "tc":
-				if !inCell {
-					inCell = true
-					cell.Reset()
-				}
-				depth++
-			case "t", "delText":
-				text, err := decodeText(decoder, typed)
+			case "tcPr":
+				span, err = collectGridSpan(ctx, decoder, typed)
 				if err != nil {
-					return content, err
+					return "", 0, err
 				}
-				if inCell {
-					cell.WriteString(text)
+			case "p":
+				paragraph, err := collectParagraph(ctx, decoder, typed)
+				if err != nil {
+					return "", 0, err
 				}
-			case "tab":
-				if inCell {
-					cell.WriteByte('\t')
-				}
-				if err := decoder.Skip(); err != nil {
-					return content, err
-				}
-			case "br", "cr":
-				if inCell {
-					cell.WriteByte('\n')
-				}
-				if err := decoder.Skip(); err != nil {
-					return content, err
-				}
-			case "blip", "imagedata":
-				if id := relationshipID(typed.Attr); id != "" {
-					content.imageIDs = append(content.imageIDs, id)
-				}
-				if err := decoder.Skip(); err != nil {
-					return content, err
+				if paragraph.text != "" {
+					paragraphs = append(paragraphs, paragraph.text)
 				}
 			default:
-				depth++
+				if err := decoder.Skip(); err != nil {
+					return "", 0, err
+				}
 			}
 		case xml.EndElement:
-			switch typed.Name.Local {
-			case "p":
-				if inCell && strings.TrimSpace(cell.String()) != "" {
-					cell.WriteByte('\n')
-				}
-			case "tc":
-				if inCell {
-					row = append(row, normalizeTableCell(cell.String()))
-					cell.Reset()
-					inCell = false
-				}
-			case "tr":
-				if inRow {
-					if len(row) > 0 {
-						content.rows = append(content.rows, row)
-					}
-					row = nil
-					inRow = false
-				}
+			if typed.Name == start.Name {
+				return strings.Join(paragraphs, "\n"), span, nil
 			}
+		}
+	}
+}
+
+func collectGridSpan(ctx context.Context, decoder *xml.Decoder, start xml.StartElement) (int, error) {
+	span := 1
+	found := false
+	depth := 1
+	for depth > 0 {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		token, err := decoder.Token()
+		if err != nil {
+			return 0, err
+		}
+		switch typed := token.(type) {
+		case xml.StartElement:
+			if typed.Name.Local != "gridSpan" || found {
+				depth++
+				continue
+			}
+			found = true
+			value := attrValue(typed.Attr, "val")
+			if value == "" {
+				value = "1"
+			}
+			parsed, err := strconv.Atoi(value)
+			if err != nil || parsed < 1 || parsed > maxTableColumns {
+				return 0, fmt.Errorf("%w: invalid docx gridSpan value %q", rag.ErrInvalidInput, value)
+			}
+			span = parsed
+			if err := decoder.Skip(); err != nil {
+				return 0, err
+			}
+		case xml.EndElement:
 			depth--
 		}
 	}
-	return content, nil
+	return span, nil
 }
 
 func decodeText(decoder *xml.Decoder, start xml.StartElement) (string, error) {
@@ -426,40 +541,120 @@ func decodeText(decoder *xml.Decoder, start xml.StartElement) (string, error) {
 	return text, nil
 }
 
-func formatTable(rows [][]string) string {
-	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		if len(row) == 0 {
+func formatTable(rows [][]string, format TableFormat) (string, error) {
+	switch format {
+	case TableFormatMarkdown:
+		return formatMarkdownTable(rows), nil
+	case TableFormatJSON:
+		return formatJSONTable(rows)
+	default:
+		return "", fmt.Errorf("%w: unsupported docx table format %q", rag.ErrInvalidInput, format)
+	}
+}
+
+func formatMarkdownTable(rows [][]string) string {
+	if len(rows) == 0 || len(rows[0]) == 0 {
+		return ""
+	}
+	width := len(rows[0])
+	var builder strings.Builder
+	writeMarkdownRow(&builder, rows[0], width)
+	builder.WriteByte('\n')
+	separator := make([]string, width)
+	for index := range separator {
+		separator[index] = "---"
+	}
+	writeMarkdownRow(&builder, separator, width)
+	for _, row := range rows[1:] {
+		builder.WriteByte('\n')
+		writeMarkdownRow(&builder, row, width)
+	}
+	builder.WriteByte('\n')
+	return builder.String()
+}
+
+func writeMarkdownRow(builder *strings.Builder, row []string, width int) {
+	builder.WriteString("| ")
+	for index := 0; index < width; index++ {
+		if index > 0 {
+			builder.WriteString(" | ")
+		}
+		if index < len(row) {
+			builder.WriteString(row[index])
+		}
+	}
+	builder.WriteString(" |")
+}
+
+func formatJSONTable(rows [][]string) (string, error) {
+	var builder strings.Builder
+	builder.WriteString("<system-info>A table loaded as a JSON array:</system-info>\n[")
+	for rowIndex, row := range rows {
+		if rowIndex > 0 {
+			builder.WriteString(", ")
+		}
+		builder.WriteByte('[')
+		for columnIndex, cell := range row {
+			if columnIndex > 0 {
+				builder.WriteString(", ")
+			}
+			var encoded bytes.Buffer
+			encoder := json.NewEncoder(&encoded)
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(cell); err != nil {
+				return "", fmt.Errorf("encode docx table cell: %w", err)
+			}
+			builder.WriteString(strings.TrimSuffix(encoded.String(), "\n"))
+		}
+		builder.WriteByte(']')
+	}
+	builder.WriteByte(']')
+	return builder.String(), nil
+}
+
+func validTableFormat(format TableFormat) bool {
+	return format == TableFormatMarkdown || format == TableFormatJSON
+}
+
+func indexZipFiles(files []*zip.File) (map[string]*zip.File, error) {
+	if len(files) > maxArchiveEntries {
+		return nil, fmt.Errorf("%w: docx archive contains too many entries", rag.ErrInvalidInput)
+	}
+	out := make(map[string]*zip.File, len(files))
+	var totalSize uint64
+	for _, file := range files {
+		if file.FileInfo().IsDir() {
 			continue
 		}
-		cells := make([]string, 0, len(row))
-		hasText := false
-		for _, cell := range row {
-			if cell != "" {
-				hasText = true
-			}
-			cells = append(cells, strings.ReplaceAll(cell, "|", `\|`))
+		name, ok := cleanArchivePath(file.Name)
+		if !ok {
+			return nil, fmt.Errorf("%w: unsafe docx archive path %q", rag.ErrInvalidInput, file.Name)
 		}
-		if hasText {
-			lines = append(lines, "| "+strings.Join(cells, " | ")+" |")
+		if _, exists := out[name]; exists {
+			return nil, fmt.Errorf("%w: duplicate docx archive path %q", rag.ErrInvalidInput, name)
 		}
+		if file.UncompressedSize64 > maxArchiveUncompressedSize-totalSize {
+			return nil, fmt.Errorf("%w: docx archive is too large", rag.ErrInvalidInput)
+		}
+		totalSize += file.UncompressedSize64
+		out[name] = file
 	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return out, nil
 }
 
-func normalizeTableCell(text string) string {
-	return strings.Join(strings.Fields(text), " ")
-}
-
-func indexZipFiles(files []*zip.File) map[string]*zip.File {
-	out := make(map[string]*zip.File, len(files))
-	for _, file := range files {
-		out[strings.ReplaceAll(file.Name, "\\", "/")] = file
+func cleanArchivePath(name string) (string, bool) {
+	name = strings.ReplaceAll(name, "\\", "/")
+	if name == "" || strings.HasPrefix(name, "/") {
+		return "", false
 	}
-	return out
+	name = path.Clean(name)
+	if name == "." || name == ".." || strings.HasPrefix(name, "../") {
+		return "", false
+	}
+	return name, true
 }
 
-func parseRelationships(file *zip.File, baseDir string) (map[string]string, error) {
+func parseRelationships(ctx context.Context, file *zip.File, baseDir string) (map[string]string, error) {
 	out := map[string]string{}
 	if file == nil {
 		return out, nil
@@ -470,6 +665,9 @@ func parseRelationships(file *zip.File, baseDir string) (map[string]string, erro
 	}
 	decoder := xml.NewDecoder(bytes.NewReader(data))
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		token, err := decoder.Token()
 		if err == io.EOF {
 			break
@@ -484,19 +682,29 @@ func parseRelationships(file *zip.File, baseDir string) (map[string]string, erro
 		id := attrValue(start.Attr, "Id")
 		target := attrValue(start.Attr, "Target")
 		targetMode := attrValue(start.Attr, "TargetMode")
-		if id == "" || target == "" || targetMode == "External" || strings.Contains(target, "://") {
+		if id == "" || target == "" || strings.EqualFold(targetMode, "External") || strings.Contains(target, "://") {
 			continue
 		}
-		out[id] = relationshipTargetPath(baseDir, target)
+		if target = relationshipTargetPath(baseDir, target); target != "" {
+			out[id] = target
+		}
 	}
 	return out, nil
 }
 
 func relationshipTargetPath(baseDir string, target string) string {
+	target = strings.ReplaceAll(target, "\\", "/")
+	var joined string
 	if strings.HasPrefix(target, "/") {
-		return path.Clean(strings.TrimPrefix(target, "/"))
+		joined = strings.TrimLeft(target, "/")
+	} else {
+		joined = path.Join(baseDir, target)
 	}
-	return path.Clean(path.Join(baseDir, target))
+	cleaned, ok := cleanArchivePath(joined)
+	if !ok {
+		return ""
+	}
+	return cleaned
 }
 
 func relationshipID(attrs []xml.Attr) string {
@@ -521,12 +729,28 @@ func attrValue(attrs []xml.Attr, local string) string {
 }
 
 func readZipFile(file *zip.File) ([]byte, error) {
+	if file == nil {
+		return nil, fmt.Errorf("%w: docx archive part is missing", rag.ErrInvalidInput)
+	}
+	if file.UncompressedSize64 > maxPartSize {
+		return nil, fmt.Errorf("%w: docx archive part %q is too large", rag.ErrInvalidInput, file.Name)
+	}
 	reader, err := file.Open()
 	if err != nil {
 		return nil, err
 	}
-	defer reader.Close()
-	return io.ReadAll(reader)
+	data, readErr := io.ReadAll(io.LimitReader(reader, maxPartSize+1))
+	closeErr := reader.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if len(data) > maxPartSize {
+		return nil, fmt.Errorf("%w: docx archive part %q is too large", rag.ErrInvalidInput, file.Name)
+	}
+	return data, nil
 }
 
 func guessImageMediaType(data []byte) string {

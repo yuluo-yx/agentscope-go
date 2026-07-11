@@ -21,6 +21,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -319,6 +321,110 @@ func TestMCPClientConfigConnectListToolsAndFilters(t *testing.T) {
 	}
 	if _, err := filterRawTools([]gomcp.Tool{gomcp.NewTool("one")}, []string{"one"}, []string{"one"}); err == nil || !strings.Contains(err.Error(), "overlap") {
 		t.Fatalf("filterRawTools overlap error = %v", err)
+	}
+}
+
+func TestMCPClientMarkDisconnectedInvalidatesExistingTools(t *testing.T) {
+	t.Parallel()
+
+	var toolCalls atomic.Int64
+	var removeCalls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/mcps/weather/tools":
+			_ = json.NewEncoder(w).Encode([]gomcp.Tool{gomcp.NewTool("forecast")})
+		case r.Method == http.MethodPost && r.URL.Path == "/mcps/weather/tools/forecast":
+			toolCalls.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]*tool.ToolChunk{
+				"chunk": tool.NewToolChunk(
+					message.ContentBlockList{message.NewTextBlock("sunny")},
+					tool.WithToolChunkState(message.ToolResultSuccess),
+				),
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/mcps/weather":
+			removeCalls.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHTTPClient(server.URL)
+	if err != nil {
+		t.Fatalf("NewHTTPClient returned error: %v", err)
+	}
+	mcpClient := client.NewMCPClient(workspace.MCPClientConfig{
+		Name:     "weather",
+		Stateful: true,
+	}, true).(*MCPClient)
+	tools, err := mcpClient.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("ListTools returned %d tools, want 1", len(tools))
+	}
+
+	mcpClient.MarkDisconnected()
+	if mcpClient.IsConnected() {
+		t.Fatal("MarkDisconnected should clear the connected state")
+	}
+	if _, err := mcpClient.ListTools(context.Background()); err == nil || !strings.Contains(err.Error(), "not connected") {
+		t.Fatalf("ListTools after MarkDisconnected error = %v", err)
+	}
+	response := collectGatewayToolResponse(t, tools[0], nil)
+	text := response.GetTextContent("")
+	if response.State != message.ToolResultError || text == nil || !strings.Contains(*text, "disconnected") {
+		t.Fatalf("stale tool response = %#v text=%v", response, text)
+	}
+	if err := mcpClient.Close(); err != nil {
+		t.Fatalf("Close after MarkDisconnected returned error: %v", err)
+	}
+	if got := toolCalls.Load(); got != 0 {
+		t.Fatalf("stale tool issued %d remote calls, want 0", got)
+	}
+	if got := removeCalls.Load(); got != 0 {
+		t.Fatalf("MarkDisconnected or Close issued %d remove calls, want 0", got)
+	}
+
+	var nilMCP *MCPClient
+	nilMCP.MarkDisconnected()
+}
+
+func TestMCPClientMarkDisconnectedConcurrentWithStateReads(t *testing.T) {
+	t.Parallel()
+
+	mcpClient := &MCPClient{
+		connected:   true,
+		cachedTools: []gomcp.Tool{gomcp.NewTool("forecast")},
+	}
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	for range 16 {
+		wait.Go(func() {
+			<-start
+			for range 100 {
+				_ = mcpClient.IsConnected()
+			}
+		})
+	}
+	wait.Go(func() {
+		<-start
+		for range 100 {
+			mcpClient.MarkDisconnected()
+		}
+	})
+	close(start)
+	wait.Wait()
+
+	if mcpClient.IsConnected() {
+		t.Fatal("MCP client should remain disconnected")
+	}
+	mcpClient.mu.RLock()
+	defer mcpClient.mu.RUnlock()
+	if mcpClient.cachedTools != nil {
+		t.Fatalf("MarkDisconnected should clear cached tools: %#v", mcpClient.cachedTools)
 	}
 }
 
