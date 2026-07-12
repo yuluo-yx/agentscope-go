@@ -195,15 +195,24 @@ func executeIntegrationTool(
 		t.Fatalf("tool %q returned error: %v", target.Name(), err)
 	}
 	var output strings.Builder
+	var terminalState message.ToolResultState
 	for chunk := range chunks {
-		if chunk.State == message.ToolResultError || chunk.State == message.ToolResultInterrupted {
-			t.Fatalf("tool %q returned terminal state %q", target.Name(), chunk.State)
-		}
 		for _, block := range chunk.Content {
 			if text, ok := block.(*message.TextBlock); ok {
 				output.WriteString(text.Text)
 			}
 		}
+		if chunk.State == message.ToolResultError || chunk.State == message.ToolResultInterrupted {
+			terminalState = chunk.State
+		}
+	}
+	if terminalState != "" {
+		t.Fatalf(
+			"tool %q returned terminal state %q: %s",
+			target.Name(),
+			terminalState,
+			output.String(),
+		)
 	}
 	return output.String()
 }
