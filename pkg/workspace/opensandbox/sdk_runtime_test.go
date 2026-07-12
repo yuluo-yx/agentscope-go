@@ -393,7 +393,7 @@ func TestSDKRuntimeFailurePaths(t *testing.T) {
 }
 
 func TestSDKHandleNilSafetyAndHelpers(t *testing.T) {
-	for _, handle := range []*sdkHandle{nil, &sdkHandle{}} {
+	for _, handle := range []*sdkHandle{nil, {}} {
 		if handle.ID() != "" {
 			t.Fatalf("nil SDK handle ID = %q", handle.ID())
 		}
