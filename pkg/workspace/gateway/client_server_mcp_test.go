@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	gomcp "github.com/mark3labs/mcp-go/mcp"
 
@@ -65,6 +66,10 @@ func TestHTTPClientValidationHeadersAndDoBranches(t *testing.T) {
 			_, _ = w.Write([]byte("{"))
 		case "/status":
 			http.Error(w, "bad status", http.StatusTeapot)
+		case "/fastapi-status":
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"detail": "python MCP call failed"})
+		case "/gateway-status":
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "gateway MCP call failed"})
 		case "/echo":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -106,12 +111,49 @@ func TestHTTPClientValidationHeadersAndDoBranches(t *testing.T) {
 	if err := client.do(context.Background(), http.MethodGet, "/status", nil, nil, http.StatusOK); err == nil || !strings.Contains(err.Error(), "HTTP 418") {
 		t.Fatalf("do status error = %v", err)
 	}
+	if err := client.do(context.Background(), http.MethodGet, "/fastapi-status", nil, nil, http.StatusOK); err == nil ||
+		!strings.Contains(err.Error(), "HTTP 500: python MCP call failed") {
+		t.Fatalf("do FastAPI status error = %v", err)
+	}
+	if err := client.do(context.Background(), http.MethodGet, "/gateway-status", nil, nil, http.StatusOK); err == nil ||
+		!strings.Contains(err.Error(), "HTTP 502: gateway MCP call failed") {
+		t.Fatalf("do gateway status error = %v", err)
+	}
 	var nilClient *Client
 	if err := nilClient.Health(context.Background()); err == nil || !strings.Contains(err.Error(), "nil client") {
 		t.Fatalf("nil client Health error = %v", err)
 	}
 	if !statusAllowed(http.StatusCreated, []int{http.StatusOK, http.StatusCreated}) || statusAllowed(http.StatusTeapot, []int{http.StatusOK}) {
 		t.Fatalf("statusAllowed mismatch")
+	}
+}
+
+func TestGatewayErrorDetail(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "empty", body: "", want: ""},
+		{name: "invalid JSON", body: "not-json", want: ""},
+		{name: "Go error wins", body: `{"error":" go error ","detail":"ignored"}`, want: "go error"},
+		{name: "FastAPI detail", body: `{"detail":" python error "}`, want: "python error"},
+		{name: "blank error falls back", body: `{"error":" ","detail":"fallback"}`, want: "fallback"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := gatewayErrorDetail([]byte(test.body)); got != test.want {
+				t.Fatalf("gatewayErrorDetail() = %q, want %q", got, test.want)
+			}
+		})
+	}
+
+	got := gatewayErrorDetail([]byte(`{"detail":"` + strings.Repeat("界", maxGatewayErrorDetailBytes) + `"}`))
+	if !strings.HasSuffix(got, "...") || !utf8.ValidString(got) || len(got) > maxGatewayErrorDetailBytes+3 {
+		t.Fatalf("truncated gateway detail is invalid: len=%d suffix=%t UTF-8=%t", len(got), strings.HasSuffix(got, "..."), utf8.ValidString(got))
 	}
 }
 

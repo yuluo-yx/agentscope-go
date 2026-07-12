@@ -229,7 +229,7 @@ OpenSandbox SDK 默认从以下环境变量读取连接信息：
 1. 按 `agentscope.workspace.id` 列出 Running 和 Paused 状态的 Sandbox；没有匹配项时创建新 Sandbox，有匹配项时连接或恢复最新实例。
 2. 等待 Sandbox 健康，并创建 `/workspace/data`、`/workspace/skills`、`/workspace/sessions` 与 gateway home。
 3. 读取或播种 `/workspace/.mcp`，然后把配置统一写成 Python canonical 格式。
-4. 如果 gateway Python、脚本或 bootstrap 指纹缺失或不匹配，安装系统工具、`uv`、`mcp`、`uvicorn`、`fastapi` 和固定版本 `agentscope==2.0.4`，再上传 gateway 脚本并最后写入版本 marker。通过 `WithExtraPythonPackages` 指定的包也会在此阶段安装。
+4. 如果 gateway Python、脚本或 bootstrap 指纹缺失或不匹配，安装系统工具、`uv`、`mcp`、`uvicorn`、`fastapi` 和固定版本 `agentscope==2.0.4` 及其声明的运行时依赖，再上传 gateway 脚本并最后写入版本 marker。完整解析 AgentScope 依赖是必要条件：MCP 工具枚举只加载 `agentscope.mcp`，但第一次执行会懒加载 `agentscope.tool`。通过 `WithExtraPythonPackages` 指定的包也会在此阶段安装。
 5. 重启 loopback gateway，等待 `/health` 可用，核对恢复后的 MCP 数量，再播种 `WithSkillPaths` 指定的 Skill。
 
 gateway 脚本会在所有安装命令成功后最后写入。因此，首次 bootstrap 中断时，下次 `Initialize` 会重新执行完整引导。默认镜像和首次引导需要访问 Debian 软件源、`astral.sh` 与 Python 包索引；自定义镜像或网络策略必须允许这些请求，或预先提供等价运行环境。

@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	gomcp "github.com/mark3labs/mcp-go/mcp"
 
@@ -35,6 +36,8 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/tool"
 	"github.com/yuluo-yx/agentscope-go/pkg/workspace"
 )
+
+const maxGatewayErrorDetailBytes = 4 * 1024
 
 // ToolDescriptor describes one tool exposed by the in-workspace MCP gateway.
 type ToolDescriptor struct {
@@ -348,6 +351,15 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 		return fmt.Errorf("workspace/gateway: response body exceeds %d bytes", c.maxResponseBytes)
 	}
 	if !statusAllowed(response.StatusCode, okStatuses) {
+		if detail := gatewayErrorDetail(response.Body); detail != "" {
+			return fmt.Errorf(
+				"workspace/gateway: %s %s returned HTTP %d: %s",
+				method,
+				path,
+				response.StatusCode,
+				detail,
+			)
+		}
 		return fmt.Errorf("workspace/gateway: %s %s returned HTTP %d", method, path, response.StatusCode)
 	}
 
@@ -356,6 +368,28 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 	}
 
 	return decodeJSON(response.Body, out)
+}
+
+func gatewayErrorDetail(body []byte) string {
+	var envelope struct {
+		Error  string `json:"error"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return ""
+	}
+	detail := strings.TrimSpace(envelope.Error)
+	if detail == "" {
+		detail = strings.TrimSpace(envelope.Detail)
+	}
+	if len(detail) <= maxGatewayErrorDetailBytes {
+		return detail
+	}
+	detail = detail[:maxGatewayErrorDetailBytes]
+	for detail != "" && !utf8.ValidString(detail) {
+		detail = detail[:len(detail)-1]
+	}
+	return detail + "..."
 }
 
 func (c *Client) roundTrip(ctx context.Context, request *Request) (*Response, error) {

@@ -171,6 +171,10 @@ func TestNewWorkspaceConstructsProviderSpec(t *testing.T) {
 	if !slices.Contains(requirements, "httpx==0.28.1") || requirements[len(requirements)-1] != "httpx==0.28.1" {
 		t.Fatalf("bootstrap requirements mismatch: %#v", requirements)
 	}
+	agentScopeInstall := bootstrapCommands(nil)[6]
+	if !slices.Contains(agentScopeInstall, pythonAgentScope) || slices.Contains(agentScopeInstall, "--no-deps") {
+		t.Fatalf("AgentScope install must resolve declared dependencies: %#v", agentScopeInstall)
+	}
 }
 
 func TestOptionsRejectInvalidValues(t *testing.T) {

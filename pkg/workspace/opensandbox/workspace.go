@@ -175,7 +175,7 @@ func bootstrapCommands(extraRequirements []string) [][]string {
 		},
 		{"uv", "venv", gatewayVenv},
 		requirements,
-		{"uv", "pip", "install", "--python", gatewayPython, "--no-deps", pythonAgentScope},
+		{"uv", "pip", "install", "--python", gatewayPython, pythonAgentScope},
 	}
 }
 
