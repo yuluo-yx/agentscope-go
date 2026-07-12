@@ -19,10 +19,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	gomcp "github.com/mark3labs/mcp-go/mcp"
 
@@ -31,6 +35,12 @@ import (
 	asstate "github.com/yuluo-yx/agentscope-go/pkg/state"
 	"github.com/yuluo-yx/agentscope-go/pkg/tool"
 	"github.com/yuluo-yx/agentscope-go/pkg/workspace"
+)
+
+const (
+	maxGatewayErrorDetailBytes = 4 * 1024
+	mcpCollectionPath          = "/mcps"
+	jsonSchemaObjectType       = "object"
 )
 
 // ToolDescriptor describes one tool exposed by the in-workspace MCP gateway.
@@ -51,10 +61,13 @@ type ToolCallResponse struct {
 
 // Client is the host-side client for the workspace MCP gateway.
 type Client struct {
-	baseURL     string
-	httpClient  *http.Client
-	headers     map[string]string
-	bearerToken string
+	baseURL             string
+	httpClient          *http.Client
+	transport           Transport
+	headers             map[string]string
+	bearerToken         string
+	maxResponseBytes    int64
+	pythonMCPConfigJSON bool
 }
 
 // Option configures a gateway client.
@@ -86,6 +99,42 @@ func WithBearerToken(token string) Option {
 	}
 }
 
+// WithMaxResponseBytes sets the maximum response body size accepted by the client.
+func WithMaxResponseBytes(size int64) Option {
+
+	return func(gateway *Client) {
+		if size > 0 {
+			gateway.maxResponseBytes = size
+		}
+	}
+}
+
+// WithPythonMCPConfigJSON makes MCP routes use AgentScope Python's canonical
+// nested mcp_config JSON shape. Other gateway routes are unchanged.
+func WithPythonMCPConfigJSON() Option {
+
+	return func(gateway *Client) {
+		gateway.pythonMCPConfigJSON = true
+	}
+}
+
+// NewClient creates a gateway client backed by an injected Transport.
+//
+// This seam lets remote workspaces execute Python gateway requests through
+// sandbox loopback without exposing the sandbox network to the host.
+func NewClient(transport Transport, opts ...Option) (*Client, error) {
+
+	if transport == nil {
+		return nil, fmt.Errorf("workspace/gateway: nil transport")
+	}
+
+	client := newClientDefaults()
+	client.transport = transport
+	applyOptions(client, opts)
+
+	return client, nil
+}
+
 // NewHTTPClient creates a gateway client for a base URL.
 func NewHTTPClient(baseURL string, opts ...Option) (*Client, error) {
 
@@ -109,16 +158,9 @@ func NewHTTPClient(baseURL string, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("workspace/gateway: base URL must not include user info, query, or fragment")
 	}
 
-	client := &Client{
-		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		headers:    map[string]string{},
-	}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(client)
-		}
-	}
+	client := newClientDefaults()
+	client.baseURL = baseURL
+	applyOptions(client, opts)
 
 	return client, nil
 }
@@ -136,8 +178,16 @@ func (c *Client) Health(ctx context.Context) error {
 
 // AddMCP registers one MCP server in the gateway.
 func (c *Client) AddMCP(ctx context.Context, config workspace.MCPClientConfig) error {
+	if c != nil && c.pythonMCPConfigJSON {
+		pythonConfig, err := toPythonMCPConfig(config)
+		if err != nil {
+			return err
+		}
 
-	return c.do(ctx, http.MethodPost, "/mcps", config, nil, http.StatusOK, http.StatusCreated, http.StatusNoContent)
+		return c.do(ctx, http.MethodPost, mcpCollectionPath, pythonConfig, nil, http.StatusOK, http.StatusCreated, http.StatusNoContent)
+	}
+
+	return c.do(ctx, http.MethodPost, mcpCollectionPath, config, nil, http.StatusOK, http.StatusCreated, http.StatusNoContent)
 }
 
 // RemoveMCP unregisters one MCP server from the gateway.
@@ -148,9 +198,17 @@ func (c *Client) RemoveMCP(ctx context.Context, name string) error {
 
 // ListMCPs returns MCP configs currently registered in the gateway.
 func (c *Client) ListMCPs(ctx context.Context) ([]workspace.MCPClientConfig, error) {
+	if c != nil && c.pythonMCPConfigJSON {
+		var payload json.RawMessage
+		if err := c.do(ctx, http.MethodGet, mcpCollectionPath, nil, &payload, http.StatusOK); err != nil {
+			return nil, err
+		}
+
+		return UnmarshalMCPConfigs(payload)
+	}
 
 	var configs []workspace.MCPClientConfig
-	if err := c.do(ctx, http.MethodGet, "/mcps", nil, &configs, http.StatusOK); err != nil {
+	if err := c.do(ctx, http.MethodGet, mcpCollectionPath, nil, &configs, http.StatusOK); err != nil {
 		return nil, err
 	}
 
@@ -228,58 +286,213 @@ func (c *Client) callMCPTool(ctx context.Context, mcpName, toolName string, inpu
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any, okStatuses ...int) error {
 
-	if c == nil {
-		return fmt.Errorf("workspace/gateway: nil client")
-	}
-	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
-		return fmt.Errorf("workspace/gateway: invalid internal path %q", path)
+	if err := c.validateCall(ctx, path); err != nil {
+		return err
 	}
 
-	var reader *bytes.Reader
-	if body == nil {
-		reader = bytes.NewReader(nil)
-	} else {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		reader = bytes.NewReader(data)
-	}
-
-	// #nosec G704 -- baseURL is validated by NewHTTPClient and path is an internal route assembled by this package.
-	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
+	request, err := c.newRequest(method, path, body)
 	if err != nil {
 		return err
 	}
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-
-	for key, value := range c.headers {
-		if strings.TrimSpace(key) != "" {
-			request.Header.Set(key, value)
-		}
-	}
-
-	if c.bearerToken != "" {
-		request.Header.Set("Authorization", "Bearer "+c.bearerToken)
-	}
-
-	// #nosec G704 -- request was constructed from the validated gateway base URL and an internal route above.
-	response, err := c.httpClient.Do(request)
+	response, err := c.roundTrip(ctx, request)
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
-	if !statusAllowed(response.StatusCode, okStatuses) {
-		return fmt.Errorf("workspace/gateway: %s %s returned HTTP %d", method, path, response.StatusCode)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.validateResponse(method, path, response, okStatuses); err != nil {
+		return err
 	}
 
 	if out == nil || response.StatusCode == http.StatusNoContent {
 		return nil
 	}
 
-	return json.NewDecoder(response.Body).Decode(out)
+	return decodeJSON(response.Body, out)
+}
+
+func (c *Client) validateCall(ctx context.Context, path string) error {
+
+	if c == nil {
+		return fmt.Errorf("workspace/gateway: nil client")
+	}
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return fmt.Errorf("workspace/gateway: invalid internal path %q", path)
+	}
+	if ctx == nil {
+		return fmt.Errorf("workspace/gateway: nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) newRequest(method, path string, body any) (*Request, error) {
+
+	var data []byte
+	if body != nil {
+		var err error
+		data, err = json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	header := make(http.Header, len(c.headers)+2)
+	if body != nil {
+		header.Set("Content-Type", "application/json")
+	}
+
+	for key, value := range c.headers {
+		if strings.TrimSpace(key) != "" {
+			header.Set(key, value)
+		}
+	}
+
+	if c.bearerToken != "" {
+		header.Set("Authorization", "Bearer "+c.bearerToken)
+	}
+	if err := validateRequestHeader(header); err != nil {
+		return nil, err
+	}
+
+	return &Request{
+		Method:           method,
+		Path:             path,
+		Header:           header,
+		Body:             bytes.Clone(data),
+		MaxResponseBytes: c.maxResponseBytes,
+	}, nil
+}
+
+func (c *Client) validateResponse(method, path string, response *Response, okStatuses []int) error {
+
+	if response == nil {
+		return fmt.Errorf("workspace/gateway: transport returned a nil response")
+	}
+	if response.StatusCode < 100 || response.StatusCode > 599 {
+		return fmt.Errorf("workspace/gateway: transport returned an invalid status")
+	}
+	if err := validateHTTPHeader(response.Header); err != nil {
+		return err
+	}
+	if int64(len(response.Body)) > c.maxResponseBytes {
+		return fmt.Errorf("workspace/gateway: response body exceeds %d bytes", c.maxResponseBytes)
+	}
+	if !statusAllowed(response.StatusCode, okStatuses) {
+		if detail := gatewayErrorDetail(response.Body); detail != "" {
+			return fmt.Errorf(
+				"workspace/gateway: %s %s returned HTTP %d: %s",
+				method,
+				path,
+				response.StatusCode,
+				detail,
+			)
+		}
+		return fmt.Errorf("workspace/gateway: %s %s returned HTTP %d", method, path, response.StatusCode)
+	}
+
+	return nil
+}
+
+func gatewayErrorDetail(body []byte) string {
+	var envelope struct {
+		Error  string `json:"error"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return ""
+	}
+	detail := strings.TrimSpace(envelope.Error)
+	if detail == "" {
+		detail = strings.TrimSpace(envelope.Detail)
+	}
+	if len(detail) <= maxGatewayErrorDetailBytes {
+		return detail
+	}
+	detail = detail[:maxGatewayErrorDetailBytes]
+	for detail != "" && !utf8.ValidString(detail) {
+		detail = detail[:len(detail)-1]
+	}
+	return detail + "..."
+}
+
+func (c *Client) roundTrip(ctx context.Context, request *Request) (*Response, error) {
+
+	if c.transport != nil {
+		return c.transport.RoundTrip(ctx, request)
+	}
+	if c.httpClient == nil {
+		return nil, fmt.Errorf("workspace/gateway: nil HTTP client")
+	}
+
+	// #nosec G704 -- NewHTTPClient validates baseURL, and this package constructs the internal path.
+	httpRequest, err := http.NewRequestWithContext(ctx, request.Method, c.baseURL+request.Path, bytes.NewReader(request.Body))
+	if err != nil {
+		return nil, err
+	}
+	httpRequest.Header = request.Header.Clone()
+
+	// #nosec G704 -- The request uses only the validated baseURL and internal route above.
+	httpResponse, err := c.httpClient.Do(httpRequest)
+	if err != nil {
+		return nil, err
+	}
+	defer httpResponse.Body.Close()
+
+	readLimit := request.MaxResponseBytes
+	if readLimit < math.MaxInt64 {
+		readLimit++
+	}
+	body, err := io.ReadAll(io.LimitReader(httpResponse.Body, readLimit))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Response{
+		StatusCode: httpResponse.StatusCode,
+		Header:     httpResponse.Header.Clone(),
+		Body:       body,
+	}, nil
+}
+
+func newClientDefaults() *Client {
+
+	return &Client{
+		httpClient:       &http.Client{Timeout: 30 * time.Second},
+		headers:          map[string]string{},
+		maxResponseBytes: DefaultMaxResponseBytes,
+	}
+}
+
+func applyOptions(client *Client, opts []Option) {
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(client)
+		}
+	}
+}
+
+func decodeJSON(data []byte, out any) error {
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("workspace/gateway: response contains trailing JSON")
+		}
+		return err
+	}
+
+	return nil
 }
 
 func statusAllowed(status int, allowed []int) bool {
@@ -308,7 +521,7 @@ func (t *gatewayTool) Description() string {
 
 func (t *gatewayTool) InputSchema() map[string]any {
 	if t.descriptor.InputSchema == nil {
-		return map[string]any{"type": "object"}
+		return map[string]any{"type": jsonSchemaObjectType}
 	}
 	return cloneAnyMap(t.descriptor.InputSchema)
 }
@@ -423,6 +636,7 @@ var _ tool.Tool = (*gatewayTool)(nil)
 
 // MCPClient is a gateway-backed MCP proxy.
 type MCPClient struct {
+	mu          sync.RWMutex
 	client      *Client
 	config      workspace.MCPClientConfig
 	connected   bool
@@ -446,7 +660,12 @@ func (c *MCPClient) IsStateful() bool {
 
 // IsConnected reports whether this proxy is registered with the gateway.
 func (c *MCPClient) IsConnected() bool {
-	return c != nil && c.connected
+	if c == nil {
+		return false
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.connected
 }
 
 // Connect registers the upstream MCP config on the gateway.
@@ -454,9 +673,8 @@ func (c *MCPClient) Connect(ctx context.Context) error {
 	if c == nil || c.client == nil {
 		return fmt.Errorf("workspace/gateway: nil MCP client")
 	}
-	if !c.config.Stateful {
-		return nil
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.connected {
 		return fmt.Errorf("workspace/gateway: MCP %q is already connected", c.Name())
 	}
@@ -470,7 +688,12 @@ func (c *MCPClient) Connect(ctx context.Context) error {
 
 // Close unregisters the upstream MCP config from the gateway.
 func (c *MCPClient) Close() error {
-	if c == nil || c.client == nil || !c.config.Stateful || !c.connected {
+	if c == nil || c.client == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.connected {
 		return nil
 	}
 	if err := c.client.RemoveMCP(context.Background(), c.Name()); err != nil {
@@ -494,7 +717,7 @@ func (c *MCPClient) ListTools(ctx context.Context) ([]workspace.Tool, error) {
 	if c == nil || c.client == nil {
 		return nil, fmt.Errorf("workspace/gateway: nil MCP client")
 	}
-	if c.config.Stateful && !c.connected {
+	if !c.IsConnected() {
 		return nil, fmt.Errorf("workspace/gateway: MCP %q is not connected", c.Name())
 	}
 	rawTools, err := c.listRawTools(ctx)
@@ -504,6 +727,7 @@ func (c *MCPClient) ListTools(ctx context.Context) ([]workspace.Tool, error) {
 	tools := make([]workspace.Tool, 0, len(rawTools))
 	for _, raw := range rawTools {
 		tools = append(tools, &gatewayMCPTool{
+			owner:       c,
 			client:      c.client,
 			mcpName:     c.Name(),
 			raw:         raw,
@@ -520,11 +744,25 @@ func (c *MCPClient) listRawTools(ctx context.Context) ([]gomcp.Tool, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.mu.Lock()
 	c.cachedTools = append([]gomcp.Tool(nil), rawTools...)
+	c.mu.Unlock()
 	return filterRawTools(rawTools, c.config.EnabledTools, c.config.DisabledTools)
 }
 
+// MarkDisconnected updates local proxy state without issuing another gateway request.
+func (c *MCPClient) MarkDisconnected() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.connected = false
+	c.cachedTools = nil
+}
+
 type gatewayMCPTool struct {
+	owner       *MCPClient
 	client      *Client
 	mcpName     string
 	raw         gomcp.Tool
@@ -605,6 +843,12 @@ func (t *gatewayMCPTool) GenerateSuggestions(map[string]any) []permission.Rule {
 }
 
 func (t *gatewayMCPTool) Execute(ctx context.Context, input map[string]any, _ *asstate.AgentState) (<-chan tool.ToolChunk, error) {
+	if t.owner != nil && !t.owner.IsConnected() {
+		return singleChunk(tool.NewToolChunk(
+			message.ContentBlockList{message.NewTextBlock("workspace/gateway: MCP client is disconnected")},
+			tool.WithToolChunkState(message.ToolResultError),
+		)), nil
+	}
 	chunk, err := t.client.callMCPTool(ctx, t.mcpName, t.raw.Name, input)
 	if err != nil {
 		return singleChunk(tool.NewToolChunk(message.ContentBlockList{message.NewTextBlock(err.Error())}, tool.WithToolChunkState(message.ToolResultError))), nil
@@ -639,7 +883,7 @@ func rawInputSchemaMap(raw gomcp.Tool) map[string]any {
 		schema = map[string]any{}
 	}
 	if schemaType, _ := schema["type"].(string); schemaType == "" {
-		schema["type"] = "object"
+		schema["type"] = jsonSchemaObjectType
 	}
 	if _, ok := schema["properties"]; !ok || schema["properties"] == nil {
 		schema["properties"] = map[string]any{}
