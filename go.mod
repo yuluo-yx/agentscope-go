@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/alibaba/OpenSandbox/sdks/sandbox/go v1.0.4
-	github.com/anthropics/anthropic-sdk-go v1.51.1
+	github.com/anthropics/anthropic-sdk-go v1.56.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/daytonaio/daytona/libs/sdk-go v0.190.0
 	github.com/google/uuid v1.6.0
@@ -15,7 +15,7 @@ require (
 	github.com/ollama/ollama v0.31.1
 	github.com/openai/openai-go v1.12.0
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-	github.com/superradcompany/microsandbox/sdk/go v0.6.1
+	github.com/superradcompany/microsandbox/sdk/go v0.6.6
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
