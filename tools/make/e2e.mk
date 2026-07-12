@@ -4,7 +4,7 @@ E2E_BIN ?= $(BUILD_DIR)/e2e
 E2E_PROFILE ?= local
 E2E_VERBOSE ?= true
 E2E_PARALLEL ?= false
-E2E_TIMEOUT ?= $(if $(filter provider-smoke,$(E2E_PROFILE)),2m,$(if $(filter docker,$(E2E_PROFILE)),10m,$(if $(filter agent-sandbox,$(E2E_PROFILE)),20m,5m)))
+E2E_TIMEOUT ?= $(if $(filter provider-smoke,$(E2E_PROFILE)),2m,$(if $(filter docker,$(E2E_PROFILE)),10m,$(if $(filter agent-sandbox,$(E2E_PROFILE)),20m,$(if $(filter opensandbox,$(E2E_PROFILE)),25m,5m))))
 E2E_TESTS ?=
 E2E_REPORT_DIR ?= e2e/reports/$(E2E_PROFILE)
 E2E_TEST_ARGS = -profile=$(E2E_PROFILE) -verbose=$(E2E_VERBOSE) -parallel=$(E2E_PARALLEL) -timeout=$(E2E_TIMEOUT) -report-dir=$(E2E_REPORT_DIR) $(if $(E2E_TESTS),-tests=$(E2E_TESTS),)
@@ -25,7 +25,7 @@ build-e2e:
 	cd e2e && $(GO) build -o ../$(E2E_BIN) ./cmd/e2e
 
 .PHONY: e2e
-e2e: build-e2e ## Run E2E. Set E2E_PROFILE=local|dashscope-live|provider-smoke|docker|agent-sandbox
+e2e: build-e2e ## Run E2E. Set E2E_PROFILE=local|dashscope-live|provider-smoke|docker|opensandbox|agent-sandbox
 	@$(LOG_TARGET)
 	@set -e; \
 	case "$(E2E_PROFILE)" in \
@@ -35,6 +35,9 @@ e2e: build-e2e ## Run E2E. Set E2E_PROFILE=local|dashscope-live|provider-smoke|d
 		docker) \
 			docker image inspect "$(DOCKER_TEST_IMAGE)" >/dev/null 2>&1 || docker pull "$(DOCKER_TEST_IMAGE)"; \
 			AGENTSCOPE_E2E_DOCKER=1 AGENTSCOPE_TEST_DOCKER=1 AGENTSCOPE_DOCKER_IMAGE="$(DOCKER_TEST_IMAGE)" ./$(E2E_BIN) $(E2E_TEST_ARGS); \
+			;; \
+		opensandbox) \
+			OPENSANDBOX_E2E_TIMEOUT="$(E2E_TIMEOUT)" tools/opensandbox/run-e2e.sh; \
 			;; \
 		agent-sandbox) \
 			AGENT_SANDBOX_VERSION="$(AGENT_SANDBOX_VERSION)" \

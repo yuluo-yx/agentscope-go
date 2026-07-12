@@ -57,7 +57,7 @@ type pythonHTTPMCPConfig struct {
 	Timeout *float64                `json:"timeout,omitempty"`
 }
 
-// PythonMCPCodec provides a stateless .mcp codec for shared workspace lifecycles.
+// PythonMCPCodec reads shared .mcp files and writes AgentScope Python's canonical format.
 type PythonMCPCodec struct{}
 
 // Marshal encodes a canonical Python .mcp JSON array.

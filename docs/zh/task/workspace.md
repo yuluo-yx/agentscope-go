@@ -258,15 +258,14 @@ gateway 脚本会在所有安装命令成功后最后写入。因此，首次 bo
 
 ### CI 与 E2E 策略
 
-OpenSandbox 测试统一在 GitHub Actions 的 `.github/workflows/opensandbox.yml` 中运行，本地不执行 `pkg/workspace/opensandbox` 的单元测试或 E2E，以避免占用本地远程 Sandbox 和运行资源。
+OpenSandbox 与 Docker、AgentSandbox 共用 GitHub Actions 的 `.github/workflows/ci.yml` 和同一个 `CI Checks` job，本地不执行 `pkg/workspace/opensandbox` 的单元测试或 E2E，以避免占用本地运行资源。
 
-- Unit job 不读取 OpenSandbox secrets，只对 `pkg/workspace/opensandbox` 执行 race test、覆盖率检查和 `go vet`；覆盖率必须达到 90%。
-- E2E job 使用 `integration` build tag，最长运行 25 分钟，job 超时为 30 分钟。
-- E2E job 优先从 GitHub environment `opensandbox-e2e` 读取 `OPEN_SANDBOX_DOMAIN` 和 `OPEN_SANDBOX_API_KEY`。未配置 endpoint 时，GitHub runner 会安装固定版本 `opensandbox-server==0.2.1`，使用官方 Docker 示例配置启动一次性服务；本地服务不启用 API key，测试结束后清理 Sandbox 容器。
-- 同仓库 PR、push 和手动触发可以运行 E2E；fork PR 只运行不使用 secrets 的 Unit job。
-- E2E 使用全局并发组串行执行，等待中的运行不会取消已经开始的 E2E。
+- `make ci` 统一执行普通 Go 包的 race 单元测试、格式、lint、拼写和安全检查，包含 OpenSandbox 的非 integration 测试。
+- Docker E2E 完成后，CI 通过 `tools/opensandbox/install-server.sh` 安装固定版本 `opensandbox-server==0.2.1`。
+- `make e2e E2E_PROFILE=opensandbox` 调用 `tools/opensandbox/run-e2e.sh`，使用官方 Docker 示例配置启动一次性服务，再执行带 `integration` build tag 的 OpenSandbox E2E；测试最长运行 25 分钟，失败时输出 server 日志，结束后清理服务进程和 Sandbox 容器。
+- OpenSandbox 不读取独立 secrets 或 GitHub environment。AgentSandbox E2E 在 OpenSandbox 清理完成后继续执行。
 
-工作流由 OpenSandbox、共享远程生命周期、gateway、`go.mod`、`go.sum` 或工作流自身的改动触发。提交前只做静态文件检查；完整的 OpenSandbox 验证结果以 GitHub Actions 为准。
+CI 按仓库既有规则在 `main` push 和面向 `main` 的 pull request 上触发。完整的 OpenSandbox 验证结果以该统一工作流为准。
 
 ## 工具
 
