@@ -198,7 +198,7 @@ func collectLocalSkillFiles(
 	ctx context.Context,
 	root string,
 ) ([]localSkillFile, string, error) {
-	sourceRoot, err := os.OpenRoot(root)
+	sourceRoot, err := openLocalSkillRoot(root)
 	if err != nil {
 		return nil, "", err
 	}
@@ -244,6 +244,35 @@ func collectLocalSkillFiles(
 		writeFingerprintPart(digest, file.data)
 	}
 	return files, hex.EncodeToString(digest.Sum(nil)), nil
+}
+
+func openLocalSkillRoot(root string) (*os.Root, error) {
+	initial, err := os.Lstat(root)
+	if err != nil {
+		return nil, err
+	}
+	if initial.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("workspace/sandboxed: skill contains symlink %q", root)
+	}
+
+	sourceRoot, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	opened, openedErr := sourceRoot.Stat(".")
+	current, currentErr := os.Lstat(root)
+	if err := errors.Join(openedErr, currentErr); err != nil {
+		_ = sourceRoot.Close()
+		return nil, err
+	}
+	if current.Mode()&os.ModeSymlink != 0 ||
+		!os.SameFile(initial, opened) ||
+		!os.SameFile(opened, current) {
+		_ = sourceRoot.Close()
+		return nil, fmt.Errorf("workspace/sandboxed: skill root changed during collection")
+	}
+
+	return sourceRoot, nil
 }
 
 // RemoveSkill removes a remote Skill by its agent-visible name.

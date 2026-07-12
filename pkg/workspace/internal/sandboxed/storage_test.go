@@ -187,6 +187,19 @@ func TestAddSkillSuccessExistingAndRollback(t *testing.T) {
 		}
 	})
 
+	t.Run("root symlink rejected", func(t *testing.T) {
+		source := writeLocalSkill(t, "Root Symlink Skill", "linked root", nil)
+		linkedSource := filepath.Join(t.TempDir(), "linked-skill")
+		if err := os.Symlink(source, linkedSource); err != nil {
+			t.Fatalf("create root symlink: %v", err)
+		}
+		w, backend, _, _, _ := readyWorkspace(t)
+		requireErrorContains(t, w.AddSkill(context.Background(), linkedSource), "contains symlink")
+		if backend.existsLocked("/work/skills/root-symlink-skill") {
+			t.Fatal("root symlink failure created a remote skill")
+		}
+	})
+
 	t.Run("hashed directory fallback", func(t *testing.T) {
 		source := writeLocalSkill(t, "!!!", "punctuation", nil)
 		w, backend, _, _, _ := readyWorkspace(t)
