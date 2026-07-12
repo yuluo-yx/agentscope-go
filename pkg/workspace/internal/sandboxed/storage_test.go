@@ -527,11 +527,16 @@ func TestStoragePathAndParsingHelpers(t *testing.T) {
 			t.Fatalf("sanitizeSkillDir(%q) = %q, want %q", input, got, want)
 		}
 	}
-	for input, want := range map[string]string{
-		"": "result", " / ": "result", "call/id_1": "callid_1",
+	for _, test := range []struct {
+		input string
+		want  string
+	}{
+		{input: "", want: "result"},
+		{input: " / ", want: "result"},
+		{input: "call/id_1", want: "callid_1"},
 	} {
-		if got := safeFileSegment(input); got != want {
-			t.Fatalf("safeFileSegment(%q) = %q, want %q", input, got, want)
+		if got := safeFileSegment(test.input); got != test.want {
+			t.Fatalf("safeFileSegment(%q) = %q, want %q", test.input, got, test.want)
 		}
 	}
 

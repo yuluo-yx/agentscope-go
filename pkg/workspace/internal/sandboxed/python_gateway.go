@@ -125,17 +125,8 @@ func (t *pythonLoopbackTransport) RoundTrip(
 	ctx context.Context,
 	request *gateway.Request,
 ) (*gateway.Response, error) {
-	if t == nil || t.backend == nil {
-		return nil, fmt.Errorf("workspace/sandboxed: nil loopback transport")
-	}
-	if ctx == nil {
-		return nil, fmt.Errorf("workspace/sandboxed: nil loopback context")
-	}
-	if err := ctx.Err(); err != nil {
+	if err := t.validateTransport(ctx, request); err != nil {
 		return nil, err
-	}
-	if request == nil {
-		return nil, fmt.Errorf("workspace/sandboxed: nil loopback request")
 	}
 	if t.leaser != nil {
 		release, err := t.leaser.beginGatewayOperation(ctx)
@@ -144,23 +135,8 @@ func (t *pythonLoopbackTransport) RoundTrip(
 		}
 		defer release()
 	}
-	if !strings.HasPrefix(request.Path, "/") || strings.HasPrefix(request.Path, "//") {
-		return nil, fmt.Errorf("workspace/sandboxed: invalid loopback path")
-	}
-	if request.Method != http.MethodGet &&
-		request.Method != http.MethodPost &&
-		request.Method != http.MethodDelete {
-		return nil, fmt.Errorf("workspace/sandboxed: unsupported loopback method %q", request.Method)
-	}
-	for name, values := range request.Header {
-		if !strings.EqualFold(name, "Content-Type") ||
-			len(values) != 1 ||
-			values[0] != "application/json" {
-			return nil, fmt.Errorf("workspace/sandboxed: loopback request contains unsupported headers")
-		}
-	}
-	if request.MaxResponseBytes <= 0 {
-		return nil, fmt.Errorf("workspace/sandboxed: loopback response limit must be positive")
+	if err := validateLoopbackRequest(request); err != nil {
+		return nil, err
 	}
 
 	bodyFile := ""
@@ -195,10 +171,59 @@ func (t *pythonLoopbackTransport) RoundTrip(
 		return nil, commandError("execute loopback shim", result)
 	}
 
+	return t.decodeResponse(ctx, result.Stdout, request.MaxResponseBytes)
+}
+
+func (t *pythonLoopbackTransport) validateTransport(
+	ctx context.Context,
+	request *gateway.Request,
+) error {
+	if t == nil || t.backend == nil {
+		return fmt.Errorf("workspace/sandboxed: nil loopback transport")
+	}
+	if ctx == nil {
+		return fmt.Errorf("workspace/sandboxed: nil loopback context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if request == nil {
+		return fmt.Errorf("workspace/sandboxed: nil loopback request")
+	}
+	return nil
+}
+
+func validateLoopbackRequest(request *gateway.Request) error {
+	if !strings.HasPrefix(request.Path, "/") || strings.HasPrefix(request.Path, "//") {
+		return fmt.Errorf("workspace/sandboxed: invalid loopback path")
+	}
+	if request.Method != http.MethodGet &&
+		request.Method != http.MethodPost &&
+		request.Method != http.MethodDelete {
+		return fmt.Errorf("workspace/sandboxed: unsupported loopback method %q", request.Method)
+	}
+	for name, values := range request.Header {
+		if !strings.EqualFold(name, "Content-Type") ||
+			len(values) != 1 ||
+			values[0] != "application/json" {
+			return fmt.Errorf("workspace/sandboxed: loopback request contains unsupported headers")
+		}
+	}
+	if request.MaxResponseBytes <= 0 {
+		return fmt.Errorf("workspace/sandboxed: loopback response limit must be positive")
+	}
+	return nil
+}
+
+func (t *pythonLoopbackTransport) decodeResponse(
+	ctx context.Context,
+	data []byte,
+	maxResponseBytes int64,
+) (*gateway.Response, error) {
 	return gateway.DecodeLoopbackResponse(
 		ctx,
-		result.Stdout,
-		request.MaxResponseBytes,
+		data,
+		maxResponseBytes,
 		func(ctx context.Context, filename string, maxBytes int64) ([]byte, error) {
 			defer func() {
 				cleanupCtx, cancel := t.detachedContext(ctx)

@@ -227,31 +227,9 @@ func (w *Workspace) Initialize(ctx context.Context) (err error) {
 	w.backend = backend
 	succeeded := false
 	defer func() {
-		if succeeded {
-			return
+		if !succeeded {
+			err = errors.Join(err, w.rollbackInitialize(ctx))
 		}
-		rollbackCtx, cancel := w.detachedContext(ctx)
-		defer cancel()
-		var rollbackErrs []error
-		if w.gatewayGate != nil {
-			if gateErr := w.gatewayGate.closeAndWait(rollbackCtx); gateErr != nil {
-				rollbackErrs = append(rollbackErrs, fmt.Errorf("workspace/sandboxed: rollback gateway operations: %w", gateErr))
-			}
-		}
-		if w.gateway != nil {
-			if gatewayErr := w.gateway.Close(internalGatewayContext(rollbackCtx)); gatewayErr != nil {
-				rollbackErrs = append(rollbackErrs, fmt.Errorf("workspace/sandboxed: rollback gateway: %w", gatewayErr))
-			}
-		}
-		if closeErr := w.provider.Close(rollbackCtx); closeErr != nil {
-			rollbackErrs = append(rollbackErrs, fmt.Errorf("workspace/sandboxed: rollback provider: %w", closeErr))
-		}
-		w.backend = nil
-		w.gateway = nil
-		w.gatewayGate = nil
-		w.mcps = nil
-		w.alive = false
-		err = errors.Join(err, errors.Join(rollbackErrs...))
 	}()
 
 	if err := w.ensureLayout(ctx); err != nil {
@@ -268,35 +246,78 @@ func (w *Workspace) Initialize(ctx context.Context) (err error) {
 	w.gateway = gatewayClient
 	w.gatewayGate = gatewayGate
 
-	liveConfigs, err := gatewayClient.ListMCPs(ctx)
+	if err := w.loadGatewayMCPs(ctx, gatewayClient, configs); err != nil {
+		return err
+	}
+	if err := w.seedSkillsLocked(ctx); err != nil {
+		return err
+	}
+	w.alive = true
+	succeeded = true
+	return nil
+}
+
+func (w *Workspace) rollbackInitialize(ctx context.Context) error {
+	rollbackCtx, cancel := w.detachedContext(ctx)
+	defer cancel()
+	var rollbackErrs []error
+	if w.gatewayGate != nil {
+		if err := w.gatewayGate.closeAndWait(rollbackCtx); err != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Errorf("workspace/sandboxed: rollback gateway operations: %w", err))
+		}
+	}
+	if w.gateway != nil {
+		if err := w.gateway.Close(internalGatewayContext(rollbackCtx)); err != nil {
+			rollbackErrs = append(rollbackErrs, fmt.Errorf("workspace/sandboxed: rollback gateway: %w", err))
+		}
+	}
+	if err := w.provider.Close(rollbackCtx); err != nil {
+		rollbackErrs = append(rollbackErrs, fmt.Errorf("workspace/sandboxed: rollback provider: %w", err))
+	}
+	w.backend = nil
+	w.gateway = nil
+	w.gatewayGate = nil
+	w.mcps = nil
+	w.alive = false
+	return errors.Join(rollbackErrs...)
+}
+
+func (w *Workspace) loadGatewayMCPs(
+	ctx context.Context,
+	gatewayClient Gateway,
+	expected []workspace.MCPClientConfig,
+) error {
+	live, err := gatewayClient.ListMCPs(ctx)
 	if err != nil {
 		return fmt.Errorf("workspace/sandboxed: list gateway MCPs: %w", err)
 	}
-	if len(liveConfigs) != len(configs) {
+	if len(live) != len(expected) {
 		return fmt.Errorf(
 			"workspace/sandboxed: gateway restored %d MCPs, expected %d",
-			len(liveConfigs),
-			len(configs),
+			len(live),
+			len(expected),
 		)
 	}
-	expectedNames := make(map[string]struct{}, len(configs))
-	for _, config := range configs {
+	expectedNames := make(map[string]struct{}, len(expected))
+	for _, config := range expected {
 		expectedNames[config.Name] = struct{}{}
 	}
-	w.mcps = make([]workspace.MCPClient, 0, len(liveConfigs))
-	for _, config := range liveConfigs {
+	w.mcps = make([]workspace.MCPClient, 0, len(live))
+	for _, config := range live {
 		if _, ok := expectedNames[config.Name]; !ok {
 			return fmt.Errorf("workspace/sandboxed: gateway restored unexpected MCP %q", config.Name)
 		}
 		w.mcps = append(w.mcps, gatewayClient.NewMCPClient(config, true))
 	}
+	return nil
+}
+
+func (w *Workspace) seedSkillsLocked(ctx context.Context) error {
 	for _, source := range w.skillPaths {
 		if err := w.addSkillLocked(ctx, source); err != nil {
 			return fmt.Errorf("workspace/sandboxed: seed skill %q: %w", source, err)
 		}
 	}
-	w.alive = true
-	succeeded = true
 	return nil
 }
 
@@ -703,30 +724,8 @@ func (w *Workspace) restoreMCPConfigs(ctx context.Context) ([]workspace.MCPClien
 }
 
 func (w *Workspace) setupGateway(ctx context.Context) (Gateway, *operationGate, error) {
-	current, err := w.gatewayBootstrapCurrent(ctx)
-	if err != nil {
+	if err := w.bootstrapGateway(ctx); err != nil {
 		return nil, nil, err
-	}
-	if !current {
-		for index, argv := range w.bootstrapCommands {
-			result, execErr := w.backend.Exec(ctx, argv, ExecOptions{
-				CWD:     w.workdir,
-				Timeout: 10 * time.Minute,
-			})
-			if execErr != nil {
-				return nil, nil, fmt.Errorf("workspace/sandboxed: bootstrap command %d: %w", index, execErr)
-			}
-			if !result.OK() {
-				return nil, nil, commandError(fmt.Sprintf("bootstrap command %d", index), result)
-			}
-		}
-		// Write the bootstrap marker last so an interrupted bootstrap is retried in full.
-		if err := w.backend.WriteFile(ctx, w.gatewayScript, gatewayAppScript); err != nil {
-			return nil, nil, fmt.Errorf("workspace/sandboxed: upload gateway script: %w", err)
-		}
-		if err := w.backend.WriteFile(ctx, w.gatewayMarker, []byte(w.gatewayVersion+"\n")); err != nil {
-			return nil, nil, fmt.Errorf("workspace/sandboxed: write gateway bootstrap marker: %w", err)
-		}
 	}
 
 	launch := []string{
@@ -754,13 +753,50 @@ func (w *Workspace) setupGateway(ctx context.Context) (Gateway, *operationGate, 
 	if client == nil {
 		return nil, nil, fmt.Errorf("workspace/sandboxed: gateway factory returned nil client")
 	}
+	if err := w.waitForGateway(ctx, client); err != nil {
+		return nil, nil, err
+	}
+	return client, gate, nil
+}
+
+func (w *Workspace) bootstrapGateway(ctx context.Context) error {
+	current, err := w.gatewayBootstrapCurrent(ctx)
+	if err != nil {
+		return err
+	}
+	if current {
+		return nil
+	}
+	for index, argv := range w.bootstrapCommands {
+		result, execErr := w.backend.Exec(ctx, argv, ExecOptions{
+			CWD:     w.workdir,
+			Timeout: 10 * time.Minute,
+		})
+		if execErr != nil {
+			return fmt.Errorf("workspace/sandboxed: bootstrap command %d: %w", index, execErr)
+		}
+		if !result.OK() {
+			return commandError(fmt.Sprintf("bootstrap command %d", index), result)
+		}
+	}
+	// Write the bootstrap marker last so an interrupted bootstrap is retried in full.
+	if err := w.backend.WriteFile(ctx, w.gatewayScript, gatewayAppScript); err != nil {
+		return fmt.Errorf("workspace/sandboxed: upload gateway script: %w", err)
+	}
+	if err := w.backend.WriteFile(ctx, w.gatewayMarker, []byte(w.gatewayVersion+"\n")); err != nil {
+		return fmt.Errorf("workspace/sandboxed: write gateway bootstrap marker: %w", err)
+	}
+	return nil
+}
+
+func (w *Workspace) waitForGateway(ctx context.Context, client Gateway) error {
 	deadline := time.NewTimer(w.gatewayTimeout)
 	defer deadline.Stop()
 	delay := 100 * time.Millisecond
 	var lastErr error
 	for {
 		if err := client.Bootstrap(ctx); err == nil {
-			return client, gate, nil
+			return nil
 		} else {
 			lastErr = err
 		}
@@ -768,13 +804,13 @@ func (w *Workspace) setupGateway(ctx context.Context) (Gateway, *operationGate, 
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, nil, ctx.Err()
+			return ctx.Err()
 		case <-deadline.C:
 			timer.Stop()
 			logCtx, cancel := w.detachedContext(ctx)
 			logTail := w.gatewayLogTail(logCtx, 2000)
 			cancel()
-			return nil, nil, fmt.Errorf(
+			return fmt.Errorf(
 				"workspace/sandboxed: gateway did not become healthy within %s: %w; log tail: %s",
 				w.gatewayTimeout,
 				lastErr,
@@ -862,7 +898,8 @@ func (w *Workspace) fileExists(ctx context.Context, filename string) (bool, erro
 }
 
 func (w *Workspace) deleteTrees(ctx context.Context, paths ...string) error {
-	argv := []string{"sh", "-c", deleteTreeScript, "--"}
+	argv := make([]string, 0, 4+len(paths))
+	argv = append(argv, "sh", "-c", deleteTreeScript, "--")
 	argv = append(argv, paths...)
 	result, err := w.backend.Exec(ctx, argv, ExecOptions{CWD: "/"})
 	if err != nil {

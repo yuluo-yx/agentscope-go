@@ -105,72 +105,16 @@ func DecodeLoopbackResponse(
 		return nil, fmt.Errorf("workspace/gateway: loopback envelope exceeds its size limit")
 	}
 
-	var envelope loopbackEnvelope
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("workspace/gateway: decode loopback envelope: %w", err)
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != nil && err != io.EOF {
-		return nil, fmt.Errorf("workspace/gateway: decode loopback envelope: %w", err)
-	} else if err == nil {
-		return nil, fmt.Errorf("workspace/gateway: loopback envelope contains trailing JSON")
-	}
-
-	if envelope.Status == -1 {
-		if envelope.Body != nil || envelope.BodyFile != nil || len(envelope.Header) != 0 {
-			return nil, fmt.Errorf("workspace/gateway: invalid loopback error envelope")
-		}
-		message := sanitizeLoopbackError(envelope.Error)
-		if message == "" {
-			message = "unknown error"
-		}
-		return nil, fmt.Errorf("workspace/gateway: loopback request failed: %s", message)
-	}
-	if envelope.Status < 100 || envelope.Status > 599 {
-		return nil, fmt.Errorf("workspace/gateway: loopback returned an invalid status")
-	}
-	if envelope.Error != "" {
-		return nil, fmt.Errorf("workspace/gateway: successful loopback envelope contains an error")
-	}
-	if (envelope.Body == nil) == (envelope.BodyFile == nil) {
-		return nil, fmt.Errorf("workspace/gateway: loopback response must contain exactly one body source")
-	}
-	if err := validateHTTPHeader(envelope.Header); err != nil {
+	envelope, err := parseLoopbackEnvelope(payload)
+	if err != nil {
 		return nil, err
 	}
-
-	var body []byte
-	if envelope.Body != nil {
-		encoded := *envelope.Body
-		decodedLength := base64.StdEncoding.DecodedLen(len(encoded))
-		if strings.HasSuffix(encoded, "=") {
-			decodedLength--
-		}
-		if strings.HasSuffix(encoded, "==") {
-			decodedLength--
-		}
-		if int64(decodedLength) > maxBytes {
-			return nil, fmt.Errorf("workspace/gateway: loopback response body exceeds %d bytes", maxBytes)
-		}
-		var err error
-		body, err = base64.StdEncoding.Strict().DecodeString(encoded)
-		if err != nil {
-			return nil, fmt.Errorf("workspace/gateway: loopback body is not valid base64")
-		}
-	} else {
-		filePath, err := validateBodyFilePath(*envelope.BodyFile)
-		if err != nil {
-			return nil, err
-		}
-		if readBodyFile == nil {
-			return nil, fmt.Errorf("workspace/gateway: loopback response requires a body-file reader")
-		}
-		body, err = readBodyFile(ctx, filePath, maxBytes)
-		if err != nil {
-			return nil, fmt.Errorf("workspace/gateway: read loopback body file: %w", err)
-		}
+	if err := validateLoopbackEnvelope(envelope); err != nil {
+		return nil, err
+	}
+	body, err := readLoopbackBody(ctx, envelope, maxBytes, readBodyFile)
+	if err != nil {
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -184,6 +128,90 @@ func DecodeLoopbackResponse(
 		Header:     envelope.Header.Clone(),
 		Body:       bytes.Clone(body),
 	}, nil
+}
+
+func parseLoopbackEnvelope(payload []byte) (*loopbackEnvelope, error) {
+
+	var envelope loopbackEnvelope
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("workspace/gateway: decode loopback envelope: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != nil && err != io.EOF {
+		return nil, fmt.Errorf("workspace/gateway: decode loopback envelope: %w", err)
+	} else if err == nil {
+		return nil, fmt.Errorf("workspace/gateway: loopback envelope contains trailing JSON")
+	}
+
+	return &envelope, nil
+}
+
+func validateLoopbackEnvelope(envelope *loopbackEnvelope) error {
+
+	if envelope.Status == -1 {
+		if envelope.Body != nil || envelope.BodyFile != nil || len(envelope.Header) != 0 {
+			return fmt.Errorf("workspace/gateway: invalid loopback error envelope")
+		}
+		message := sanitizeLoopbackError(envelope.Error)
+		if message == "" {
+			message = "unknown error"
+		}
+		return fmt.Errorf("workspace/gateway: loopback request failed: %s", message)
+	}
+	if envelope.Status < 100 || envelope.Status > 599 {
+		return fmt.Errorf("workspace/gateway: loopback returned an invalid status")
+	}
+	if envelope.Error != "" {
+		return fmt.Errorf("workspace/gateway: successful loopback envelope contains an error")
+	}
+	if (envelope.Body == nil) == (envelope.BodyFile == nil) {
+		return fmt.Errorf("workspace/gateway: loopback response must contain exactly one body source")
+	}
+
+	return validateHTTPHeader(envelope.Header)
+}
+
+func readLoopbackBody(
+	ctx context.Context,
+	envelope *loopbackEnvelope,
+	maxBytes int64,
+	readBodyFile BodyFileReader,
+) ([]byte, error) {
+	if envelope.Body != nil {
+		encoded := *envelope.Body
+		decodedLength := base64.StdEncoding.DecodedLen(len(encoded))
+		if strings.HasSuffix(encoded, "=") {
+			decodedLength--
+		}
+		if strings.HasSuffix(encoded, "==") {
+			decodedLength--
+		}
+		if int64(decodedLength) > maxBytes {
+			return nil, fmt.Errorf("workspace/gateway: loopback response body exceeds %d bytes", maxBytes)
+		}
+		body, err := base64.StdEncoding.Strict().DecodeString(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("workspace/gateway: loopback body is not valid base64")
+		}
+
+		return body, nil
+	}
+
+	filePath, err := validateBodyFilePath(*envelope.BodyFile)
+	if err != nil {
+		return nil, err
+	}
+	if readBodyFile == nil {
+		return nil, fmt.Errorf("workspace/gateway: loopback response requires a body-file reader")
+	}
+	body, err := readBodyFile(ctx, filePath, maxBytes)
+	if err != nil {
+		return nil, fmt.Errorf("workspace/gateway: read loopback body file: %w", err)
+	}
+
+	return body, nil
 }
 
 func loopbackEnvelopeLimit(maxBytes int64) int64 {

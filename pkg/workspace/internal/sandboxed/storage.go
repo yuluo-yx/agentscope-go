@@ -141,11 +141,7 @@ func (w *Workspace) addSkillLocked(ctx context.Context, sourceDir string) error 
 	if err != nil {
 		return err
 	}
-	dirName := sanitizeSkillDir(loaded.Name)
-	if dirName == "" {
-		hash := sha256.Sum256([]byte(loaded.Name))
-		dirName = "skill-" + hex.EncodeToString(hash[:6])
-	}
+	dirName := skillDirName(loaded.Name)
 	destination := path.Join(w.skillsDir, dirName)
 	if !insideRemoteDir(w.skillsDir, destination) {
 		return fmt.Errorf("workspace/sandboxed: skill destination escapes skills directory")
@@ -189,12 +185,27 @@ func (w *Workspace) addSkillLocked(ctx context.Context, sourceDir string) error 
 	return nil
 }
 
+func skillDirName(name string) string {
+	dirName := sanitizeSkillDir(name)
+	if dirName != "" {
+		return dirName
+	}
+	hash := sha256.Sum256([]byte(name))
+	return "skill-" + hex.EncodeToString(hash[:6])
+}
+
 func collectLocalSkillFiles(
 	ctx context.Context,
 	root string,
 ) ([]localSkillFile, string, error) {
+	sourceRoot, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = sourceRoot.Close() }()
+
 	files := []localSkillFile{}
-	err := filepath.WalkDir(root, func(filename string, entry fs.DirEntry, walkErr error) error {
+	err = fs.WalkDir(sourceRoot.FS(), ".", func(filename string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -210,15 +221,11 @@ func collectLocalSkillFiles(
 		if !entry.Type().IsRegular() {
 			return fmt.Errorf("workspace/sandboxed: skill contains non-regular file %q", filename)
 		}
-		relative, err := filepath.Rel(root, filename)
-		if err != nil {
-			return err
-		}
-		relative = filepath.ToSlash(relative)
+		relative := filepath.ToSlash(filename)
 		if relative == skillManifestFile {
 			return fmt.Errorf("workspace/sandboxed: skill uses reserved file %q", skillManifestFile)
 		}
-		data, err := os.ReadFile(filename)
+		data, err := sourceRoot.ReadFile(filepath.FromSlash(filename))
 		if err != nil {
 			return err
 		}
@@ -352,44 +359,54 @@ func (w *Workspace) OffloadToolResult(
 	if err != nil {
 		return "", err
 	}
-	var builder strings.Builder
-	if result.Output.Raw != "" {
-		builder.WriteString(result.Output.Raw)
-	} else {
-		for _, block := range result.Output.Blocks {
-			if err := ctx.Err(); err != nil {
-				return "", err
-			}
-			switch typed := block.(type) {
-			case *message.TextBlock:
-				builder.WriteString(typed.Text)
-			case *message.DataBlock:
-				stored, err := w.offloadDataBlockLocked(ctx, typed)
-				if err != nil {
-					return "", err
-				}
-				source, ok := stored.Source.(*message.URLSource)
-				if !ok {
-					continue
-				}
-				name := ""
-				if stored.Name != nil {
-					name = *stored.Name
-				}
-				fmt.Fprintf(
-					&builder,
-					"<data url='%s' name='%s' media_type='%s'/>",
-					html.EscapeString(source.URL),
-					html.EscapeString(name),
-					html.EscapeString(source.MediaType),
-				)
-			}
-		}
+	content, err := w.toolResultContentLocked(ctx, result)
+	if err != nil {
+		return "", err
 	}
-	if err := w.backend.WriteFile(ctx, filename, []byte(builder.String())); err != nil {
+	if err := w.backend.WriteFile(ctx, filename, []byte(content)); err != nil {
 		return "", err
 	}
 	return filename, nil
+}
+
+func (w *Workspace) toolResultContentLocked(
+	ctx context.Context,
+	result *message.ToolResultBlock,
+) (string, error) {
+	if result.Output.Raw != "" {
+		return result.Output.Raw, nil
+	}
+	var builder strings.Builder
+	for _, block := range result.Output.Blocks {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		switch typed := block.(type) {
+		case *message.TextBlock:
+			builder.WriteString(typed.Text)
+		case *message.DataBlock:
+			stored, err := w.offloadDataBlockLocked(ctx, typed)
+			if err != nil {
+				return "", err
+			}
+			source, ok := stored.Source.(*message.URLSource)
+			if !ok {
+				continue
+			}
+			name := ""
+			if stored.Name != nil {
+				name = *stored.Name
+			}
+			fmt.Fprintf(
+				&builder,
+				"<data url='%s' name='%s' media_type='%s'/>",
+				html.EscapeString(source.URL),
+				html.EscapeString(name),
+				html.EscapeString(source.MediaType),
+			)
+		}
+	}
+	return builder.String(), nil
 }
 
 // OffloadDataBlock writes a base64 DataBlock into the remote data directory.

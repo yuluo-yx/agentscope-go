@@ -27,6 +27,7 @@ import (
 const (
 	defaultImage          = "python:3.11-slim"
 	defaultProtocol       = "http"
+	httpsProtocol         = "https"
 	defaultRequestTimeout = 10 * time.Minute
 	defaultSandboxTimeout = 5 * time.Minute
 	defaultGatewayPort    = 5600

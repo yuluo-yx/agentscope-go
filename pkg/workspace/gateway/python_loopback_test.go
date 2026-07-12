@@ -404,7 +404,8 @@ func TestDecodeLoopbackResponseRejectsInvalidEnvelope(t *testing.T) {
 func TestDecodeLoopbackResponseAdditionalBoundaries(t *testing.T) {
 	t.Parallel()
 
-	if _, err := DecodeLoopbackResponse(nil, nil, 1, nil); err == nil || !strings.Contains(err.Error(), "nil context") {
+	_, err := DecodeLoopbackResponse(nil, nil, 1, nil) //nolint:staticcheck // Verify explicit nil-context validation.
+	if err == nil || !strings.Contains(err.Error(), "nil context") {
 		t.Fatalf("nil context error = %v", err)
 	}
 	if _, err := DecodeLoopbackResponse(context.Background(), []byte(`{"status":200,"body":""}`), 0, nil); err == nil || !strings.Contains(err.Error(), "positive") {

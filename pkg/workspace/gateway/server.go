@@ -172,9 +172,9 @@ func (s *Server) routeExact(w http.ResponseWriter, r *http.Request, path string)
 	switch {
 	case r.Method == http.MethodGet && path == "/tools":
 		s.handleListTools(w, r)
-	case r.Method == http.MethodGet && path == "/mcps":
+	case r.Method == http.MethodGet && path == mcpCollectionPath:
 		s.handleListMCPs(w, r)
-	case r.Method == http.MethodPost && path == "/mcps":
+	case r.Method == http.MethodPost && path == mcpCollectionPath:
 		s.handleAddMCP(w, r)
 	case r.Method == http.MethodPost && path == "/close":
 		s.handleClose(w, r)

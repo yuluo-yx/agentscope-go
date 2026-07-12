@@ -136,7 +136,7 @@ func validateConfig(config config) error {
 	if strings.TrimSpace(config.image) == "" {
 		return fmt.Errorf("workspace/opensandbox: image is empty")
 	}
-	if config.protocol != "http" && config.protocol != "https" {
+	if config.protocol != "http" && config.protocol != httpsProtocol {
 		return fmt.Errorf("workspace/opensandbox: protocol must be http or https")
 	}
 	if config.requestTimeout <= 0 {
@@ -154,10 +154,11 @@ func validateConfig(config config) error {
 func bootstrapCommands(extraRequirements []string) [][]string {
 	gatewayVenv := path.Join(defaultGatewayHome, ".venv")
 	gatewayPython := path.Join(gatewayVenv, "bin", "python")
-	requirements := []string{
+	requirements := make([]string, 0, 8+len(extraRequirements))
+	requirements = append(requirements,
 		"uv", "pip", "install", "--python", gatewayPython,
 		"mcp", "uvicorn", "fastapi",
-	}
+	)
 	requirements = append(requirements, extraRequirements...)
 	return [][]string{
 		{"apt-get", "update", "-qq"},

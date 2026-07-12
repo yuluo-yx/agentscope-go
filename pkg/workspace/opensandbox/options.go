@@ -74,7 +74,7 @@ func WithDomain(domain string) Option {
 func WithProtocol(protocol string) Option {
 	return func(config *config) error {
 		protocol = strings.ToLower(strings.TrimSpace(protocol))
-		if protocol != "http" && protocol != "https" {
+		if protocol != "http" && protocol != httpsProtocol {
 			return fmt.Errorf("workspace/opensandbox: protocol must be http or https")
 		}
 		config.protocol = protocol

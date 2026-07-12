@@ -37,7 +37,11 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/workspace"
 )
 
-const maxGatewayErrorDetailBytes = 4 * 1024
+const (
+	maxGatewayErrorDetailBytes = 4 * 1024
+	mcpCollectionPath          = "/mcps"
+	jsonSchemaObjectType       = "object"
+)
 
 // ToolDescriptor describes one tool exposed by the in-workspace MCP gateway.
 type ToolDescriptor struct {
@@ -180,10 +184,10 @@ func (c *Client) AddMCP(ctx context.Context, config workspace.MCPClientConfig) e
 			return err
 		}
 
-		return c.do(ctx, http.MethodPost, "/mcps", pythonConfig, nil, http.StatusOK, http.StatusCreated, http.StatusNoContent)
+		return c.do(ctx, http.MethodPost, mcpCollectionPath, pythonConfig, nil, http.StatusOK, http.StatusCreated, http.StatusNoContent)
 	}
 
-	return c.do(ctx, http.MethodPost, "/mcps", config, nil, http.StatusOK, http.StatusCreated, http.StatusNoContent)
+	return c.do(ctx, http.MethodPost, mcpCollectionPath, config, nil, http.StatusOK, http.StatusCreated, http.StatusNoContent)
 }
 
 // RemoveMCP unregisters one MCP server from the gateway.
@@ -196,7 +200,7 @@ func (c *Client) RemoveMCP(ctx context.Context, name string) error {
 func (c *Client) ListMCPs(ctx context.Context) ([]workspace.MCPClientConfig, error) {
 	if c != nil && c.pythonMCPConfigJSON {
 		var payload json.RawMessage
-		if err := c.do(ctx, http.MethodGet, "/mcps", nil, &payload, http.StatusOK); err != nil {
+		if err := c.do(ctx, http.MethodGet, mcpCollectionPath, nil, &payload, http.StatusOK); err != nil {
 			return nil, err
 		}
 
@@ -204,7 +208,7 @@ func (c *Client) ListMCPs(ctx context.Context) ([]workspace.MCPClientConfig, err
 	}
 
 	var configs []workspace.MCPClientConfig
-	if err := c.do(ctx, http.MethodGet, "/mcps", nil, &configs, http.StatusOK); err != nil {
+	if err := c.do(ctx, http.MethodGet, mcpCollectionPath, nil, &configs, http.StatusOK); err != nil {
 		return nil, err
 	}
 
@@ -282,6 +286,34 @@ func (c *Client) callMCPTool(ctx context.Context, mcpName, toolName string, inpu
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any, okStatuses ...int) error {
 
+	if err := c.validateCall(ctx, path); err != nil {
+		return err
+	}
+
+	request, err := c.newRequest(method, path, body)
+	if err != nil {
+		return err
+	}
+	response, err := c.roundTrip(ctx, request)
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.validateResponse(method, path, response, okStatuses); err != nil {
+		return err
+	}
+
+	if out == nil || response.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	return decodeJSON(response.Body, out)
+}
+
+func (c *Client) validateCall(ctx context.Context, path string) error {
+
 	if c == nil {
 		return fmt.Errorf("workspace/gateway: nil client")
 	}
@@ -295,14 +327,17 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 		return err
 	}
 
+	return nil
+}
+
+func (c *Client) newRequest(method, path string, body any) (*Request, error) {
+
 	var data []byte
-	if body == nil {
-		data = nil
-	} else {
+	if body != nil {
 		var err error
 		data, err = json.Marshal(body)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -321,23 +356,20 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 		header.Set("Authorization", "Bearer "+c.bearerToken)
 	}
 	if err := validateRequestHeader(header); err != nil {
-		return err
+		return nil, err
 	}
 
-	request := &Request{
+	return &Request{
 		Method:           method,
 		Path:             path,
 		Header:           header,
 		Body:             bytes.Clone(data),
 		MaxResponseBytes: c.maxResponseBytes,
-	}
-	response, err := c.roundTrip(ctx, request)
-	if err != nil {
-		return err
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
+	}, nil
+}
+
+func (c *Client) validateResponse(method, path string, response *Response, okStatuses []int) error {
+
 	if response == nil {
 		return fmt.Errorf("workspace/gateway: transport returned a nil response")
 	}
@@ -363,11 +395,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any, okS
 		return fmt.Errorf("workspace/gateway: %s %s returned HTTP %d", method, path, response.StatusCode)
 	}
 
-	if out == nil || response.StatusCode == http.StatusNoContent {
-		return nil
-	}
-
-	return decodeJSON(response.Body, out)
+	return nil
 }
 
 func gatewayErrorDetail(body []byte) string {
@@ -493,7 +521,7 @@ func (t *gatewayTool) Description() string {
 
 func (t *gatewayTool) InputSchema() map[string]any {
 	if t.descriptor.InputSchema == nil {
-		return map[string]any{"type": "object"}
+		return map[string]any{"type": jsonSchemaObjectType}
 	}
 	return cloneAnyMap(t.descriptor.InputSchema)
 }
@@ -855,7 +883,7 @@ func rawInputSchemaMap(raw gomcp.Tool) map[string]any {
 		schema = map[string]any{}
 	}
 	if schemaType, _ := schema["type"].(string); schemaType == "" {
-		schema["type"] = "object"
+		schema["type"] = jsonSchemaObjectType
 	}
 	if _, ok := schema["properties"]; !ok || schema["properties"] == nil {
 		schema["properties"] = map[string]any{}

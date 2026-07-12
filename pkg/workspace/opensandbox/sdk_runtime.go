@@ -219,7 +219,7 @@ func (h *sdkHandle) ReadFileLimit(ctx context.Context, filename string, maxBytes
 	if h == nil || h.sandbox == nil {
 		return nil, fmt.Errorf("workspace/opensandbox: nil SDK sandbox")
 	}
-	if maxBytes <= 0 || maxBytes >= math.MaxInt64 {
+	if maxBytes <= 0 || maxBytes == math.MaxInt64 {
 		return nil, fmt.Errorf("workspace/opensandbox: remote file limit must be positive")
 	}
 	reader, err := h.sandbox.DownloadFile(ctx, filename, "")
