@@ -34,15 +34,7 @@ import (
 
 const (
 	defaultGatewayTimeout = 30 * time.Second
-	defaultInstructions   = `<workspace>
-You have a remote sandbox workspace. All workspace tools execute inside the sandbox at {workdir}.
-
-Layout:
-- data/ for offloaded files
-- skills/ for reusable skills
-- sessions/ for offloaded context and tool results
-</workspace>`
-	deleteTreeScript = `for target do
+	deleteTreeScript      = `for target do
   if [ -e "$target" ] || [ -L "$target" ]; then
     find "$target" -depth -delete
   fi
@@ -140,7 +132,7 @@ func New(config Config) (*Workspace, error) {
 	}
 	instructions := config.Instructions
 	if strings.TrimSpace(instructions) == "" {
-		instructions = defaultInstructions
+		instructions = workspace.DefaultWorkspaceInstructions
 	}
 	gatewayTimeout := config.GatewayTimeout
 	if gatewayTimeout <= 0 {
@@ -523,7 +515,7 @@ func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return strings.ReplaceAll(w.instructions, "{workdir}", w.workdir), nil
+	return workspace.RenderInstructions(w.instructions, "", w.workdir), nil
 }
 
 // ListTools returns the six built-in tools that execute through the remote Backend.

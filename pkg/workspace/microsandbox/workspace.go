@@ -33,15 +33,6 @@ import (
 	wslocal "github.com/yuluo-yx/agentscope-go/pkg/workspace/local"
 )
 
-const defaultInstructions = `<workspace>
-You have a Microsandbox workspace. All sandbox tools execute inside a local microVM at {workdir}.
-
-Layout:
-- data/ for offloaded files
-- skills/ for reusable skills
-- sessions/ for offloaded context and tool results
-</workspace>`
-
 // Workspace is a Microsandbox-backed workspace.
 type Workspace struct {
 	id               string
@@ -82,6 +73,7 @@ func NewWorkspace(opts ...Option) (*Workspace, error) {
 		return nil, err
 	}
 	workspace.applyDefaults()
+	workspace.instructions = asworkspace.RenderInstructions(workspace.instructions, "Microsandbox-based", workspace.containerWorkdir)
 	return workspace, nil
 }
 
@@ -90,7 +82,6 @@ func defaultWorkspace() *Workspace {
 		id:               utils.NewID(),
 		image:            defaultImage,
 		containerWorkdir: defaultContainerWorkdir,
-		instructions:     defaultInstructions,
 		env:              map[string]string{},
 		ensureInstalled:  true,
 		requestTimeout:   defaultRequestTimeout,
@@ -125,7 +116,7 @@ func (w *Workspace) applyDefaults() {
 		w.containerWorkdir = defaultContainerWorkdir
 	}
 	if w.instructions == "" {
-		w.instructions = defaultInstructions
+		w.instructions = asworkspace.DefaultWorkspaceInstructions
 	}
 	if w.requestTimeout == 0 {
 		w.requestTimeout = defaultRequestTimeout
@@ -258,6 +249,7 @@ func (w *Workspace) Reset(ctx context.Context) error {
 }
 
 // GetInstructions returns the workspace system prompt fragment.
+// The instruction template is rendered during construction.
 func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if w == nil {
 		return "", fmt.Errorf("workspace/microsandbox: nil workspace")
@@ -265,7 +257,7 @@ func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return strings.ReplaceAll(w.instructions, "{workdir}", w.containerWorkdir), nil
+	return w.instructions, nil
 }
 
 // ListTools returns Microsandbox-backed tools.
@@ -452,6 +444,9 @@ func (w *Workspace) prepareHostWorkdir() error {
 }
 
 func (w *Workspace) localMirror() (*wslocal.Workspace, error) {
+	// The host mirror shares the sandbox-side instructions verbatim: the
+	// template was rendered with the microVM-side workdir, which is the
+	// path the agent actually sees.
 	return wslocal.NewWorkspace(w.hostWorkdir, wslocal.WithWorkspaceID(w.id), wslocal.WithInstructions(w.instructions))
 }
 

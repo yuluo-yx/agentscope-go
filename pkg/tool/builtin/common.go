@@ -426,11 +426,15 @@ func writableFilePermission(toolName, action string, input map[string]any, ctx *
 			DecisionReason: "Safety check: dangerous file path",
 		}, nil
 	}
-	if ctx != nil && ctx.Mode == permission.ModeAcceptEdits && pathInAllowedWorkingDir(filePath, ctx) {
+	// Auto-allow writes within a working directory. This applies to accept
+	// edits mode (interactive) and dont_ask mode (its unattended counterpart),
+	// which trusts in-working-directory edits without a prompt because no user
+	// is available to grant one.
+	if ctx != nil && (ctx.Mode == permission.ModeAcceptEdits || ctx.Mode == permission.ModeDontAsk) && pathInAllowedWorkingDir(filePath, ctx) {
 		return &permission.Decision{
 			Behavior:       permission.BehaviorAllow,
-			Message:        fmt.Sprintf("Permission granted for %s %s (accept edits mode)", action, filePath),
-			DecisionReason: "Accept edits mode allows paths in working directories",
+			Message:        fmt.Sprintf("Permission granted for %s %s (in working directory)", action, filePath),
+			DecisionReason: "File is in a working directory and not a dangerous path",
 		}, nil
 	}
 	return &permission.Decision{

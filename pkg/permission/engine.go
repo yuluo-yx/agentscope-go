@@ -125,8 +125,20 @@ func (e *Engine) CheckPermission(ctx context.Context, tool Tool, input map[strin
 		return decision, nil
 	}
 
-	if decision := e.checkExploreModes(tool, input); decision != nil {
+	// Read-only invocations are auto-allowed in every mode. Keeping this in a
+	// single fast path (shared by default, accept_edits, explore, bypass and
+	// dont_ask) guarantees the modes cannot drift apart on read-only handling.
+	if decision := e.checkReadOnlyFastPath(tool, input); decision != nil {
+		e.resetAutoDenials()
 		return decision, nil
+	}
+
+	if e.context.Mode == ModeExplore {
+		return &Decision{
+			Behavior:       BehaviorDeny,
+			Message:        fmt.Sprintf("Permission denied for %s (explore mode is read-only)", tool.Name()),
+			DecisionReason: "Explore mode does not allow modifications",
+		}, nil
 	}
 
 	toolDecision, err := tool.CheckPermissions(ctx, input, e.context)
@@ -167,41 +179,20 @@ func (e *Engine) CheckPermission(ctx context.Context, tool Tool, input map[strin
 	return decision, nil
 }
 
-func (e *Engine) checkExploreModes(tool Tool, input map[string]any) *Decision {
+// checkReadOnlyFastPath returns an allow decision when the invocation is
+// read-only, else nil. A read-only invocation has no side effects, so it is
+// auto-allowed in every permission mode.
+func (e *Engine) checkReadOnlyFastPath(tool Tool, input map[string]any) *Decision {
 
-	switch e.context.Mode {
-	case ModeAuto:
-		if isReadOnlyInvocation(tool, input) {
-			return &Decision{
-				Behavior:       BehaviorAllow,
-				Message:        fmt.Sprintf("Permission granted for %s (auto mode - read-only invocation)", tool.Name()),
-				DecisionReason: "Auto mode allows read-only operations",
-			}
-		}
-	case ModeExplore:
-		if isReadOnlyInvocation(tool, input) {
-			return &Decision{
-				Behavior:       BehaviorAllow,
-				Message:        fmt.Sprintf("Permission granted for %s (explore mode - read-only invocation)", tool.Name()),
-				DecisionReason: "Explore mode allows read-only operations",
-			}
-		}
-		return &Decision{
-			Behavior:       BehaviorDeny,
-			Message:        fmt.Sprintf("Permission denied for %s (explore mode is read-only)", tool.Name()),
-			DecisionReason: "Explore mode does not allow modifications",
-		}
-	case ModeAcceptEdits:
-		if isReadOnlyInvocation(tool, input) {
-			return &Decision{
-				Behavior:       BehaviorAllow,
-				Message:        fmt.Sprintf("Permission granted for %s (accept edits mode - read-only invocation)", tool.Name()),
-				DecisionReason: "Accept edits mode allows read-only operations",
-			}
-		}
+	if !isReadOnlyInvocation(tool, input) {
+		return nil
 	}
 
-	return nil
+	return &Decision{
+		Behavior:       BehaviorAllow,
+		Message:        fmt.Sprintf("Permission granted for %s (read-only invocation)", tool.Name()),
+		DecisionReason: "Read-only operations are auto-allowed",
+	}
 }
 
 func isReadOnlyInvocation(tool Tool, input map[string]any) bool {

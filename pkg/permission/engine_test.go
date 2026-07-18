@@ -188,6 +188,30 @@ func TestEngineModes(t *testing.T) {
 			tool: fakeTool{name: "Bash", inputReadOnly: &inputReadOnly},
 			want: permission.BehaviorAllow,
 		},
+		{
+			name: "default allows input-aware read-only invocations",
+			ctx:  permission.NewContext(permission.ModeDefault),
+			tool: fakeTool{name: "Bash", inputReadOnly: &inputReadOnly},
+			want: permission.BehaviorAllow,
+		},
+		{
+			name: "default allows read-only tools",
+			ctx:  permission.NewContext(permission.ModeDefault),
+			tool: fakeTool{name: "Read", readOnly: true},
+			want: permission.BehaviorAllow,
+		},
+		{
+			name: "dont ask allows input-aware read-only invocations",
+			ctx:  permission.NewContext(permission.ModeDontAsk),
+			tool: fakeTool{name: "Bash", inputReadOnly: &inputReadOnly},
+			want: permission.BehaviorAllow,
+		},
+		{
+			name: "dont ask denies write tools",
+			ctx:  permission.NewContext(permission.ModeDontAsk),
+			tool: fakeTool{name: "Write"},
+			want: permission.BehaviorDeny,
+		},
 	}
 
 	for _, tt := range tests {

@@ -45,7 +45,7 @@ func TestWorkspaceOptionsNilCanceledAndBasicMethods(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWorkspace returned error: %v", err)
 	}
-	if ws.WorkspaceID() == "" || ws.instructions != "local={workdir}" || ws.mcpFactory == nil {
+	if ws.WorkspaceID() == "" || !strings.HasPrefix(ws.instructions, "local=") || ws.mcpFactory == nil {
 		t.Fatalf("workspace options/defaults mismatch: %#v", ws)
 	}
 	if ws.WorkspaceRoot() == "" || (*Workspace)(nil).WorkspaceRoot() != "" {

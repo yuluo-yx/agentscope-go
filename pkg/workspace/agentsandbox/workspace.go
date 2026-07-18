@@ -33,15 +33,6 @@ import (
 	wslocal "github.com/yuluo-yx/agentscope-go/pkg/workspace/local"
 )
 
-const defaultInstructions = `<workspace>
-You have an Agent Sandbox workspace. All sandbox tools execute inside the sandbox at {workdir}.
-
-Layout:
-- data/ for offloaded files
-- skills/ for reusable skills
-- sessions/ for offloaded context and tool results
-</workspace>`
-
 // Workspace is a Kubernetes Agent Sandbox-backed workspace.
 type Workspace struct {
 	id               string
@@ -82,7 +73,6 @@ func NewWorkspace(opts ...Option) (*Workspace, error) {
 		id:               utils.NewID(),
 		namespace:        defaultNamespace,
 		containerWorkdir: defaultContainerWorkdir,
-		instructions:     defaultInstructions,
 		mode:             connectionModePortForward,
 		env:              map[string]string{},
 		requestTimeout:   defaultRequestTimeout,
@@ -107,7 +97,7 @@ func NewWorkspace(opts ...Option) (*Workspace, error) {
 		workspace.containerWorkdir = defaultContainerWorkdir
 	}
 	if workspace.instructions == "" {
-		workspace.instructions = defaultInstructions
+		workspace.instructions = asworkspace.DefaultWorkspaceInstructions
 	}
 	if workspace.requestTimeout == 0 {
 		workspace.requestTimeout = defaultRequestTimeout
@@ -121,6 +111,7 @@ func NewWorkspace(opts ...Option) (*Workspace, error) {
 	if !strings.HasPrefix(workspace.containerWorkdir, "/") {
 		return nil, fmt.Errorf("workspace/agentsandbox: container workdir must be absolute")
 	}
+	workspace.instructions = asworkspace.RenderInstructions(workspace.instructions, "Kubernetes-based", workspace.containerWorkdir)
 	return workspace, nil
 }
 
@@ -236,6 +227,7 @@ func (w *Workspace) Reset(ctx context.Context) error {
 }
 
 // GetInstructions returns the workspace system prompt fragment.
+// The instruction template is rendered during construction.
 func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if w == nil {
 		return "", fmt.Errorf("workspace/agentsandbox: nil workspace")
@@ -243,7 +235,7 @@ func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return strings.ReplaceAll(w.instructions, "{workdir}", w.containerWorkdir), nil
+	return w.instructions, nil
 }
 
 // ListTools returns Agent Sandbox-backed tools.
@@ -434,6 +426,9 @@ func (w *Workspace) prepareHostWorkdir() error {
 }
 
 func (w *Workspace) localMirror() (*wslocal.Workspace, error) {
+	// The host mirror shares the sandbox-side instructions verbatim: the
+	// template was rendered with the sandbox-side workdir, which is the
+	// path the agent actually sees.
 	return wslocal.NewWorkspace(w.hostWorkdir, wslocal.WithWorkspaceID(w.id), wslocal.WithInstructions(w.instructions))
 }
 

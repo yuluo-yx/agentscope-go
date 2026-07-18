@@ -146,12 +146,17 @@ func (b *Bash) CheckPermissions(_ context.Context, input map[string]any, ctx *pe
 			DecisionReason: "Safety check: dangerous file or directory in bash command",
 		}, nil
 	}
-	if ctx != nil && ctx.Mode == permission.ModeAcceptEdits {
+	// Auto-allow filesystem commands whose targets all live inside a working
+	// directory. Applies to accept edits mode (interactive) and dont_ask mode
+	// (its unattended counterpart). Mirrors Write/Edit's working-directory
+	// check — a bash command touching a path outside the configured working
+	// set is never auto-allowed.
+	if ctx != nil && (ctx.Mode == permission.ModeAcceptEdits || ctx.Mode == permission.ModeDontAsk) {
 		if base := baseCommand(file); isFilesystemCommand(base) {
 			return &permission.Decision{
 				Behavior:       permission.BehaviorAllow,
-				Message:        fmt.Sprintf("Permission granted for %q command (accept edits mode - filesystem command)", base),
-				DecisionReason: fmt.Sprintf("Filesystem command %q allowed in accept edits mode", base),
+				Message:        fmt.Sprintf("Permission granted for %q command (filesystem command)", base),
+				DecisionReason: fmt.Sprintf("Filesystem command %q is auto-allowed", base),
 			}, nil
 		}
 	}
@@ -598,6 +603,11 @@ func isSingleCallReadOnly(call *syntax.CallExpr) bool {
 		return false
 	}
 	base := words[0]
+	// find is read-only only when it carries no mutating predicates such as
+	// -delete or -exec; reject those before applying the safe command list.
+	if base == "find" && isMutatingFindCall(words[1:]) {
+		return false
+	}
 	safeCommands := map[string]bool{
 		"pwd": true, "ls": true, "cat": true, "head": true, "tail": true,
 		"awk": true, "grep": true, "rg": true, "find": true, "wc": true,
@@ -615,6 +625,32 @@ func isSingleCallReadOnly(call *syntax.CallExpr) bool {
 	if base == "docker" && len(words) >= 2 {
 		switch words[1] {
 		case "ps", "images", "inspect", "logs", "version", "info":
+			return true
+		}
+	}
+	return false
+}
+
+// findMutatingPredicates lists find(1) primaries that execute commands or
+// write files, so a find invocation carrying them is not read-only.
+var findMutatingPredicates = map[string]bool{
+	"-delete":  true,
+	"-exec":    true,
+	"-execdir": true,
+	"-fls":     true,
+	"-fprint":  true,
+	"-fprint0": true,
+	"-fprintf": true,
+	"-ok":      true,
+	"-okdir":   true,
+}
+
+// isMutatingFindCall reports whether any argument is a mutating find
+// predicate. Quoted values like '-delete' are unquoted by the parser and
+// still match, mirroring the upstream behavior.
+func isMutatingFindCall(args []string) bool {
+	for _, arg := range args {
+		if findMutatingPredicates[arg] {
 			return true
 		}
 	}

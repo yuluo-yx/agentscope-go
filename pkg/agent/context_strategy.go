@@ -510,7 +510,52 @@ func splitContextForSummary(ctx context.Context, model ChatModel, contextMessage
 	if unresolvedStart := firstUnresolvedToolMessageIndex(contextMessages); unresolvedStart >= 0 && reserveStart > unresolvedStart {
 		reserveStart = unresolvedStart
 	}
+	// Adjust the boundary so tool call and result pairs are not split across
+	// the compressed and reserved parts. Moving the boundary can pull another
+	// tool call into the compressed part while leaving its result reserved,
+	// so repeat until it is stable.
+	for {
+		unpairedStart := firstUnpairedToolResultIndex(contextMessages, reserveStart)
+		if unpairedStart < 0 {
+			break
+		}
+		reserveStart = unpairedStart
+	}
 	return cloneMessages(contextMessages[:reserveStart]), cloneMessages(contextMessages[reserveStart:]), nil
+}
+
+// firstUnpairedToolResultIndex returns the index of the earliest reserved
+// message holding a tool result whose matching tool call is not reserved,
+// or -1 when every reserved tool result is paired.
+func firstUnpairedToolResultIndex(messages []*message.Message, reserveStart int) int {
+	reservedCallIDs := map[string]struct{}{}
+	for _, msg := range messages[reserveStart:] {
+		if msg == nil {
+			continue
+		}
+		for _, block := range msg.GetContentBlocks("tool_call") {
+			if toolCall, ok := block.(*message.ToolCallBlock); ok {
+				reservedCallIDs[toolCall.ID] = struct{}{}
+			}
+		}
+	}
+	resultIndex := -1
+	for index := reserveStart; index < len(messages); index++ {
+		msg := messages[index]
+		if msg == nil {
+			continue
+		}
+		for _, block := range msg.GetContentBlocks("tool_result") {
+			result, ok := block.(*message.ToolResultBlock)
+			if !ok {
+				continue
+			}
+			if _, paired := reservedCallIDs[result.ID]; !paired && resultIndex < 0 {
+				resultIndex = index
+			}
+		}
+	}
+	return resultIndex
 }
 
 func firstUnresolvedToolMessageIndex(messages []*message.Message) int {
