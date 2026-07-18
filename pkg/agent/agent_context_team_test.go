@@ -674,6 +674,50 @@ func TestContextStrategyErrorAndHelperBranches(t *testing.T) {
 	}
 }
 
+func TestSplitContextForSummaryPreservesMultiToolPairs(t *testing.T) {
+	t.Helper()
+	// One assistant message carries two tool calls whose results follow in
+	// later messages. Without the stable-boundary loop, moving the boundary
+	// for one unpaired result splits the other pair.
+	callMsg, err := message.NewAssistantMessage("Friday", []message.ContentBlock{
+		message.NewToolCallBlock("tc1", "first_tool", `{"value":"a"}`),
+		message.NewToolCallBlock("tc2", "second_tool", `{"value":"b"}`),
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage callMsg returned error: %v", err)
+	}
+	firstResult, err := message.NewAssistantMessage("Friday", []message.ContentBlock{
+		message.NewToolResultBlock("tc1", "first_tool", message.ToolResultOutput{Raw: "first result"}, message.ToolResultSuccess),
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage firstResult returned error: %v", err)
+	}
+	secondResult, err := message.NewAssistantMessage("Friday", []message.ContentBlock{
+		message.NewToolResultBlock("tc2", "second_tool", message.ToolResultOutput{Raw: "second result"}, message.ToolResultSuccess),
+	})
+	if err != nil {
+		t.Fatalf("NewAssistantMessage secondResult returned error: %v", err)
+	}
+	latest := testUserMessages(t, "latest question")[0]
+	contextMessages := []*message.Message{callMsg, firstResult, secondResult, latest}
+
+	// The last three messages fit the reserve limit, so the token-based
+	// boundary starts at firstResult and must be moved back until every
+	// reserved tool result keeps its tool call.
+	compressed, reserved, err := splitContextForSummary(context.Background(), &coverageChatModel{countTokens: 1}, contextMessages, nil, 3)
+	if err != nil {
+		t.Fatalf("splitContextForSummary returned error: %v", err)
+	}
+	if len(compressed) != 0 || len(reserved) != 4 {
+		t.Fatalf("multi-tool pairs should stay together: compressed=%d reserved=%d", len(compressed), len(reserved))
+	}
+	for index, msg := range reserved {
+		if msg == nil || msg.ID != contextMessages[index].ID {
+			t.Fatalf("reserved message %d mismatch", index)
+		}
+	}
+}
+
 func testUserMessages(t *testing.T, texts ...string) []*message.Message {
 	t.Helper()
 
@@ -1355,8 +1399,8 @@ func TestRunActingBatchesSafeToolsFlushesSerialToolsAndAppliesHooks(t *testing.T
 	state.ReplyID = "reply-batch"
 	provider := &actingProvider{
 		tools: map[string]actingTool{
-			"SafeText":   {name: "SafeText"},
-			"SafeData":   {name: "SafeData"},
+			"SafeText":   {name: "SafeText", readOnlyOnly: true},
+			"SafeData":   {name: "SafeData", readOnlyOnly: true},
 			"SerialText": {name: "SerialText", serial: true},
 		},
 		chunks: map[string][]ToolChunk{
@@ -1468,7 +1512,7 @@ func TestActingBatchErrorAndWaitingFlushBranches(t *testing.T) {
 	state.ReplyID = "reply-acting-errors"
 	provider := &actingProvider{
 		tools: map[string]actingTool{
-			"SafeText": {name: "SafeText"},
+			"SafeText": {name: "SafeText", readOnlyOnly: true},
 			"Remote":   {name: "Remote", external: true, decision: &permission.Decision{Behavior: permission.BehaviorAllow}},
 		},
 		chunks: map[string][]ToolChunk{
@@ -1789,7 +1833,11 @@ type actingTool struct {
 	name     string
 	external bool
 	serial   bool
-	decision *permission.Decision
+	// readOnlyOnly marks tools that are read-only by contract; tools that
+	// mutate state leave it false so the permission read-only fast path does
+	// not short-circuit their own CheckPermissions decision.
+	readOnlyOnly bool
+	decision     *permission.Decision
 }
 
 func (t actingTool) Name() string { return t.name }
@@ -1800,7 +1848,7 @@ func (actingTool) InputSchema() map[string]any { return map[string]any{"type": "
 
 func (t actingTool) IsConcurrencySafe() bool { return !t.serial }
 
-func (actingTool) IsReadOnly() bool { return true }
+func (t actingTool) IsReadOnly() bool { return t.readOnlyOnly }
 
 func (t actingTool) IsExternalTool() bool { return t.external }
 

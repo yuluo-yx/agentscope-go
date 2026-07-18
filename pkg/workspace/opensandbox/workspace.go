@@ -31,16 +31,11 @@ import (
 	"github.com/yuluo-yx/agentscope-go/pkg/workspace/internal/sandboxed"
 )
 
-const defaultInstructions = `<workspace>
-You have an OpenSandbox workspace. All workspace tools execute inside the remote sandbox at {workdir}.
+// resumeNotice is appended to the workspace instructions because the
+// OpenSandbox lifecycle differs from other backends.
+const resumeNotice = `
 
-Layout:
-- data/ for offloaded files
-- skills/ for reusable skills
-- sessions/ for offloaded context and tool results
-
-Close pauses the sandbox so the same workspace ID can resume its files later. Reset keeps the sandbox and gateway alive while clearing workspace-owned state.
-</workspace>`
+Close pauses the sandbox so the same workspace ID can resume its files later. Reset keeps the sandbox and gateway alive while clearing workspace-owned state.`
 
 // Workspace is an OpenSandbox Workspace that can resume by workspace ID.
 type Workspace struct {
@@ -125,7 +120,7 @@ func defaultConfig() config {
 		gatewayPort:    defaultGatewayPort,
 		env:            map[string]string{},
 		metadata:       map[string]string{},
-		instructions:   defaultInstructions,
+		instructions:   workspace.DefaultWorkspaceInstructions + resumeNotice,
 	}
 }
 

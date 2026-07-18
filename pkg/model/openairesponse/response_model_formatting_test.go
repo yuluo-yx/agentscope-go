@@ -127,28 +127,44 @@ func TestResponseFormattingHelpersCoverHintsDataAndTools(t *testing.T) {
 		message.NewTextBlock("nested"),
 		message.NewDataBlock(message.NewBase64Source("aW1hZ2U=", "image/png")),
 	})
-	content, items, err := formatResponseContent(message.ContentBlockList{
-		message.NewTextBlock("hello"),
-		textHint,
-		nestedHint,
-		message.NewThinkingBlock("hidden"),
-		message.NewToolCallBlock("tool-1", "Read", `{"path":"README.md"}`, message.WithToolCallExtra("call_id", "call-provider-1")),
-		message.NewToolResultBlock("tool-1", "Read", message.ToolResultOutput{Blocks: message.ContentBlockList{message.NewTextBlock("tool output")}}),
+	items, err := formatResponseMessage(&message.Message{
+		Role: message.RoleAssistant,
+		Content: message.ContentBlockList{
+			message.NewTextBlock("hello"),
+			textHint,
+			nestedHint,
+			message.NewThinkingBlock("hidden"),
+			message.NewToolCallBlock("tool-1", "Read", `{"path":"README.md"}`, message.WithToolCallExtra("call_id", "call-provider-1")),
+			message.NewToolResultBlock("tool-1", "Read", message.ToolResultOutput{Blocks: message.ContentBlockList{message.NewTextBlock("tool output")}}),
+		},
 	})
 	if err != nil {
-		t.Fatalf("formatResponseContent returned error: %v", err)
+		t.Fatalf("formatResponseMessage returned error: %v", err)
 	}
-	if len(content) != 4 {
-		t.Fatalf("content count mismatch: %d %#v", len(content), content)
-	}
-	if len(items) != 2 {
+	if len(items) != 5 {
 		t.Fatalf("item count mismatch: %d %#v", len(items), items)
 	}
-	callItem := items[0].(map[string]any)
+	assistantMsg := items[0].(map[string]any)
+	if assistantMsg["role"] != string(message.RoleAssistant) {
+		t.Fatalf("assistant message mismatch: %#v", assistantMsg)
+	}
+	assistantContent := assistantMsg["content"].([]any)
+	if len(assistantContent) != 1 || assistantContent[0].(map[string]any)["type"] != "output_text" {
+		t.Fatalf("assistant content mismatch: %#v", assistantContent)
+	}
+	hintMsg := items[1].(map[string]any)
+	if hintMsg["role"] != string(message.RoleUser) || len(hintMsg["content"].([]any)) != 1 {
+		t.Fatalf("text hint should become a user message: %#v", hintMsg)
+	}
+	nestedHintMsg := items[2].(map[string]any)
+	if nestedHintMsg["role"] != string(message.RoleUser) || len(nestedHintMsg["content"].([]any)) != 2 {
+		t.Fatalf("nested hint should become a user message: %#v", nestedHintMsg)
+	}
+	callItem := items[3].(map[string]any)
 	if callItem["call_id"] != "call-provider-1" || callItem["arguments"] != `{"path":"README.md"}` {
 		t.Fatalf("tool call item mismatch: %#v", callItem)
 	}
-	resultItem := items[1].(map[string]any)
+	resultItem := items[4].(map[string]any)
 	if resultItem["output"] != "tool output" {
 		t.Fatalf("tool result item mismatch: %#v", resultItem)
 	}
@@ -164,7 +180,7 @@ func TestResponseFormattingHelpersCoverHintsDataAndTools(t *testing.T) {
 		t.Fatalf("nil messages should be skipped: %#v", input)
 	}
 
-	if _, _, err := formatResponseContent(message.ContentBlockList{nil}); err == nil {
+	if _, err := formatResponseMessage(&message.Message{Role: message.RoleUser, Content: message.ContentBlockList{nil}}); err == nil {
 		t.Fatal("expected nil content block to fail")
 	}
 	if _, err := hintResponseContent(message.NewHintBlock(message.ContentBlockList{message.NewThinkingBlock("unsupported")})); err == nil {
@@ -212,6 +228,132 @@ func TestResponseFormattingHelpersCoverHintsDataAndTools(t *testing.T) {
 	if got := toolResultText(message.ToolResultOutput{}); got != "" {
 		t.Fatalf("empty tool result mismatch: %q", got)
 	}
+}
+
+func TestResponseFormattingReasoningReplay(t *testing.T) {
+	t.Parallel()
+
+	newReasoning := func(id, thinking string) *message.ThinkingBlock {
+		return message.NewThinkingBlock(thinking, message.WithExtra("reasoning_item_id", id))
+	}
+
+	t.Run("empty thinking echoed with reasoning item id", func(t *testing.T) {
+		t.Parallel()
+		msg, err := message.NewAssistantMessage("assistant", message.ContentBlockList{
+			message.NewTextBlock("reply"),
+			newReasoning("rs_empty", ""),
+		})
+		if err != nil {
+			t.Fatalf("NewAssistantMessage returned error: %v", err)
+		}
+		input, err := formatResponseInput([]*message.Message{msg})
+		if err != nil {
+			t.Fatalf("formatResponseInput returned error: %v", err)
+		}
+		if len(input) != 2 {
+			t.Fatalf("expected reasoning item before assistant text: %#v", input)
+		}
+		reasoning := input[0].(map[string]any)
+		if reasoning["type"] != "reasoning" || reasoning["id"] != "rs_empty" {
+			t.Fatalf("reasoning item mismatch: %#v", reasoning)
+		}
+		if summary := reasoning["summary"].([]any); len(summary) != 0 {
+			t.Fatalf("empty thinking should produce empty summary: %#v", summary)
+		}
+		assistant := input[1].(map[string]any)
+		if assistant["role"] != string(message.RoleAssistant) {
+			t.Fatalf("assistant text should follow the empty reasoning item: %#v", assistant)
+		}
+	})
+
+	t.Run("reasoning replay keeps tool boundaries", func(t *testing.T) {
+		t.Parallel()
+		msg, err := message.NewAssistantMessage("assistant", message.ContentBlockList{
+			newReasoning("rs_1", "thinking_1"),
+			message.NewTextBlock("text_1"),
+			message.NewToolCallBlock("call_1", "func_1", `{"arg":"value1"}`),
+			message.NewToolResultBlock("call_1", "func_1", message.ToolResultOutput{Blocks: message.ContentBlockList{message.NewTextBlock("result_1")}}),
+			newReasoning("rs_2", "thinking_2"),
+			message.NewTextBlock("text_2"),
+		})
+		if err != nil {
+			t.Fatalf("NewAssistantMessage returned error: %v", err)
+		}
+		input, err := formatResponseInput([]*message.Message{msg})
+		if err != nil {
+			t.Fatalf("formatResponseInput returned error: %v", err)
+		}
+		if len(input) != 6 {
+			t.Fatalf("item count mismatch: %d %#v", len(input), input)
+		}
+		if got := input[0].(map[string]any)["id"]; got != "rs_1" {
+			t.Fatalf("first item should be reasoning rs_1: %#v", input[0])
+		}
+		if summary := input[0].(map[string]any)["summary"].([]any); len(summary) != 1 || summary[0].(map[string]any)["text"] != "thinking_1" {
+			t.Fatalf("reasoning summary mismatch: %#v", summary)
+		}
+		textItem := input[1].(map[string]any)
+		if textItem["role"] != string(message.RoleAssistant) || textItem["content"].([]any)[0].(map[string]any)["type"] != "output_text" {
+			t.Fatalf("assistant text item mismatch: %#v", textItem)
+		}
+		if call := input[2].(map[string]any); call["type"] != "function_call" || call["call_id"] != "call_1" {
+			t.Fatalf("function call item mismatch: %#v", call)
+		}
+		if result := input[3].(map[string]any); result["type"] != "function_call_output" || result["output"] != "result_1" {
+			t.Fatalf("function call output item mismatch: %#v", result)
+		}
+		if got := input[4].(map[string]any)["id"]; got != "rs_2" {
+			t.Fatalf("second reasoning item mismatch: %#v", input[4])
+		}
+	})
+
+	t.Run("non empty reasoning splits text segments", func(t *testing.T) {
+		t.Parallel()
+		msg, err := message.NewAssistantMessage("assistant", message.ContentBlockList{
+			newReasoning("rs_1", "thinking_1"),
+			message.NewTextBlock("text_1"),
+			newReasoning("rs_2", "thinking_2"),
+			message.NewTextBlock("text_2"),
+		})
+		if err != nil {
+			t.Fatalf("NewAssistantMessage returned error: %v", err)
+		}
+		input, err := formatResponseInput([]*message.Message{msg})
+		if err != nil {
+			t.Fatalf("formatResponseInput returned error: %v", err)
+		}
+		if len(input) != 4 {
+			t.Fatalf("expected reasoning/text alternation: %#v", input)
+		}
+		for i, want := range []string{"rs_1", "", "rs_2", ""} {
+			item := input[i].(map[string]any)
+			if want != "" {
+				if item["type"] != "reasoning" || item["id"] != want {
+					t.Fatalf("item %d should be reasoning %s: %#v", i, want, item)
+				}
+			} else if item["role"] != string(message.RoleAssistant) {
+				t.Fatalf("item %d should be assistant text: %#v", i, item)
+			}
+		}
+	})
+
+	t.Run("thinking without reasoning item id is skipped", func(t *testing.T) {
+		t.Parallel()
+		msg, err := message.NewAssistantMessage("assistant", message.ContentBlockList{
+			message.NewThinkingBlock("scratchpad"),
+			message.NewTextBlock("answer"),
+		})
+		if err != nil {
+			t.Fatalf("NewAssistantMessage returned error: %v", err)
+		}
+		input, err := formatResponseInput([]*message.Message{msg})
+		if err != nil {
+			t.Fatalf("formatResponseInput returned error: %v", err)
+		}
+		if len(input) != 1 {
+			t.Fatalf("thinking without id must not be replayed: %#v", input)
+		}
+	})
 }
 
 func TestResponseParsingStreamAndErrorHelpers(t *testing.T) {

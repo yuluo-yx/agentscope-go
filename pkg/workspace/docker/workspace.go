@@ -31,15 +31,6 @@ import (
 	wslocal "github.com/yuluo-yx/agentscope-go/pkg/workspace/local"
 )
 
-const defaultInstructions = `<workspace>
-You have a Docker-based workspace. All sandbox tools execute inside the container at {workdir}.
-
-Layout:
-- data/ for offloaded files
-- skills/ for reusable skills
-- sessions/ for offloaded context and tool results
-</workspace>`
-
 // Workspace is a Docker-backed workspace.
 type Workspace struct {
 	id               string
@@ -249,7 +240,6 @@ func NewWorkspace(opts ...Option) (*Workspace, error) {
 		id:               utils.NewID(),
 		image:            defaultImage,
 		containerWorkdir: defaultContainerWorkdir,
-		instructions:     defaultInstructions,
 		env:              map[string]string{},
 		pullImage:        false,
 		stopTimeout:      defaultStopTimeout,
@@ -273,8 +263,9 @@ func NewWorkspace(opts ...Option) (*Workspace, error) {
 		workspace.containerWorkdir = defaultContainerWorkdir
 	}
 	if workspace.instructions == "" {
-		workspace.instructions = defaultInstructions
+		workspace.instructions = asworkspace.DefaultWorkspaceInstructions
 	}
+	workspace.instructions = asworkspace.RenderInstructions(workspace.instructions, "Docker-based", workspace.containerWorkdir)
 	return workspace, nil
 }
 
@@ -398,6 +389,7 @@ func (w *Workspace) Reset(ctx context.Context) error {
 }
 
 // GetInstructions returns the Docker workspace system-prompt fragment.
+// The instruction template is rendered during construction.
 func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if w == nil {
 		return "", fmt.Errorf("workspace/docker: nil workspace")
@@ -405,7 +397,7 @@ func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return strings.ReplaceAll(w.instructions, "{workdir}", w.containerWorkdir), nil
+	return w.instructions, nil
 }
 
 // ListTools returns Docker-backed tools that execute inside the container.
@@ -636,6 +628,9 @@ func (w *Workspace) prepareHostWorkdir() error {
 }
 
 func (w *Workspace) localMirror() (*wslocal.Workspace, error) {
+	// The host mirror shares the sandbox-side instructions verbatim: the
+	// template was rendered with the container-side workdir, which is the
+	// path the agent actually sees.
 	return wslocal.NewWorkspace(w.hostWorkdir, wslocal.WithWorkspaceID(w.id), wslocal.WithInstructions(w.instructions))
 }
 

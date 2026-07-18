@@ -220,7 +220,7 @@ func testAgentSandboxWorkspaceResourceLifecycle(ctx context.Context, opts pkgtes
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(instructions, "Agent Sandbox") || !strings.Contains(instructions, "/home/user") {
+	if !strings.Contains(instructions, "Kubernetes-based") || !strings.Contains(instructions, "/home/user") {
 		return fmt.Errorf("Agent Sandbox instructions should describe runtime and workdir, got %q", instructions)
 	}
 	tools, err := ws.ListTools(ctx)

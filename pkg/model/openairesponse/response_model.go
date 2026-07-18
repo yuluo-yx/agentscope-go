@@ -396,53 +396,169 @@ func formatResponseInput(messages []*message.Message) ([]any, error) {
 		if msg == nil {
 			continue
 		}
-		content, items, err := formatResponseContent(msg.Content)
+		items, err := formatResponseMessage(msg)
 		if err != nil {
 			return nil, err
 		}
-		role := string(msg.Role)
-		input = append(input, map[string]any{"role": role, "content": content})
 		input = append(input, items...)
 	}
 	return input, nil
 }
 
-func formatResponseContent(blocks message.ContentBlockList) ([]any, []any, error) {
-	content := make([]any, 0, len(blocks))
-	var items []any
-	for _, block := range blocks {
-		switch typed := block.(type) {
-		case *message.TextBlock:
-			content = append(content, map[string]any{"type": "input_text", "text": typed.Text})
-		case *message.HintBlock:
-			hintContent, err := hintResponseContent(typed)
-			if err != nil {
-				return nil, nil, err
-			}
-			content = append(content, hintContent...)
-		case *message.DataBlock:
-			part, err := responseDataPart(typed)
-			if err != nil {
-				return nil, nil, err
-			}
-			if part != nil {
-				content = append(content, part)
-			}
-		case *message.ToolResultBlock:
-			items = append(items, map[string]any{"type": "function_call_output", "call_id": typed.ID, "output": toolResultText(typed.Output)})
-		case *message.ToolCallBlock:
-			callID, _ := typed.Extra["call_id"].(string)
-			if callID == "" {
-				callID = typed.ID
-			}
-			items = append(items, map[string]any{"type": "function_call", "id": typed.ID, "call_id": callID, "name": typed.Name, "arguments": typed.Input})
-		case *message.ThinkingBlock:
-			continue
-		default:
-			return nil, nil, fmt.Errorf("openai responses: unsupported content block %T", block)
+// formatResponseMessage converts a single message into Responses API input
+// items, preserving the on-wire order of reasoning items, assistant text
+// segments, function calls and tool results so multi-turn history replays
+// match the original output.
+func formatResponseMessage(msg *message.Message) ([]any, error) {
+	formatter := newResponseMessageFormatter(msg.Role, len(msg.Content))
+	for _, block := range msg.Content {
+		if err := formatter.appendBlock(block); err != nil {
+			return nil, err
 		}
 	}
-	return content, items, nil
+	formatter.flushPending()
+	return formatter.items, nil
+}
+
+type responseMessageFormatter struct {
+	items         []any
+	content       []any
+	functionCalls []any
+	role          message.Role
+}
+
+func newResponseMessageFormatter(role message.Role, capacity int) *responseMessageFormatter {
+	return &responseMessageFormatter{
+		items:         make([]any, 0, capacity),
+		content:       make([]any, 0, capacity),
+		functionCalls: []any{},
+		role:          role,
+	}
+}
+
+func (f *responseMessageFormatter) appendBlock(block message.ContentBlock) error {
+	switch typed := block.(type) {
+	case *message.TextBlock:
+		f.appendText(typed)
+	case *message.HintBlock:
+		return f.appendHint(typed)
+	case *message.DataBlock:
+		return f.appendData(typed)
+	case *message.ThinkingBlock:
+		f.appendThinking(typed)
+	case *message.ToolCallBlock:
+		f.appendToolCall(typed)
+	case *message.ToolResultBlock:
+		f.appendToolResult(typed)
+	default:
+		return fmt.Errorf("openai responses: unsupported content block %T", block)
+	}
+	return nil
+}
+
+func (f *responseMessageFormatter) appendText(block *message.TextBlock) {
+	textType := "input_text"
+	if f.role == message.RoleAssistant {
+		textType = "output_text"
+	}
+	f.content = append(f.content, map[string]any{"type": textType, "text": block.Text})
+}
+
+func (f *responseMessageFormatter) appendHint(block *message.HintBlock) error {
+	f.flushPending()
+	content, err := hintResponseContent(block)
+	if err != nil {
+		return err
+	}
+	if len(content) > 0 {
+		f.items = append(f.items, map[string]any{"role": string(message.RoleUser), "content": content})
+	}
+	return nil
+}
+
+func (f *responseMessageFormatter) appendData(block *message.DataBlock) error {
+	part, err := responseDataPart(block)
+	if err != nil {
+		return err
+	}
+	if part != nil {
+		f.content = append(f.content, part)
+	}
+	return nil
+}
+
+func (f *responseMessageFormatter) appendThinking(block *message.ThinkingBlock) {
+	// When reasoning_item_id is present the block originated from a
+	// Responses API "reasoning" output item. The API requires such
+	// items to be echoed back verbatim in multi-turn history
+	// (especially when they precede a function_call). Without the id
+	// the block is skipped silently.
+	reasoningItemID, _ := block.Extra["reasoning_item_id"].(string)
+	if reasoningItemID == "" {
+		return
+	}
+	// Empty reasoning blocks can arrive after text deltas only to
+	// carry reasoning_item_id; emit them before the pending assistant
+	// text for replay. Non-empty reasoning starts a new output
+	// segment, so flush the text first.
+	if block.Thinking != "" {
+		f.flushPending()
+	}
+	summary := make([]any, 0, 1)
+	if block.Thinking != "" {
+		summary = append(summary, map[string]any{"type": "summary_text", "text": block.Thinking})
+	}
+	f.items = append(f.items, map[string]any{
+		"type":    "reasoning",
+		"id":      reasoningItemID,
+		"summary": summary,
+		"content": []any{},
+	})
+}
+
+func (f *responseMessageFormatter) appendToolCall(block *message.ToolCallBlock) {
+	callID, _ := block.Extra["call_id"].(string)
+	if callID == "" {
+		callID = block.ID
+	}
+	f.functionCalls = append(f.functionCalls, map[string]any{
+		"type":      "function_call",
+		"id":        block.ID,
+		"call_id":   callID,
+		"name":      block.Name,
+		"arguments": block.Input,
+	})
+}
+
+func (f *responseMessageFormatter) appendToolResult(block *message.ToolResultBlock) {
+	f.flushCalls()
+	f.items = append(f.items, map[string]any{
+		"type":    "function_call_output",
+		"call_id": block.ID,
+		"output":  toolResultText(block.Output),
+	})
+}
+
+func (f *responseMessageFormatter) flushContent() {
+	if len(f.content) == 0 {
+		return
+	}
+	f.items = append(f.items, map[string]any{"role": string(f.role), "content": f.content})
+	f.content = []any{}
+}
+
+func (f *responseMessageFormatter) flushCalls() {
+	if len(f.functionCalls) == 0 {
+		return
+	}
+	f.flushContent()
+	f.items = append(f.items, f.functionCalls...)
+	f.functionCalls = []any{}
+}
+
+func (f *responseMessageFormatter) flushPending() {
+	f.flushCalls()
+	f.flushContent()
 }
 
 func hintResponseContent(block *message.HintBlock) ([]any, error) {
@@ -592,10 +708,20 @@ func parseResponsePayload(payload responsePayloadJSON, elapsed time.Duration) *a
 		case "function_call":
 			content = append(content, message.NewToolCallBlock(item.ID, item.Name, item.Arguments, message.WithToolCallExtra("call_id", item.CallID)))
 		case "reasoning":
-			for _, summary := range item.Summary {
-				if summary.Text != "" {
-					content = append(content, message.NewThinkingBlock(summary.Text))
+			// Keep even empty-summary reasoning items: the API requires the
+			// reasoning item id to be echoed back in multi-turn history.
+			summary := make([]string, 0, len(item.Summary))
+			for _, part := range item.Summary {
+				if part.Text != "" {
+					summary = append(summary, part.Text)
 				}
+			}
+			if len(summary) > 0 || item.ID != "" {
+				block := message.NewThinkingBlock(strings.Join(summary, " "))
+				if item.ID != "" {
+					message.WithExtra("reasoning_item_id", item.ID)(block)
+				}
+				content = append(content, block)
 			}
 		}
 	}
@@ -661,14 +787,26 @@ func (acc *responseStreamAccumulator) consumeEvent(data []byte) *asmodel.ChatRes
 		acc.text += event.Delta
 		return asmodel.NewChatResponse(message.ContentBlockList{message.NewTextBlock(event.Delta, message.WithBlockID(acc.textID))}, false)
 	case "response.output_item.added":
-		if event.Item.Type != "function_call" {
+		switch event.Item.Type {
+		case "function_call":
+			acc.toolCalls[event.Item.ID] = &accumulatedToolCall{id: event.Item.ID, name: event.Item.Name}
+			acc.toolOrder = append(acc.toolOrder, event.Item.ID)
+			return asmodel.NewChatResponse(message.ContentBlockList{
+				message.NewToolCallBlock(event.Item.ID, event.Item.Name, "", message.WithToolCallExtra("call_id", event.Item.CallID)),
+			}, false)
+		case "reasoning":
+			// Forward-compatibility: some models stream reasoning items whose
+			// summary arrives later or never (e.g. o4-mini). Emit an empty
+			// thinking block carrying the item id so it survives replay.
+			if event.Item.ID == "" {
+				return nil
+			}
+			return asmodel.NewChatResponse(message.ContentBlockList{
+				message.NewThinkingBlock("", message.WithExtra("reasoning_item_id", event.Item.ID)),
+			}, false)
+		default:
 			return nil
 		}
-		acc.toolCalls[event.Item.ID] = &accumulatedToolCall{id: event.Item.ID, name: event.Item.Name}
-		acc.toolOrder = append(acc.toolOrder, event.Item.ID)
-		return asmodel.NewChatResponse(message.ContentBlockList{
-			message.NewToolCallBlock(event.Item.ID, event.Item.Name, "", message.WithToolCallExtra("call_id", event.Item.CallID)),
-		}, false)
 	case "response.function_call_arguments.delta":
 		call := acc.toolCalls[event.ItemID]
 		if call == nil {

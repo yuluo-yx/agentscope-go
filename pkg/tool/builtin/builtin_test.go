@@ -140,6 +140,32 @@ func TestFileToolPermissionsMatchPythonSafetyRules(t *testing.T) {
 	if decision.Behavior != permission.BehaviorAllow {
 		t.Fatalf("Read should be allowed as read-only, got %#v", decision)
 	}
+
+	// dont_ask is the unattended counterpart of accept edits: writes inside a
+	// working directory are auto-allowed without prompting a user.
+	dontAsk := permission.NewContext(permission.ModeDontAsk)
+	dontAsk.WorkingDirectories[dir] = permission.AdditionalWorkingDirectory{Path: dir, Source: "test"}
+	decision, err = builtin.NewWrite().CheckPermissions(context.Background(), map[string]any{"file_path": filePath}, dontAsk)
+	if err != nil {
+		t.Fatalf("Write CheckPermissions returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorAllow {
+		t.Fatalf("DontAsk working directory should allow Write, got %#v", decision)
+	}
+	decision, err = builtin.NewEdit().CheckPermissions(context.Background(), map[string]any{"file_path": filePath}, dontAsk)
+	if err != nil {
+		t.Fatalf("Edit CheckPermissions returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorAllow {
+		t.Fatalf("DontAsk working directory should allow Edit, got %#v", decision)
+	}
+	decision, err = builtin.NewBash().CheckPermissions(context.Background(), map[string]any{"command": "mkdir ./tmp-dir"}, dontAsk)
+	if err != nil {
+		t.Fatalf("Bash CheckPermissions returned error: %v", err)
+	}
+	if decision.Behavior != permission.BehaviorAllow {
+		t.Fatalf("DontAsk should allow filesystem commands, got %#v", decision)
+	}
 }
 
 func TestBashExecutesAndChecksDangerousCommands(t *testing.T) {
@@ -204,6 +230,23 @@ func TestBashInputAwareReadOnlyBranches(t *testing.T) {
 		{name: "git status", command: "git status --short", want: true},
 		{name: "docker ps", command: "docker ps", want: true},
 		{name: "output redirection", command: "pwd > out.txt", want: false},
+		{name: "find name pattern", command: "find . -name '*.py'", want: true},
+		{name: "find delete", command: "find . -delete", want: false},
+		{name: "find exec", command: `find . -exec rm {} \;`, want: false},
+		{name: "find execdir", command: `find . -execdir rm {} \;`, want: false},
+		{name: "find fls", command: "find . -fls results.txt", want: false},
+		{name: "find fprint", command: "find . -fprint results.txt", want: false},
+		{name: "find fprint0", command: "find . -fprint0 results.txt", want: false},
+		{name: "find fprintf", command: `find . -fprintf results.txt '%p\n'`, want: false},
+		{name: "find ok", command: `find . -ok rm {} \;`, want: false},
+		{name: "find okdir", command: `find . -okdir rm {} \;`, want: false},
+		{name: "find name with delete after predicate", command: "find . -name '*.tmp' -delete", want: false},
+		{name: "find daystart delete", command: "find . -daystart -delete", want: false},
+		{name: "find nogroup delete", command: "find . -nogroup -delete", want: false},
+		{name: "find nouser delete", command: "find . -nouser -delete", want: false},
+		{name: "find quoted delete pattern", command: "find . -name '-delete'", want: false},
+		{name: "find path fprint pattern", command: "find . -path './-fprint'", want: true},
+		{name: "find regex exec pattern", command: "find . -regex '.*-exec.*'", want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

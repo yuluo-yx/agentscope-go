@@ -91,7 +91,7 @@ func TestNewValidationAndDefaults(t *testing.T) {
 	if w.id != "stable-id" || w.workdir != "/work/root" || w.gatewayHome != "/gateway/home" || w.gatewayTimeout != defaultGatewayTimeout {
 		t.Fatalf("unexpected normalized workspace: %#v", w)
 	}
-	if w.instructions != defaultInstructions || w.bootstrapCommands[0][0] != "python" || w.skillPaths[0] != "one" {
+	if w.instructions != workspace.DefaultWorkspaceInstructions || w.bootstrapCommands[0][0] != "python" || w.skillPaths[0] != "one" {
 		t.Fatal("New did not apply defaults or defensive copies")
 	}
 }

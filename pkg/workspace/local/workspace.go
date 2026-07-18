@@ -38,15 +38,6 @@ import (
 	asworkspace "github.com/yuluo-yx/agentscope-go/pkg/workspace"
 )
 
-const defaultWorkspaceInstructions = `<workspace>
-You have access to a local workspace at {workdir}.
-
-This workspace contains:
-- data/ for offloaded multimodal files
-- skills/ for reusable skills
-- sessions/ for offloaded context and tool results
-</workspace>`
-
 // Workspace is a local-directory workspace.
 type Workspace struct {
 	id           string
@@ -106,10 +97,9 @@ func NewWorkspace(workdir string, opts ...Option) (*Workspace, error) {
 		return nil, err
 	}
 	workspace := &Workspace{
-		id:           utils.NewID(),
-		workdir:      absWorkdir,
-		instructions: defaultWorkspaceInstructions,
-		mcpFactory:   defaultMCPFactory,
+		id:         utils.NewID(),
+		workdir:    absWorkdir,
+		mcpFactory: defaultMCPFactory,
 	}
 	for _, opt := range opts {
 		opt(workspace)
@@ -118,11 +108,12 @@ func NewWorkspace(workdir string, opts ...Option) (*Workspace, error) {
 		workspace.id = utils.NewID()
 	}
 	if workspace.instructions == "" {
-		workspace.instructions = defaultWorkspaceInstructions
+		workspace.instructions = asworkspace.DefaultWorkspaceInstructions
 	}
 	if workspace.mcpFactory == nil {
 		workspace.mcpFactory = defaultMCPFactory
 	}
+	workspace.instructions = asworkspace.RenderInstructions(workspace.instructions, "local", workspace.workdir)
 	return workspace, nil
 }
 
@@ -218,6 +209,7 @@ func (w *Workspace) Reset(ctx context.Context) error {
 }
 
 // GetInstructions returns the workspace system-prompt fragment.
+// The instruction template is rendered during construction.
 func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if w == nil {
 		return "", fmt.Errorf("workspace: nil local workspace")
@@ -225,7 +217,7 @@ func (w *Workspace) GetInstructions(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return strings.ReplaceAll(w.instructions, "{workdir}", w.workdir), nil
+	return w.instructions, nil
 }
 
 // ListTools returns the built-in tools scoped to this local workspace.

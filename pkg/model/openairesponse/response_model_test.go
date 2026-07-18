@@ -207,6 +207,113 @@ data: {"type":"response.completed","response":{"id":"resp-stream","output":[{"id
 	}
 }
 
+func TestResponseModelCallKeepsEmptyReasoningSummaryItemID(t *testing.T) {
+	t.Parallel()
+
+	server := newResponseServer(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		writeJSON(t, w, responsePayload("resp-empty-reasoning", []any{
+			map[string]any{
+				"id":      "rs_empty",
+				"type":    "reasoning",
+				"summary": []any{},
+			},
+			map[string]any{
+				"id":   "msg-1",
+				"type": "message",
+				"content": []any{
+					map[string]any{"type": "output_text", "text": "Answer"},
+				},
+			},
+		}))
+	})
+	defer server.Close()
+
+	model, err := asopenairesponse.NewResponseModel(
+		asopenairesponse.NewCredential("test-key", asopenairesponse.WithBaseURL(server.URL)),
+		"gpt-5.4",
+	)
+	if err != nil {
+		t.Fatalf("NewResponseModel returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "question")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	resp, err := model.Call(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}})
+	if err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+	if !resp.IsLast || len(resp.Content) != 2 {
+		t.Fatalf("expected thinking and text blocks: %#v", resp)
+	}
+	thinking, ok := resp.Content[0].(*message.ThinkingBlock)
+	if !ok || thinking.Thinking != "" || thinking.Extra["reasoning_item_id"] != "rs_empty" {
+		t.Fatalf("empty reasoning summary should keep its item id: %#v", resp.Content[0])
+	}
+	if text := resp.GetTextContent(""); text == nil || *text != "Answer" {
+		t.Fatalf("text block mismatch: %#v", resp)
+	}
+}
+
+func TestResponseModelStreamKeepsEmptyReasoningSummaryItemID(t *testing.T) {
+	t.Parallel()
+
+	server := newResponseServer(t, func(w http.ResponseWriter, r *http.Request, body map[string]any) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		writer := bufio.NewWriter(w)
+		events := []string{
+			`event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"rs_empty","type":"reasoning","summary":[]}}`,
+			`event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"Answer"}`,
+			`event: response.completed
+data: {"type":"response.completed","response":{"id":"resp-empty","output":[{"id":"rs_empty","type":"reasoning","summary":[]},{"id":"msg-1","type":"message","role":"assistant","content":[{"type":"output_text","text":"Answer"}]}],"usage":{"input_tokens":10,"output_tokens":5}}}`,
+		}
+		for _, event := range events {
+			fmt.Fprint(writer, event+"\n\n")
+		}
+		if err := writer.Flush(); err != nil {
+			t.Fatalf("Flush returned error: %v", err)
+		}
+	})
+	defer server.Close()
+
+	model, err := asopenairesponse.NewResponseModel(
+		asopenairesponse.NewCredential("test-key", asopenairesponse.WithBaseURL(server.URL)),
+		"gpt-5.4",
+	)
+	if err != nil {
+		t.Fatalf("NewResponseModel returned error: %v", err)
+	}
+	userMsg, err := message.NewUserMessage("Tony", "question")
+	if err != nil {
+		t.Fatalf("NewUserMessage returned error: %v", err)
+	}
+	stream, err := model.Stream(context.Background(), asmodel.CallRequest{Messages: []*message.Message{userMsg}})
+	if err != nil {
+		t.Fatalf("Stream returned error: %v", err)
+	}
+	var chunks []asmodel.ChatResponse
+	for chunk := range stream {
+		chunks = append(chunks, chunk)
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("unexpected Responses stream chunks: %d %#v", len(chunks), chunks)
+	}
+	thinking, ok := chunks[0].Content[0].(*message.ThinkingBlock)
+	if !ok || chunks[0].IsLast || thinking.Thinking != "" || thinking.Extra["reasoning_item_id"] != "rs_empty" {
+		t.Fatalf("reasoning item delta mismatch: %#v", chunks[0])
+	}
+	final := chunks[len(chunks)-1]
+	if !final.IsLast || final.ID != "resp-empty" {
+		t.Fatalf("final Responses chunk mismatch: %#v", final)
+	}
+	finalThinking, ok := final.Content[0].(*message.ThinkingBlock)
+	if !ok || finalThinking.Extra["reasoning_item_id"] != "rs_empty" {
+		t.Fatalf("final chunk should keep reasoning item id: %#v", final.Content[0])
+	}
+}
+
 func TestResponseModelMapsErrorsContextAndCapabilityRejection(t *testing.T) {
 	t.Parallel()
 

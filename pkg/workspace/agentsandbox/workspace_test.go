@@ -156,7 +156,7 @@ func TestWorkspaceInitializesRuntimeAndListsSandboxTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetInstructions returned error: %v", err)
 	}
-	if !strings.Contains(instructions, "Agent Sandbox") || !strings.Contains(instructions, "/agent") {
+	if !strings.Contains(instructions, "Kubernetes-based") || !strings.Contains(instructions, "/agent") {
 		t.Fatalf("instructions should describe Agent Sandbox workspace and workdir: %s", instructions)
 	}
 
