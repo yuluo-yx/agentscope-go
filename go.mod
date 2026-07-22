@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/alibaba/OpenSandbox/sdks/sandbox/go v1.0.4
-	github.com/anthropics/anthropic-sdk-go v1.57.0
+	github.com/anthropics/anthropic-sdk-go v1.58.1
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/daytonaio/daytona/libs/sdk-go v0.190.0
 	github.com/google/uuid v1.6.0
@@ -12,7 +12,7 @@ require (
 	github.com/mark3labs/mcp-go v0.56.0
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
-	github.com/ollama/ollama v0.32.0
+	github.com/ollama/ollama v0.32.1
 	github.com/openai/openai-go v1.12.0
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/superradcompany/microsandbox/sdk/go v0.6.6
