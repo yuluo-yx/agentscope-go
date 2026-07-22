@@ -36,7 +36,7 @@ repos:
     hooks:
       - id: codespell
         args:
-          - --skip=.git,.idea,.github/CONTRIBUTORS.svg,example/integration/kratos/third_party/*,tools/node/node_modules
+          - --skip=.git,.idea,.github/CONTRIBUTORS.svg,*.sum,example/integration/kratos/third_party/*,tools/node/node_modules
           - --ignore-words=./tools/linter/codespell/.codespell.ignorewords
 
   # ── Secret / credential detection ────────────────────────────────
