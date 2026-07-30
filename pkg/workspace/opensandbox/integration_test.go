@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -141,7 +142,11 @@ if __name__ == "__main__":
 		ExecutionTimeout: 30 * time.Second,
 	}}
 	if err := workspaceInstance.AddMCP(ctx, mcpClient); err != nil {
-		t.Fatalf("AddMCP returned error: %v", err)
+		t.Fatalf(
+			"AddMCP returned error: %v\n%s",
+			err,
+			openSandboxFailureDiagnostics(ctx, workspaceInstance, mcpScriptPath),
+		)
 	}
 	mcps, err := workspaceInstance.ListMCPs(ctx)
 	if err != nil || len(mcps) != 1 || mcps[0].Name() != "e2e-echo" {
@@ -215,6 +220,84 @@ func executeIntegrationTool(
 		)
 	}
 	return output.String()
+}
+
+func openSandboxFailureDiagnostics(
+	ctx context.Context,
+	workspaceInstance *Workspace,
+	mcpScriptPath string,
+) string {
+	var output strings.Builder
+	if workspaceInstance == nil || workspaceInstance.provider == nil {
+		return "diagnostics unavailable: workspace provider is nil"
+	}
+
+	workspaceInstance.provider.mu.Lock()
+	handle := workspaceInstance.provider.handle
+	workspaceInstance.provider.mu.Unlock()
+	if handle == nil {
+		return "diagnostics unavailable: sandbox handle is nil"
+	}
+
+	diagnosticCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	gatewayLog, err := handle.ReadFile(
+		diagnosticCtx,
+		defaultGatewayHome+"/gateway.log",
+	)
+	if err != nil {
+		fmt.Fprintf(&output, "gateway log error: %v\n", err)
+	} else {
+		fmt.Fprintf(&output, "gateway log:\n%s\n", gatewayLog)
+	}
+
+	versionScript := `import importlib.metadata as m
+for package in ("agentscope", "mcp", "fastapi", "uvicorn"):
+    print(f"{package}={m.version(package)}")
+`
+	appendDiagnosticCommand(
+		&output,
+		"python package versions",
+		handle,
+		diagnosticCtx,
+		[]string{
+			defaultGatewayHome + "/.venv/bin/python",
+			"-c",
+			versionScript,
+		},
+	)
+	appendDiagnosticCommand(
+		&output,
+		"MCP server probe",
+		handle,
+		diagnosticCtx,
+		[]string{
+			"timeout",
+			"5s",
+			defaultGatewayHome + "/.venv/bin/python",
+			mcpScriptPath,
+		},
+	)
+	return output.String()
+}
+
+func appendDiagnosticCommand(
+	output *strings.Builder,
+	name string,
+	handle sandboxHandle,
+	ctx context.Context,
+	argv []string,
+) {
+	result, err := handle.Run(ctx, argv, defaultWorkdir, nil, 10*time.Second)
+	fmt.Fprintf(
+		output,
+		"%s: error=%v exit=%d\nstdout:\n%s\nstderr:\n%s\n",
+		name,
+		err,
+		result.ExitCode,
+		result.Stdout,
+		result.Stderr,
+	)
 }
 
 func cleanupOpenSandboxes(
