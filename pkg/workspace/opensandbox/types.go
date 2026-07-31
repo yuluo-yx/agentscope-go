@@ -35,6 +35,7 @@ const (
 	defaultGatewayHome    = "/root/.agentscope"
 	metadataWorkspaceID   = "agentscope.workspace.id"
 	pythonAgentScope      = "agentscope==2.0.4"
+	pythonMCP             = "mcp<2"
 )
 
 // ResourceLimits aliases the OpenSandbox SDK resource limit map.
