@@ -152,7 +152,7 @@ func bootstrapCommands(extraRequirements []string) [][]string {
 	requirements := make([]string, 0, 8+len(extraRequirements))
 	requirements = append(requirements,
 		"uv", "pip", "install", "--python", gatewayPython,
-		"mcp", "uvicorn", "fastapi",
+		pythonMCP, "uvicorn", "fastapi",
 	)
 	requirements = append(requirements, extraRequirements...)
 	return [][]string{
