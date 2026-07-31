@@ -168,7 +168,9 @@ func TestNewWorkspaceConstructsProviderSpec(t *testing.T) {
 		t.Fatalf("create options mismatch: %#v", spec)
 	}
 	requirements := bootstrapCommands([]string{"httpx==0.28.1"})[5]
-	if !slices.Contains(requirements, "httpx==0.28.1") || requirements[len(requirements)-1] != "httpx==0.28.1" {
+	if !slices.Contains(requirements, pythonMCP) ||
+		!slices.Contains(requirements, "httpx==0.28.1") ||
+		requirements[len(requirements)-1] != "httpx==0.28.1" {
 		t.Fatalf("bootstrap requirements mismatch: %#v", requirements)
 	}
 	agentScopeInstall := bootstrapCommands(nil)[6]
