@@ -3,7 +3,7 @@ module github.com/yuluo-yx/agentscope-go/e2e
 go 1.26.4
 
 require (
-	github.com/mark3labs/mcp-go v0.56.0
+	github.com/mark3labs/mcp-go v0.57.0
 	github.com/yuluo-yx/agentscope-go v0.0.0
 )
 
