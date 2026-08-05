@@ -22,7 +22,7 @@ require (
 	google.golang.org/genai v1.65.0
 	gopkg.in/yaml.v3 v3.0.1
 	mvdan.cc/sh/v3 v3.13.1
-	sigs.k8s.io/agent-sandbox v0.5.3
+	sigs.k8s.io/agent-sandbox v0.5.4
 )
 
 require (
