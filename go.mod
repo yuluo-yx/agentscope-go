@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/alibaba/OpenSandbox/sdks/sandbox/go v1.0.5
-	github.com/anthropics/anthropic-sdk-go v1.58.1
+	github.com/anthropics/anthropic-sdk-go v1.61.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/daytonaio/daytona/libs/sdk-go v0.190.0
 	github.com/google/uuid v1.6.0
