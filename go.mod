@@ -12,7 +12,7 @@ require (
 	github.com/mark3labs/mcp-go v0.57.0
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
-	github.com/ollama/ollama v0.32.5
+	github.com/ollama/ollama v0.33.0
 	github.com/openai/openai-go v1.12.0
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/superradcompany/microsandbox/sdk/go v0.6.8
